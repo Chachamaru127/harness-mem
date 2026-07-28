@@ -132,6 +132,42 @@ export function resolveIngestMaxBytesPerFile(): number {
   return raw > 0 ? raw : Infinity;
 }
 
+/**
+ * §159-003e: 1 回の read + utf8 変換 + parse が budget 判定を越えて止められない時間を
+ * 抑えるための読み込み幅。512KB 上限でも restart 直後の cursor tick が 1148ms
+ * かかったため、既定を 64KB に分割する。
+ */
+export const DEFAULT_INGEST_READ_SLICE_BYTES = 64 * 1024;
+
+export function resolveIngestReadSliceBytes(): number {
+  const rawText = process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES?.trim() ?? "";
+  if (!/^[+-]?\d+$/.test(rawText)) return DEFAULT_INGEST_READ_SLICE_BYTES;
+  const raw = Number(rawText);
+  if (!Number.isFinite(raw)) return DEFAULT_INGEST_READ_SLICE_BYTES;
+  return raw > 0 ? raw : Infinity;
+}
+
+/**
+ * §159-003f: 明示 WAL checkpoint の実行間隔 (ms)。
+ *
+ * `PRAGMA wal_checkpoint(PASSIVE)` は同期 DB I/O で、DB が大きいほど event loop を
+ * 占有する。SQLite 自身が `wal_autocheckpoint` (既定 1000 ページ) で commit 時に
+ * 逐次 checkpoint するため、この明示実行は WAL 肥大化に対する保険であり、頻度を
+ * 落としても安全性は autocheckpoint 側が担保する。
+ *
+ * `HARNESS_MEM_WAL_CHECKPOINT_INTERVAL_MS` で上書き可 (0 以下は既定にフォールバック。
+ * 無効化は WAL 肥大化のリスクがあるため受け付けない)。
+ */
+export const DEFAULT_WAL_CHECKPOINT_INTERVAL_MS = 300_000;
+
+export function resolveWalCheckpointIntervalMs(): number {
+  const rawText = process.env.HARNESS_MEM_WAL_CHECKPOINT_INTERVAL_MS?.trim() ?? "";
+  if (!/^[+-]?\d+$/.test(rawText)) return DEFAULT_WAL_CHECKPOINT_INTERVAL_MS;
+  const raw = Number(rawText);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_WAL_CHECKPOINT_INTERVAL_MS;
+  return raw;
+}
+
 export const DEFAULT_SLOW_TICK_LOG_MS = 1000;
 
 export function resolveSlowTickLogMs(): number {
@@ -529,6 +565,13 @@ export class IngestCoordinator {
   private readonly registeredIngesters: PlatformIngester[] = [];
   private readonly ingesterTimers = new Map<string, ReturnType<typeof setInterval>>();
 
+  /**
+   * §159-003f: 走査を budget で打ち切ったときの再開位置 (source 種別 → 次に見るファイルの index)。
+   * 打ち切りっぱなしだと末尾のファイルが永久に処理されないため、次 tick は続きから走査する。
+   * 永続化しない (restart 後は先頭から) — 公平性のための順序であって状態ではないため。
+   */
+  private readonly scanCursors = new Map<string, number>();
+
   constructor(private readonly deps: IngestCoordinatorDeps) {}
 
   /**
@@ -653,10 +696,19 @@ export class IngestCoordinator {
       this.runTick("retry_queue", () => this.deps.processRetryQueue());
     }, 15000);
 
+    // §159-003f: WAL checkpoint は同期 DB I/O なので、DB が大きいほど event loop を
+    // 塞ぐ。2026-07-28 実測 (4.9GB DB) で、他の周期ジョブがすべて 1000ms 未満なのに
+    // /health が 5 秒超えで応答しない窓が残り、`sample` の leaf は pread (SQLite の
+    // ページ読み) が支配的だった。ここだけ計測外だったため runTick で可視化する。
+    // SQLite は wal_autocheckpoint (既定 1000 ページ) で commit 時に逐次
+    // checkpoint するため、この明示 checkpoint は WAL 肥大化に対する保険。
+    // 間隔を env で緩められるようにして、大きい DB での占有頻度を下げられるようにする。
     this.checkpointTimer = setInterval(() => {
       if (this.deps.isShuttingDown()) return;
-      try { this.deps.db.exec("PRAGMA wal_checkpoint(PASSIVE);"); } catch { /* ignore post-shutdown DB errors */ }
-    }, 60000);
+      this.runTick("wal_checkpoint", () => {
+        this.deps.db.exec("PRAGMA wal_checkpoint(PASSIVE);");
+      });
+    }, resolveWalCheckpointIntervalMs());
 
     this.writeHeartbeat();
   }
@@ -1163,6 +1215,7 @@ export class IngestCoordinator {
     const startedAtMs = Date.now();
     const budgetMs = options?.budgetMs ?? resolveIngestTickBudgetMs();
     const maxBytesPerFile = options?.maxBytesPerFile ?? resolveIngestMaxBytesPerFile();
+    const readSliceBytes = resolveIngestReadSliceBytes();
     const sessionsRoot = resolveHomePath(this.deps.config.codexSessionsRoot);
     if (!existsSync(sessionsRoot)) {
       return summary;
@@ -1171,8 +1224,30 @@ export class IngestCoordinator {
     const files = listCodexRolloutFiles(sessionsRoot);
     const defaultProject = normalizeProjectName(resolve(this.deps.config.codexProjectRoot));
     const cutoffMs = Date.now() - Math.max(0, this.deps.config.codexBackfillHours) * 60 * 60 * 1000;
+    let slicesProcessed = 0;
+    let stopTick = false;
 
-    for (const rolloutPath of files) {
+    // §159-003f: 走査そのものを budget の対象にする。
+    // 2026-07-28 実測で ~/.codex/sessions は 4721 ファイル / 9.0GB あり、
+    // 1 ファイルあたり statSync + `SELECT offset` を全件に対して毎 tick 実行すると
+    // 読み込みに到達する前に 3〜10 秒 event loop を塞いでいた (slow tick ログで観測)。
+    // 打ち切ると末尾のファイルが永久に処理されないので、次 tick は前回の続きから
+    // 走査する round-robin にして公平性を保つ。
+    const scanCursorKey = "codex_rollout";
+    const startIndex = files.length > 0 ? (this.scanCursors.get(scanCursorKey) ?? 0) % files.length : 0;
+    let filesVisited = 0;
+
+    for (let step = 0; step < files.length; step += 1) {
+      const rolloutPath = files[(startIndex + step) % files.length] as string;
+      // 進捗保証: 1 件目は budget 超過済みでも必ず見る。
+      if (
+        filesVisited > 0 &&
+        Number.isFinite(budgetMs) &&
+        Date.now() - startedAtMs > budgetMs
+      ) {
+        break;
+      }
+      filesVisited += 1;
       summary.filesScanned += 1;
       const sourceKey = `codex_rollout:${resolve(rolloutPath)}`;
 
@@ -1206,100 +1281,171 @@ export class IngestCoordinator {
         continue;
       }
 
-      // §159-003c: 読み込み前に budget を判定する。ファイル一覧の走査 (stat + offset
-      // 参照) は毎 tick 完走させ、末尾のファイルが永久に処理されない状態を避ける。
-      if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
-
-      let chunk = "";
-      try {
-        const buffer = readFileSync(rolloutPath);
-        // 1 tick で読む量に上限を設ける (元は残り全体を読んでいた)。offset は永続化
-        // されるので、上限で切っても次 tick が続きから再開する。
-        const remaining = buffer.subarray(offset);
-        const slice = Number.isFinite(maxBytesPerFile)
-          ? remaining.subarray(0, maxBytesPerFile)
-          : remaining;
-        chunk = slice.toString("utf8");
-      } catch {
-        continue;
+      // §159-003e: offset が進まない tick の反復を避けるため、budget 超過済みでも
+      // tick 全体の最初のスライスだけは処理する。
+      if (
+        slicesProcessed > 0 &&
+        Number.isFinite(budgetMs) &&
+        Date.now() - startedAtMs > budgetMs
+      ) {
+        break;
       }
 
       const context = this.loadCodexRolloutContext(sourceKey);
-      const fallbackSessionId = inferSessionIdFromRolloutPath(rolloutPath) || context.sessionId || undefined;
-      const parsedChunk = parseCodexSessionsChunk({
-        sourceKey,
-        baseOffset: offset,
-        chunk,
-        fallbackNowIso: nowIso,
-        context,
-        defaultSessionId: fallbackSessionId,
-        defaultProject: defaultProject,
-      });
-
-      let imported = 0;
+      const fallbackSessionId =
+        inferSessionIdFromRolloutPath(rolloutPath) || context.sessionId || undefined;
       const committedContext: CodexSessionsContext = {
-        sessionId: parsedChunk.context.sessionId || fallbackSessionId,
-        project: parsedChunk.context.project || defaultProject,
+        sessionId: context.sessionId || fallbackSessionId,
+        project: context.project || defaultProject,
         lastUserPrompt: context.lastUserPrompt,
         lastAssistantContent: context.lastAssistantContent,
       };
-      let nextOffset = offset + parsedChunk.consumedBytes;
-      let budgetExhausted = false;
-      let processed = 0;
-      for (const entry of parsedChunk.events) {
-        // §159-003c: insert ループも budget で打ち切る。中断位置は既存の失敗時と同じく
-        // entry.lineOffset で保存する。1 件目では抜けない (offset が進まず同じ chunk を
-        // 読み直し続けるため)。
-        if (processed > 0 && Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) {
-          nextOffset = Math.max(offset, entry.lineOffset);
-          budgetExhausted = true;
-          break;
-        }
-        processed += 1;
-        const result = this.deps.recordEvent(
-          {
-            platform: "codex",
-            project: entry.project,
-            session_id: entry.sessionId,
-            event_type: entry.eventType,
-            ts: entry.timestamp,
-            payload: entry.payload,
-            tags: ["codex_sessions_ingest"],
-            privacy_tags: [],
-            dedupe_hash: entry.dedupeHash,
-          },
-          { allowQueue: false }
-        );
-        if (!result.ok) {
-          nextOffset = Math.max(offset, entry.lineOffset);
-          break;
-        }
-        const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
-        if (result.ok && !deduped) {
-          imported += 1;
-        }
-        committedContext.sessionId = entry.sessionId || committedContext.sessionId;
-        committedContext.project = entry.project || committedContext.project;
-        if (entry.eventType === "user_prompt") {
-          const prompt = normalizeString(entry.payload.prompt) || normalizeString(entry.payload.content);
-          if (prompt) {
-            committedContext.lastUserPrompt = prompt;
+      let currentOffset = offset;
+      let nextReadOffset = offset;
+      let bytesReadThisFile = 0;
+      let pending = Buffer.alloc(0);
+
+      try {
+        const fd = openSync(rolloutPath, "r");
+        try {
+          while (
+            nextReadOffset < fileSize &&
+            (!Number.isFinite(maxBytesPerFile) || bytesReadThisFile < maxBytesPerFile)
+          ) {
+            const remainingFileBytes = fileSize - nextReadOffset;
+            const remainingReadBytes = Number.isFinite(maxBytesPerFile)
+              ? maxBytesPerFile - bytesReadThisFile
+              : remainingFileBytes;
+            const readSize = Math.min(
+              remainingFileBytes,
+              remainingReadBytes,
+              Number.isFinite(readSliceBytes) ? readSliceBytes : remainingFileBytes
+            );
+            if (readSize <= 0) break;
+
+            const buffer = Buffer.alloc(readSize);
+            const bytesRead = readSync(fd, buffer, 0, readSize, nextReadOffset);
+            if (bytesRead <= 0) break;
+            pending = Buffer.concat([pending, buffer.subarray(0, bytesRead)]);
+            bytesReadThisFile += bytesRead;
+            nextReadOffset += bytesRead;
+            slicesProcessed += 1;
+
+            const parsedChunk = parseCodexSessionsChunk({
+              sourceKey,
+              baseOffset: currentOffset,
+              chunk: pending.toString("utf8"),
+              fallbackNowIso: nowIso,
+              context: committedContext,
+              defaultSessionId: fallbackSessionId,
+              defaultProject: defaultProject,
+            });
+
+            // 1 行が 64KB を超える場合は次スライスを連結する。ファイル上限または EOF
+            // まで改行がなければ次 tick に回し、同一 while 内の無限再試行を防ぐ。
+            if (parsedChunk.consumedBytes === 0) {
+              // §159-003f (review): 行が完結していない間も budget を見る。ここを抜けないと
+              // 1 行が複数スライスにまたがる場合に maxBytesPerFile まで読み続けてしまう。
+              if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
+              if (
+                nextReadOffset >= fileSize ||
+                (Number.isFinite(maxBytesPerFile) && bytesReadThisFile >= maxBytesPerFile)
+              ) {
+                break;
+              }
+              continue;
+            }
+
+            committedContext.sessionId = parsedChunk.context.sessionId || fallbackSessionId;
+            committedContext.project = parsedChunk.context.project || defaultProject;
+            let nextOffset = currentOffset + parsedChunk.consumedBytes;
+            let budgetExhausted = false;
+            let sliceDeferred = false;
+            let processed = 0;
+            let imported = 0;
+            for (const entry of parsedChunk.events) {
+              // §159-003c: insert ループも budget で打ち切る。中断位置は既存の失敗時と同じく
+              // entry.lineOffset で保存する。1 件目では抜けない (offset が進まず同じ chunk を
+              // 読み直し続けるため)。
+              if (
+                processed > 0 &&
+                Number.isFinite(budgetMs) &&
+                Date.now() - startedAtMs > budgetMs
+              ) {
+                nextOffset = Math.max(currentOffset, entry.lineOffset);
+                budgetExhausted = true;
+                sliceDeferred = true;
+                break;
+              }
+              processed += 1;
+              const result = this.deps.recordEvent(
+                {
+                  platform: "codex",
+                  project: entry.project,
+                  session_id: entry.sessionId,
+                  event_type: entry.eventType,
+                  ts: entry.timestamp,
+                  payload: entry.payload,
+                  tags: ["codex_sessions_ingest"],
+                  privacy_tags: [],
+                  dedupe_hash: entry.dedupeHash,
+                },
+                { allowQueue: false }
+              );
+              if (!result.ok) {
+                nextOffset = Math.max(currentOffset, entry.lineOffset);
+                sliceDeferred = true;
+                break;
+              }
+              const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+              if (!deduped) {
+                imported += 1;
+              }
+              committedContext.sessionId = entry.sessionId || committedContext.sessionId;
+              committedContext.project = entry.project || committedContext.project;
+              if (entry.eventType === "user_prompt") {
+                const prompt =
+                  normalizeString(entry.payload.prompt) || normalizeString(entry.payload.content);
+                if (prompt) {
+                  committedContext.lastUserPrompt = prompt;
+                }
+              }
+              if (entry.eventType === "checkpoint") {
+                const assistantContent = normalizeString(entry.payload.content);
+                if (assistantContent) {
+                  committedContext.lastAssistantContent = assistantContent;
+                }
+              }
+            }
+
+            summary.eventsImported += imported;
+            summary.sessionsEventsImported += imported;
+            this.storeCodexRolloutContext(sourceKey, committedContext);
+            this.updateIngestOffset(sourceKey, nextOffset);
+
+            if (sliceDeferred) {
+              if (budgetExhausted) stopTick = true;
+              break;
+            }
+
+            currentOffset = nextOffset;
+            pending = pending.subarray(parsedChunk.consumedBytes);
+            if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) {
+              stopTick = true;
+              break;
+            }
           }
+        } finally {
+          closeSync(fd);
         }
-        if (entry.eventType === "checkpoint") {
-          const assistantContent = normalizeString(entry.payload.content);
-          if (assistantContent) {
-            committedContext.lastAssistantContent = assistantContent;
-          }
-        }
+      } catch {
+        continue;
       }
+      if (stopTick) break;
+    }
 
-      summary.eventsImported += imported;
-      summary.sessionsEventsImported += imported;
-
-      this.storeCodexRolloutContext(sourceKey, committedContext);
-      this.updateIngestOffset(sourceKey, nextOffset);
-      if (budgetExhausted) break;
+    if (files.length > 0) {
+      this.scanCursors.set(scanCursorKey, (startIndex + filesVisited) % files.length);
     }
 
     return summary;
@@ -1801,72 +1947,131 @@ export class IngestCoordinator {
     const startedAtMs = Date.now();
     const budgetMs = resolveIngestTickBudgetMs();
     const maxBytesPerFile = resolveIngestMaxBytesPerFile();
-    let chunk = "";
+    const readSliceBytes = resolveIngestReadSliceBytes();
+    let currentOffset = offset;
+    let nextReadOffset = offset;
+    let bytesReadThisFile = 0;
+    let pending = Buffer.alloc(0);
+    let processed = 0;
+    let slicesProcessed = 0;
+
     try {
-      const buffer = readFileSync(eventsPath);
-      const remaining = buffer.subarray(offset);
-      const slice = Number.isFinite(maxBytesPerFile)
-        ? remaining.subarray(0, maxBytesPerFile)
-        : remaining;
-      chunk = slice.toString("utf8");
+      const fd = openSync(eventsPath, "r");
+      try {
+        while (
+          nextReadOffset < fileSize &&
+          (!Number.isFinite(maxBytesPerFile) || bytesReadThisFile < maxBytesPerFile)
+        ) {
+          const remainingFileBytes = fileSize - nextReadOffset;
+          const remainingReadBytes = Number.isFinite(maxBytesPerFile)
+            ? maxBytesPerFile - bytesReadThisFile
+            : remainingFileBytes;
+          const readSize = Math.min(
+            remainingFileBytes,
+            remainingReadBytes,
+            Number.isFinite(readSliceBytes) ? readSliceBytes : remainingFileBytes
+          );
+          if (readSize <= 0) break;
+
+          const buffer = Buffer.alloc(readSize);
+          const bytesRead = readSync(fd, buffer, 0, readSize, nextReadOffset);
+          if (bytesRead <= 0) break;
+          pending = Buffer.concat([pending, buffer.subarray(0, bytesRead)]);
+          bytesReadThisFile += bytesRead;
+          nextReadOffset += bytesRead;
+          slicesProcessed += 1;
+
+          const parsedChunk = parseCursorHooksChunk({
+            sourceKey,
+            baseOffset: currentOffset,
+            chunk: pending.toString("utf8"),
+            fallbackNowIso: nowIso,
+          });
+
+          // 64KB 内に改行がない長大行は次スライスまで連結する。上限または EOF で
+          // offset を据え置いて抜けるため、同じ tick 内では無限ループしない。
+          if (parsedChunk.consumedBytes === 0) {
+            // §159-003f (review): 行が完結していない間も budget を見る。ここを抜けないと
+            // 1 行が複数スライスにまたがる場合に maxBytesPerFile まで読み続けてしまう。
+            if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
+            if (
+              nextReadOffset >= fileSize ||
+              (Number.isFinite(maxBytesPerFile) && bytesReadThisFile >= maxBytesPerFile)
+            ) {
+              break;
+            }
+            continue;
+          }
+
+          let imported = 0;
+          let nextOffset = currentOffset + parsedChunk.consumedBytes;
+          let sliceDeferred = false;
+          let sliceProcessed = 0;
+          for (const entry of parsedChunk.events) {
+            // §159-003d: 件数上限に加えて時間でも打ち切る。既存の deferred 経路と同じ形で
+            // 中断位置を保存するので、次 tick が続きから再開する。
+            const overBudget =
+              processed > 0 && Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs;
+            if (processed >= MAX_CURSOR_HOOK_EVENTS_PER_INGEST || overBudget) {
+              nextOffset = Math.max(currentOffset, entry.lineOffset);
+              summary.eventsDeferred = parsedChunk.events.length - sliceProcessed;
+              summary.retryOffset = nextOffset;
+              sliceDeferred = true;
+              break;
+            }
+            const result = this.deps.recordEvent(
+              {
+                platform: "cursor",
+                project: entry.project,
+                session_id: entry.sessionId,
+                event_type: entry.eventType,
+                ts: entry.timestamp,
+                payload: entry.payload,
+                tags: ["cursor_hooks_ingest"],
+                privacy_tags: [],
+                dedupe_hash: entry.dedupeHash,
+              },
+              { allowQueue: false }
+            );
+            if (!result.ok) {
+              nextOffset = Math.max(currentOffset, entry.lineOffset);
+              summary.eventsFailed += 1;
+              summary.retryOffset = nextOffset;
+              summary.lastRecordError = result.error || "recordEvent failed";
+              sliceDeferred = true;
+              break;
+            }
+            processed += 1;
+            sliceProcessed += 1;
+            const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+            if (!deduped) {
+              imported += 1;
+            }
+          }
+
+          summary.eventsImported += imported;
+          summary.hooksEventsImported += imported;
+          if (nextOffset > currentOffset) {
+            this.updateIngestOffset(sourceKey, nextOffset);
+          }
+          if (sliceDeferred) break;
+
+          currentOffset = nextOffset;
+          pending = pending.subarray(parsedChunk.consumedBytes);
+          if (
+            processed >= MAX_CURSOR_HOOK_EVENTS_PER_INGEST ||
+            (slicesProcessed > 0 &&
+              Number.isFinite(budgetMs) &&
+              Date.now() - startedAtMs > budgetMs)
+          ) {
+            break;
+          }
+        }
+      } finally {
+        closeSync(fd);
+      }
     } catch {
       return summary;
-    }
-
-    const parsedChunk = parseCursorHooksChunk({
-      sourceKey,
-      baseOffset: offset,
-      chunk,
-      fallbackNowIso: nowIso,
-    });
-
-    let imported = 0;
-    let nextOffset = offset + parsedChunk.consumedBytes;
-    let processed = 0;
-    for (const entry of parsedChunk.events) {
-      // §159-003d: 件数上限に加えて時間でも打ち切る。既存の deferred 経路と同じ形で
-      // 中断位置を保存するので、次 tick が続きから再開する。
-      const overBudget =
-        processed > 0 && Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs;
-      if (processed >= MAX_CURSOR_HOOK_EVENTS_PER_INGEST || overBudget) {
-        nextOffset = Math.max(offset, entry.lineOffset);
-        summary.eventsDeferred = parsedChunk.events.length - processed;
-        summary.retryOffset = nextOffset;
-        break;
-      }
-      const result = this.deps.recordEvent(
-        {
-          platform: "cursor",
-          project: entry.project,
-          session_id: entry.sessionId,
-          event_type: entry.eventType,
-          ts: entry.timestamp,
-          payload: entry.payload,
-          tags: ["cursor_hooks_ingest"],
-          privacy_tags: [],
-          dedupe_hash: entry.dedupeHash,
-        },
-        { allowQueue: false }
-      );
-      if (!result.ok) {
-        nextOffset = Math.max(offset, entry.lineOffset);
-        summary.eventsFailed += 1;
-        summary.retryOffset = nextOffset;
-        summary.lastRecordError = result.error || "recordEvent failed";
-        break;
-      }
-      processed += 1;
-      const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
-      if (result.ok && !deduped) {
-        imported += 1;
-      }
-    }
-
-    summary.eventsImported += imported;
-    summary.hooksEventsImported += imported;
-
-    if (nextOffset > offset) {
-      this.updateIngestOffset(sourceKey, nextOffset);
     }
 
     return summary;
@@ -2452,10 +2657,35 @@ export class IngestCoordinator {
     const cutoffMs = Date.now() - Math.max(0, this.deps.config.claudeCodeBackfillHours || DEFAULT_CLAUDE_CODE_BACKFILL_HOURS) * 60 * 60 * 1000;
     const MAX_FILES_PER_POLL = options?.maxFiles ?? 50;
     const MAX_BYTES_PER_FILE = options?.maxBytesPerFile ?? resolveIngestMaxBytesPerFile();
+    const READ_SLICE_BYTES = resolveIngestReadSliceBytes();
     const replayFromStart = options?.replayFromStart === true;
     let filesProcessed = 0;
+    let slicesProcessed = 0;
+    let stopTick = false;
 
-    for (const filePath of files) {
+    // §159-003f: 走査そのものを budget の対象にする (codex 経路と同型)。
+    // 2026-07-28 実測で ~/.claude/projects は 1665 ファイルあり、全件の statSync +
+    // `SELECT offset` を毎 tick 実行するだけで 2.5 秒級のブロックが出ていた。
+    // 打ち切ると末尾が処理されないので、次 tick は続きから見る round-robin にする。
+    // 明示 API (replayFromStart) は先頭から全件を対象にする。
+    const scanCursorKey = "claude_code";
+    const startIndex =
+      !replayFromStart && files.length > 0
+        ? (this.scanCursors.get(scanCursorKey) ?? 0) % files.length
+        : 0;
+    let filesVisited = 0;
+
+    for (let step = 0; step < files.length; step += 1) {
+      const filePath = files[(startIndex + step) % files.length] as string;
+      // 進捗保証: 1 件目は budget 超過済みでも必ず見る。
+      if (
+        filesVisited > 0 &&
+        Number.isFinite(budgetMs) &&
+        Date.now() - startedAtMs > budgetMs
+      ) {
+        break;
+      }
+      filesVisited += 1;
       summary.filesScanned += 1;
       const sourceKey = `claude_code:${resolve(filePath)}`;
 
@@ -2490,103 +2720,145 @@ export class IngestCoordinator {
       filesProcessed += 1;
       if (filesProcessed > MAX_FILES_PER_POLL) break;
 
-      // §159-003b: 経過時間でも打ち切る。本メソッドは同期実行なので、読み込みと
-      // recordEvent の DB 書き込みが続く間 event loop 全体が止まり /health も返せない
-      // (2026-07-26 実測: 1665 ファイル / 1.5GB の履歴で 1 tick あたり最大 40 秒)。
-      // offset は永続化されるため、途中で抜けても次 tick が続きから再開する。
-      // ファイル一覧の走査自体 (stat + offset 参照) は毎 tick 完走させ、
-      // 読み込み前にだけ判定することで、末尾のファイルが永久に処理されない状態を避ける。
-      if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
+      // §159-003b/e: 1665 ファイル / 1.5GB で最大 40 秒止まった同期処理を budget で
+      // 切る。ただし offset が未更新のまま同じ先頭を再読しないよう、最初の 1 slice は通す。
+      if (
+        slicesProcessed > 0 &&
+        Number.isFinite(budgetMs) &&
+        Date.now() - startedAtMs > budgetMs
+      ) {
+        break;
+      }
 
-      let chunk = "";
+      let context: ClaudeCodeContext = replayFromStart
+        ? { sessionId: "", project: "", lastUserPrompt: "", lastAssistantContent: "" }
+        : this.loadClaudeCodeContext(sourceKey);
+      const fallbackSessionId =
+        this.inferClaudeCodeSessionId(filePath) || context.sessionId || undefined;
+      const fallbackProject = this.inferClaudeCodeProject(filePath);
+      let currentOffset = readOffset;
+      let nextReadOffset = readOffset;
+      let bytesReadThisFile = 0;
+      let pending = Buffer.alloc(0);
+
       try {
-        const remainingBytes = Math.max(0, fileSize - readOffset);
-        const readSize = Number.isFinite(MAX_BYTES_PER_FILE)
-          ? Math.min(remainingBytes, MAX_BYTES_PER_FILE)
-          : remainingBytes;
-        if (readSize <= 0) continue;
         const fd = openSync(filePath, "r");
         try {
-          const buffer = Buffer.alloc(readSize);
-          readSync(fd, buffer, 0, readSize, readOffset);
-          chunk = buffer.toString("utf8");
+          while (
+            nextReadOffset < fileSize &&
+            (!Number.isFinite(MAX_BYTES_PER_FILE) || bytesReadThisFile < MAX_BYTES_PER_FILE)
+          ) {
+            const remainingFileBytes = fileSize - nextReadOffset;
+            const remainingReadBytes = Number.isFinite(MAX_BYTES_PER_FILE)
+              ? MAX_BYTES_PER_FILE - bytesReadThisFile
+              : remainingFileBytes;
+            const readSize = Math.min(
+              remainingFileBytes,
+              remainingReadBytes,
+              Number.isFinite(READ_SLICE_BYTES) ? READ_SLICE_BYTES : remainingFileBytes
+            );
+            if (readSize <= 0) break;
+
+            const buffer = Buffer.alloc(readSize);
+            const bytesRead = readSync(fd, buffer, 0, readSize, nextReadOffset);
+            if (bytesRead <= 0) break;
+            pending = Buffer.concat([pending, buffer.subarray(0, bytesRead)]);
+            bytesReadThisFile += bytesRead;
+            nextReadOffset += bytesRead;
+            slicesProcessed += 1;
+
+            const parsedChunk = parseClaudeCodeChunk({
+              sourceKey,
+              baseOffset: currentOffset,
+              chunk: pending.toString("utf8"),
+              fallbackNowIso: nowIso,
+              context,
+              defaultSessionId: fallbackSessionId,
+              defaultProject: fallbackProject,
+            });
+
+            // 64KB を超える 1 行は改行まで連結する。maxBytesPerFile または EOF に達した
+            // 場合は offset を進めず次 tick に回し、同一 tick 内の無限ループを防ぐ。
+            if (parsedChunk.consumedBytes === 0) {
+              // §159-003f (review): 行が完結していない間も budget を見る。ここを抜けないと
+              // 1 行が複数スライスにまたがる場合に maxBytesPerFile まで読み続けてしまう。
+              if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
+              if (
+                nextReadOffset >= fileSize ||
+                (Number.isFinite(MAX_BYTES_PER_FILE) && bytesReadThisFile >= MAX_BYTES_PER_FILE)
+              ) {
+                break;
+              }
+              continue;
+            }
+
+            let imported = 0;
+            let resumeOffset: number | null = null;
+            let entryIndex = 0;
+            for (const entry of parsedChunk.events) {
+              if (
+                entryIndex > 0 &&
+                Number.isFinite(budgetMs) &&
+                Date.now() - startedAtMs > budgetMs
+              ) {
+                resumeOffset = entry.lineOffset;
+                break;
+              }
+              entryIndex += 1;
+              const result = this.deps.recordEvent(
+                {
+                  platform: "claude",
+                  project: entry.project,
+                  session_id: entry.sessionId,
+                  event_type: entry.eventType,
+                  ts: entry.timestamp,
+                  payload: entry.payload,
+                  tags: ["claude_code_sessions_ingest"],
+                  privacy_tags: [],
+                  dedupe_hash: entry.dedupeHash,
+                },
+                { allowQueue: false }
+              );
+              const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+              if (result.ok && !deduped) imported += 1;
+            }
+
+            summary.eventsImported += imported;
+            if (resumeOffset !== null) {
+              // chunk 全体の context を保存すると未挿入 event まで進むため、次 tick で再構成する。
+              this.updateIngestOffset(sourceKey, Math.max(offset, resumeOffset));
+              stopTick = true;
+              break;
+            }
+
+            context = parsedChunk.context;
+            this.storeClaudeCodeContext(sourceKey, {
+              sessionId: context.sessionId || fallbackSessionId,
+              project: context.project || fallbackProject,
+              lastUserPrompt: context.lastUserPrompt,
+              lastAssistantContent: context.lastAssistantContent,
+            });
+
+            const nextOffset = currentOffset + parsedChunk.consumedBytes;
+            this.updateIngestOffset(sourceKey, Math.max(offset, nextOffset));
+            currentOffset = nextOffset;
+            pending = pending.subarray(parsedChunk.consumedBytes);
+            if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) {
+              stopTick = true;
+              break;
+            }
+          }
         } finally {
           closeSync(fd);
         }
       } catch {
         continue;
       }
+      if (stopTick) break;
+    }
 
-      const context = replayFromStart
-        ? { sessionId: "", project: "", lastUserPrompt: "", lastAssistantContent: "" }
-        : this.loadClaudeCodeContext(sourceKey);
-      const fallbackSessionId = this.inferClaudeCodeSessionId(filePath) || context.sessionId || undefined;
-      const fallbackProject = this.inferClaudeCodeProject(filePath);
-
-      const parsedChunk = parseClaudeCodeChunk({
-        sourceKey,
-        baseOffset: readOffset,
-        chunk,
-        fallbackNowIso: nowIso,
-        context,
-        defaultSessionId: fallbackSessionId,
-        defaultProject: fallbackProject,
-      });
-
-      let imported = 0;
-      // §159-003c: 1 ファイル分の insert も budget で打ち切る。budget 判定を読み込み前に
-      // 置くだけでは、1 ファイルの recordEvent ループが丸ごと走り切るため実測で 1 tick
-      // 約 11 秒のブロックが残っていた。中断位置は event の lineOffset で保存する。
-      // 打ち切りは 2 件目以降のみ許す (1 件目で抜けると offset が進まず永久に同じ chunk を
-      // 読み直す)。
-      let resumeOffset: number | null = null;
-      let entryIndex = 0;
-      for (const entry of parsedChunk.events) {
-        if (
-          entryIndex > 0 &&
-          Number.isFinite(budgetMs) &&
-          Date.now() - startedAtMs > budgetMs
-        ) {
-          resumeOffset = entry.lineOffset;
-          break;
-        }
-        entryIndex += 1;
-        const result = this.deps.recordEvent(
-          {
-            platform: "claude",
-            project: entry.project,
-            session_id: entry.sessionId,
-            event_type: entry.eventType,
-            ts: entry.timestamp,
-            payload: entry.payload,
-            tags: ["claude_code_sessions_ingest"],
-            privacy_tags: [],
-            dedupe_hash: entry.dedupeHash,
-          },
-          { allowQueue: false }
-        );
-        const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
-        if (result.ok && !deduped) imported += 1;
-      }
-
-      summary.eventsImported += imported;
-
-      if (resumeOffset !== null) {
-        // 途中で抜けたので context は保存しない (chunk 全体を前提とした値のため)。
-        // 次 tick が resumeOffset から読み直す。
-        this.updateIngestOffset(sourceKey, Math.max(offset, resumeOffset));
-        break;
-      }
-
-      this.storeClaudeCodeContext(sourceKey, {
-        sessionId: parsedChunk.context.sessionId || fallbackSessionId,
-        project: parsedChunk.context.project || fallbackProject,
-        lastUserPrompt: parsedChunk.context.lastUserPrompt,
-        lastAssistantContent: parsedChunk.context.lastAssistantContent,
-      });
-
-      const nextOffset = readOffset + parsedChunk.consumedBytes;
-      this.updateIngestOffset(sourceKey, Math.max(offset, nextOffset));
+    if (!replayFromStart && files.length > 0) {
+      this.scanCursors.set(scanCursorKey, (startIndex + filesVisited) % files.length);
     }
 
     return summary;

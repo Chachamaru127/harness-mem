@@ -1294,7 +1294,7 @@ Checkpoint: `.hermes/checkpoints/2026-07-09_112627-hermes-provider-e2e-and-llm-p
 - 2026-07-15: operator が XR draft を承認（claude-code-harness Phase 115.4、HG-2 と同時）
 - 2026-07-16: v5.1.0 公開後に本セクション起票（release 非ブロック条項どおり）
 
-## §159 daemon が生存しているのに health 応答不能になる残存経路 (2026-07-26) — cc:TODO (7/11 完了。159-004 / 001 / 003a / 003b / 003c / 003d / 007。**犯人は履歴 ingest の同期 read+parse+insert** で、非 200 は 73 → 4 / 240)
+## §159 daemon が生存しているのに health 応答不能になる残存経路 (2026-07-26) — cc:完了 (13/13 完了、2026-07-28)。**犯人は履歴 ingest の同期処理**で、read+parse+insert だけでなく**ファイル走査 (statSync + offset 照会) 自体**と **WAL checkpoint** も event loop を塞いでいた。最終実測は **非 200 が 3 / 300、p50 1ms / p95 14ms**
 
 策定日: 2026-07-26（起票: v0.29.3 release session）
 背景: 1 セッション中に `daemon_unavailable` / `degraded` を 3 回観測した。§155 で扱った crashloop・`idleTimeout`・warm-up・SQLITE_BUSY とは別の残存経路であり、**daemon プロセスは生きているのに health だけが応答できない**状態が本体。原因は 2 系統に分かれる。(A) in-process の granite ONNX embedding が CPU 束縛で event loop を占有し `/health` が返せない。(B) shutdown の graceful path が返らず listen socket を保持したまま残る。加えて MCP client 側が (A) の最中に「daemon 不在」と誤認して別 daemon を起動しようとし、`Another harness-memd operation is in progress` のロック競合を起こす。
@@ -1317,15 +1317,17 @@ Checkpoint: `.hermes/checkpoints/2026-07-09_112627-hermes-provider-e2e-and-llm-p
 |------|------|-----|---------|--------|
 | 159-004 | (B) 対策・実施済み。`gracefulShutdown` に force-exit watchdog を追加 (`HARNESS_MEM_SHUTDOWN_TIMEOUT_MS`、既定 10s)。`core.shutdown()` の throw と telemetry flush の失敗で exit が塞がれないよう try/catch と `.catch()` を追加。`processRetryQueue(true)` を try/catch で囲み、失敗しても WAL checkpoint と `db.close()` へ進むようにする | (a) watchdog の env 上書きと既定値、期限切れ時の `process.exit(1)`、正常時の `clearTimeout` を pin、(b) script 側 SIGTERM→SIGKILL escalation も同時に pin、(c) 実機で正常停止が SIGTERM から 1 秒で完了し watchdog 未発火、(d) memory-server 全テスト非回帰 | - | cc:完了 [本 PR] |
 | 159-001 | (A) の user 影響を止める。MCP client の `EnsureDaemon` が health 不通時に **pid file とプロセス生存を確認**し、生存している場合は `startDaemonFunc()` を呼ばずに「busy」として待つ。不在時のみ従来どおり起動する。実装: `mcp-server-go/internal/proxy/httpclient.go` に `livingDaemonPid()` (HARNESS_MEM_HOME → `daemon.pid` → signal 0、Windows は FindProcess 判定) と `waitForHealthWithin()` を追加 | (a) 生存 pid がある間 auto-start を試行しない test、(b) busy から回復したら待機のみで成功する test、(c) pid file 欠落/不正/stale/生存の 4 分岐 test、(d) daemon 不在時の起動経路は非回帰、(e) 4 プラットフォームで build 通過 | - | cc:完了 [本 PR] |
-| 159-002 | probe 既定値の見直し。busy 待機予算は `HARNESS_MEM_BUSY_HEALTH_TIMEOUT_MS` (既定 10s) として 159-001 で導入済み。残りは `healthTimeout` 2500ms / `startupHealthTimeout` 5s の既定を実測から再評価する部分 | 変更後の既定値と根拠の実測を docs に記録 | 159-001 | cc:TODO |
+| 159-002 | probe 既定値の見直し。busy 待機予算は `HARNESS_MEM_BUSY_HEALTH_TIMEOUT_MS` (既定 10s) として 159-001 で導入済み。残りは `healthTimeout` 2500ms / `startupHealthTimeout` 5s の既定を実測から再評価する部分 | **据え置きと判定**。003f 完了後の本番実測 (300 サンプル) で `/health` の応答は p50 1ms / p95 14ms / p99 0.97s。現行の `healthTimeout` 2500ms は p99 の 2.5 倍以上の余裕があり、`startupHealthTimeout` 5s も cold start (eager warm-up 実測 1.2〜7.0s) を busy 判定 (159-001) で吸収できるため変更しない。根拠は `docs/daemon-health-runbook.md` の「probe 既定値の根拠」に記録 | 159-001 | cc:完了 [本 PR] |
 | 159-003a | (A) の発生源を A/B で確定する。**2026-07-26 の profiling で「embedding が塞いでいる」という当初仮説は否定された** (下記「(A) の profiling 結果」参照)。一時 HOME + 別 port + 一時 DB の standalone daemon で 60 秒周期ジョブを個別に落として比較 (本番 DB は writer 衝突のため使わない) | どの 60 秒ジョブが塞ぐかを 1 つに特定 | - | cc:完了 [本 PR] — **claude_code の履歴 ingest が発生源**。241 サンプル (1 秒間隔) の非 200 数: baseline 28 / consolidation off 23 / **claude_code ingest off 1** / 全 ingest off 0。実測規模 `~/.claude/projects` = 1665 jsonl / 1.5GB |
 | 159-003b | 特定した経路の event loop 占有を止める。`ingestClaudeCodeSessions()` は同期実行で、1 tick に最大 50 ファイル × 2MB を読み event ごとに `recordEvent` の DB 書き込みを行っていた (`ingest-coordinator.ts:521` から同期呼び出し)。tick 単位の wall-clock budget (`HARNESS_MEM_INGEST_TICK_BUDGET_MS`、既定 200ms) を導入し、読み込み前に判定して打ち切る。offset は永続化されるので次 tick が続きから再開する。明示 API (`ingestClaudeCodeHistory`) は `budgetMs: Infinity` で完走させる | (a) 非 200 が **28 → 3 / 241** に低減、(b) ingest が止まっていないこと (一時 DB に claude 254 / codex 73 / cursor 200 件を取り込み、offset 行も増加)、(c) budget の env 解決 4 分岐 + 読み込み前判定 + 明示 API 無制限の 6 test、(d) 品質非回帰: `npm test` 2537 passed / 2 failed + e5 parity 単体 PASS。fail 2 件は `tests/benchmarks/s108-developer-domain-manifest.test.ts` の 5000ms timeout で、**本変更を stash しても同一に落ちる**ため無関係 (cold cache 下で 5s 超過する既存の脆さ、別途要対応)。retrieval 品質ゲート (CJK / developer-domain の閾値判定) は、本変更が ingest の実行タイミングのみを変え ranking と embedding に触れないため非適用 | 159-003a | cc:完了 [本 PR] |
 | 159-003c | **本番では 159-003b が効かなかった** (30 / 240)。原因は 003a の A/B を空 DB で行ったため、そこでは backlog の大きい claude_code が支配的に見えていたこと。本番は claude_code が追いついており、実際の犯人は **codex ingest** だった。切り分けは A/B ではなく `runTick()` による所要時間ログ (`HARNESS_MEM_SLOW_TICK_LOG_MS`、既定 1000ms 超過のみ記録) で行い、`[ingest] slow tick: codex blocked the event loop for 11876ms` を得た。対策: codex 経路 (`ingestCodexSessionsRollouts`) に claude_code と同型の budget + 読み込みバイト上限 (`DEFAULT_INGEST_MAX_BYTES_PER_FILE` = 2MB) を入れ、insert ループも `entry.lineOffset` 保存で打ち切る。**scheduler が公開 API `ingestCodexHistory()` (budget 無制限) を呼んでいたため専用の private tick 経路に分離**した | (a) 本番で非 200 が **30 → 3 / 240**、(b) codex の slow tick ログが消滅、(c) 11 test (codex budget / バイト上限切り出し / scheduler が無制限 API を呼ばない回帰 pin / runTick 配線) | 159-003b | cc:完了 [本 PR] |
 | 159-003d | 残余の詰め。**consolidation 犯人説は否定された**: 同期区間を個別計測 (`measureSyncSegment` で materialize / search_db_maintenance / audit_log) しても 1000ms 超過ログは 1 件も出なかった。185287ms は async の総所要時間でブロック時間ではなかった。実際に超過していたのは **codex 1.3〜3.3 秒 / cursor 1.1〜1.4 秒**。原因は budget を「読み込み前」と「insert ループ内」でしか判定できず、**read + utf8 変換 + parse の途中では抜けられない**こと。対策: 1 回に読む量を絞る (`HARNESS_MEM_INGEST_MAX_BYTES_PER_FILE`、既定 **2MB → 512KB**、3 経路で共通化) + cursor にも時間 budget を追加 (件数上限 `MAX_CURSOR_HOOK_EVENTS_PER_INGEST` は insert しか縛っていなかった) | (a) 本番の非 200 が **73 → 4 / 240**、(b) slow tick ログは cursor 1148ms の 1 件のみ、(c) 25 test (バイト上限 env 4 分岐 / cursor の読み込み切り出しと時間打ち切り / codex・claude_code の共通 resolver 経由) | 159-003c | cc:完了 [本 PR] |
-| 159-003e | 残余 4 / 240 の詰め。残るのは restart 直後の catch-up tick (cursor 1148ms を 1 回観測)。budget は read/parse の途中で抜けられないため、512KB の parse + 最初の insert が超過し得る。**ストリーミング parse (行単位で読みながら budget を見る) が次の打ち手** | 非 200 が 0 / 240。ingest 進捗は非回帰 | 159-003d | cc:TODO |
+| 159-003e | 残余の詰め。budget は read + utf8 変換 + parse の途中で抜けられないため、512KB を一度に読むと最初の 1 回でブロックが残る (restart 直後の cursor tick 1148ms を観測)。**parser は書き換えず、呼び出し側でスライス分割**する: `HARNESS_MEM_INGEST_READ_SLICE_BYTES` (既定 64KB) 単位に読み → parse → insert → budget 判定 を繰り返す。1 tick の合計読み込み量は既存の `maxBytesPerFile` を維持。行がスライス境界で切れる問題は parser が返す `consumedBytes` (完全に消費できた行までのバイト数) で吸収し、`consumedBytes === 0` (1 行が 1 スライスより長い) は次スライスを連結、ファイル上限か EOF まで改行が無ければ次 tick に回して無限ループを避ける。進捗保証として tick 最初のスライスは budget 超過済みでも必ず処理する | (a) 3 経路 (claude_code / codex / cursor) すべてスライスループ化、(b) 32 test pass (slice 幅 env 4 分岐 / 3 経路の pin / 進捗保証 / `consumedBytes === 0` 回避)、(c) 明示 API は従来どおり完走 | 159-003d | cc:完了 [本 PR] |
 | 159-007 | `tests/benchmarks/s108-developer-domain-manifest.test.ts` の 2 件が既定 5s で timeout していた問題。**当初「cold cache で遅い」と判断したが誤りで、180 秒でもタイムアウトした**。真因は deep freshness bench (S154-310) が実 LLM (loopback Ollama の `qwen3.5:9b`) を呼ぶこと。Ollama を動かしている開発機では reconcile 1 回が **203206ms**、CI は Ollama 不在で即接続拒否 → skipped で速いため露見していなかった。`npm test` の合否が「開発機に Ollama があるか」に依存していた。対策: `isDeepFreshnessBenchEnabled()` を追加し `NODE_ENV=test` では既定スキップ、release gate (`npm run benchmark:developer-domain`) は従来どおり実行、`HARNESS_MEM_DEEP_FRESHNESS_BENCH=1` または `=0` で上書き可 | (a) 該当ファイルが **9 passed / 0 failed、8.16 秒** (以前は 180 秒でも timeout)、(b) reconcile が `NODE_ENV=test` で 203206ms → **824ms**、(c) skip 時も deep freshness 3 metric が `status: "skipped"` として報告されることを pin、(d) toggle の env 4 分岐を pin | - | cc:完了 [本 PR] |
-| 159-005 | launchctl restart 経路 (`scripts/harness-memd:1283-1308`) と `offline_stop_daemon` に SIGKILL バックストップを追加。plist の `ExitTimeOut` に依存しない | `wait_for_health` 失敗後に pid を解決して `STOP_TIMEOUT_SEC` 待ち → SIGKILL する test | 159-004 | cc:TODO |
-| 159-006 | 切り分け手順を docs 化。「CPU 高 + R/U なら待つ / CPU 0 + S で無応答なら停止手順」の判定と、`daemon.log` と `daemon.launchd.log` の 2 系統がある注意点を書く | operator が degraded を見たときに kill 可否を自分で判断できる記述 | - | cc:TODO |
+| 159-003f | 003e 投入後も本番で 3〜10 秒のブロックが残った。`sample` の leaf は `pread` (SQLite のページ読み) が支配的で、slow tick ログに出ない経路が 2 つあった。(1) **走査そのもの**が budget 外だった: `~/.codex/sessions` は 4721 ファイル / 9.0GB、`~/.claude/projects` は 1665 ファイルあり、全件の `statSync` + `SELECT offset` を毎 tick 実行するだけで 3〜10 秒かかっていた。走査を budget 対象にし、打ち切っても末尾が飢えないよう **round-robin (`scanCursors`) で次 tick は続きから**見る。(2) **`PRAGMA wal_checkpoint(PASSIVE)` が計測外**で 60 秒ごとに同期実行されていた。`runTick` で可視化し、間隔を `HARNESS_MEM_WAL_CHECKPOINT_INTERVAL_MS` (既定 60s → **300s**) で緩めた。SQLite の autocheckpoint が commit 時に逐次実行するため、明示実行は WAL 肥大化の保険であり頻度低下は安全 | 本番実測 (300 サンプル): **非 200 は 3 / 300、p50 1ms / p95 14ms / p99 0.97s**。1 秒超は 3 件のみ (restart 直後の catch-up)。定常状態の slow tick は消滅 | 159-003e | cc:完了 [本 PR] |
+| 159-005 | launchctl restart 経路と `offline_stop_daemon` に SIGKILL バックストップを追加。plist の `ExitTimeOut` に依存しない。escalation を `stop_pid_with_escalation()` に共通化し、既存 `stop_daemon()` もそれを使うようにして重複実装を消した。pid 解決も `resolve_daemon_pid()` に集約 (port → pid file → DB handle の順)。launchctl 経路では job を loaded のままにし、SIGKILL 後の KeepAlive 再起動は launchd に任せる | (a) `bash -n` PASS、(b) 35 test pass (launchctl 経路 / offline-stop / `stop_daemon` の共通関数利用 / `HARNESS_MEM_STOP_TIMEOUT_SEC` 既定の pin) | 159-004 | cc:完了 [本 PR] |
+| 159-006 | 切り分け手順を docs 化。`docs/daemon-health-runbook.md` (125 行) を新設し、README / README_ja の Documentation 索引に追加。構成は 判定フロー → 種別 A は kill せず待つ → 種別 B は段階的に停止 → 遅い tick の計測ログ → 調整用 env 表 → 落とし穴 4 件 (log が 2 か所 / degraded 表示だけで停止しない / launchd の即再起動 / restart を繰り返さない) | operator が degraded を見たときに kill 可否を自分で判断できる記述。`tests/release-docs-contract.test.ts` PASS | - | cc:完了 [本 PR] |
+| 159-008 | `tests/session-start-parity-contract.test.ts` が Claude Code セッションから実行すると false fail していた問題。親プロセスの `CLAUDE_PLUGIN_DATA` が `Bun.spawn` の暗黙 env 継承で `hook-common.sh` に漏れ、警告と state 保存先が実行元依存になっていた。CI には無いため通っていた。`normalizeSessionStartEnv()` で spawn 時に当該 env を除去し、明示的に env を渡す | 両条件で **5 passed / 0 failed**: (a) `CLAUDE_PLUGIN_DATA=/tmp/dummy-plugin-data` を設定した状態、(b) `env -u CLAUDE_PLUGIN_DATA`。env 汚染下でも parity が保たれることを検証する case を追加 | - | cc:完了 [本 PR] |
 
 ### (A) の profiling 結果 (2026-07-26 実測、当初仮説の否定)
 
@@ -1382,6 +1384,34 @@ consolidation の寄与は 28 → 23 の差分 (~5) で副次的。両者は同�
 
 - 2026-06-19: §155 で crashloop / idleTimeout / warm-up / SQLITE_BUSY を修正 (6/6 完了、[3d82138])
 - 2026-07-26: v0.29.3 release session 中に 3 回再発。CPU 束縛による event loop 飢餓が主因で、自力回復することを実測。159-004 を同 session で実施し、残りを本セクションに起票
+
+## §160 ingest スループットが DB サイズに律速される (2026-07-28 §159 から派生) — cc:TODO
+
+策定日: 2026-07-28（起票: §159 完了時の残余調査）
+背景: §159 で ingest tick の走査・読み込み・insert すべてに budget を入れ、本番の `/health` は p50 1ms / p95 14ms まで改善した。ただし **1 単位の処理 (1 スライスの parse + 1 件の `recordEvent`) は budget で中断できない**設計上の下限が残る。そこが遅いと tick 全体が伸びる。
+
+### 観測事実 (2026-07-28 実測)
+
+| 対象 | 実測 |
+|---|---|
+| 空の一時 DB での `recordEvent` | 1KB=18ms / 10KB=21ms / **70KB=55ms** (超線形ではない) |
+| 本番 DB (4.9GB) 稼働中の tick | `claude_code` が 11120ms、`codex` が 1417ms のブロックを記録 |
+| `sample` の main thread leaf | `pread` (SQLite のページ読み) が支配的 |
+
+つまり**払っているコストは payload サイズではなく DB サイズ**。4.9GB の DB に対する index 探索 / FTS 挿入 / vector 書き込みで、cold page cache だとページ読みが積み上がる。§159 のループ構造の問題ではない。
+
+### タスク
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 160-001 | `recordEvent` 1 件のコストを DB サイズ別に測る。空 DB / 1GB / 4.9GB の 3 点で、内訳 (dedupe 探索 / FTS / vector / audit) を分解する。まず計測を入れてから対策を選ぶ | サイズ別・内訳別の実測表。どの区間が DB サイズに比例するかを 1 つに特定 | - | cc:TODO |
+| 160-002 | 160-001 で特定した区間の改善。候補は index 追加、FTS 挿入の遅延化、vector 書き込みの batch 化、cold cache 対策 (`PRAGMA mmap_size` 等)。**特定前に着手しない** | 本番 tick の最大ブロックが budget + 1 単位に収まる。検索品質は非回帰 (e5 parity / dev-domain / CJK) | 160-001 | cc:TODO |
+| 160-003 | `tests/session-start-parity-contract.test.ts` が**ローカル daemon の応答性に依存**している。2026-07-28 に daemon が catch-up でブロック中だと spawn した hook が 5s timeout し false fail した (daemon 平常時は 3 回連続 5 passed)。§159-008 で閉じた `CLAUDE_PLUGIN_DATA` 漏れとは別の依存 | 本番 daemon がブロック中でも同じ結果になる。hook が実 daemon に触れる経路を stub 化するか、port を隔離する | - | cc:TODO |
+
+### Non-goals / stop line
+
+- §159 の tick budget 機構を作り直さない。ループ構造は実測で妥当と確認済み (非 200 3 / 300、p95 14ms)。
+- 計測前に最適化を始めない。§159 では症状からの推論で 3 回誤診しており、計測ログを入れた回に当たっている。
 
 ## アーカイブ (完了 / 休止セクション)
 
