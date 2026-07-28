@@ -619,6 +619,23 @@ resolve_daemon_pid() {
   return 1
 }
 
+# offline-stop の目的は「DB を掴むプロセスを残さない」こと。
+# resolve_daemon_pid は候補を 1 つしか返さないため、drain 途中で落ちた孤児と
+# 現行 instance が両方 DB handle を持つ状況では、片方だけ止めて失敗し得る
+# (2026-07-28 review 指摘)。offline 経路では該当する候補を全件 escalate する。
+# is_expected_daemon_pid で daemon 以外 (sqlite3 CLI 等) は除外される。
+escalate_all_db_handle_holders() {
+  local timeout_sec="${1:-$STOP_TIMEOUT_SEC}"
+  local handle_pid
+  while IFS= read -r handle_pid; do
+    [ -n "$handle_pid" ] || continue
+    is_pid_running "$handle_pid" || continue
+    is_expected_daemon_pid "$handle_pid" || continue
+    stop_pid_with_escalation "$handle_pid" "$timeout_sec"
+  done < <(db_handle_pids)
+  return 0
+}
+
 # 通常 stop 以外の launchctl / offline-stop 経路も launchd の
 # ExitTimeOut に依存させず、同じ上限で SIGKILL まで進める。
 stop_pid_with_escalation() {
@@ -1088,11 +1105,9 @@ offline_stop_daemon() {
     fi
   fi
   if ! wait_for_db_handles_closed; then
-    pid="$(resolve_daemon_pid || true)"
-    if [ -n "$pid" ]; then
-      # listener が閉じても DB handle を保持する drain 停止も強制終了する。
-      stop_pid_with_escalation "$pid" "$STOP_TIMEOUT_SEC"
-    fi
+    # listener が閉じても DB handle を保持する drain 停止を強制終了する。
+    # 孤児 + 現行の複数候補があり得るので、1 つに絞らず該当する全件を落とす。
+    escalate_all_db_handle_holders "$STOP_TIMEOUT_SEC"
     if ! wait_for_db_handles_closed; then
       return 1
     fi

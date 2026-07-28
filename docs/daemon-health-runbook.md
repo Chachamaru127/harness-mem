@@ -95,6 +95,8 @@ launchd の `KeepAlive` がある環境で job 単位の A/B テストを行う�
 | `HARNESS_MEM_SLOW_TICK_LOG_MS` | 1000ms | 遅い tick の記録閾値。0 以下では記録しない |
 | `HARNESS_MEM_INGEST_TICK_BUDGET_MS` | 200ms | 1 tick が event loop を占有してよい上限 |
 | `HARNESS_MEM_INGEST_MAX_BYTES_PER_FILE` | 512KB | 1 tick で 1 ファイルから読む上限 |
+| `HARNESS_MEM_INGEST_READ_SLICE_BYTES` | 64KB | 1 回の read + parse の幅。budget 判定はスライス境界でしか効かないので、ここを小さくすると 1 回のブロックが短くなる |
+| `HARNESS_MEM_WAL_CHECKPOINT_INTERVAL_MS` | 300000ms | 明示 WAL checkpoint の間隔。同期 DB I/O なので DB が大きいほど重い。SQLite の autocheckpoint が commit 時に逐次実行するため、この明示実行は肥大化に対する保険 |
 | `HARNESS_MEM_SHUTDOWN_TIMEOUT_MS` | 10000ms | graceful shutdown の強制終了までの猶予 |
 | `HARNESS_MEM_STOP_TIMEOUT_SEC` | 5秒 | script 側が SIGTERM から SIGKILL まで待つ時間 |
 | `HARNESS_MEM_BUSY_HEALTH_TIMEOUT_MS` | 10000ms | MCP client が busy daemon の回復を待つ上限 |

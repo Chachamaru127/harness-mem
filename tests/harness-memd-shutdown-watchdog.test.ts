@@ -131,9 +131,26 @@ describe("§159-004 / §159-005 shutdown watchdog", () => {
     expect(
       body.slice(listenerTimeout, handleTimeout),
     ).toContain('stop_pid_with_escalation "$pid" "$STOP_TIMEOUT_SEC"');
-    expect(
-      body.slice(handleTimeout),
-    ).toContain('stop_pid_with_escalation "$pid" "$STOP_TIMEOUT_SEC"');
+    // §159-003f (review 指摘): DB handle が残る経路は候補を 1 つに絞らない。
+    // 孤児 + 現行の 2 プロセスが同じ DB を掴む場合、resolve_daemon_pid は
+    // 片方しか返さず、間違った方を落として失敗し得る。
+    expect(body.slice(handleTimeout)).toContain('escalate_all_db_handle_holders "$STOP_TIMEOUT_SEC"');
+  });
+
+  test("DB handle 保持プロセスは該当する全件を escalate する", () => {
+    const source = read(SCRIPT);
+    const start = source.indexOf("escalate_all_db_handle_holders()");
+    expect(start).toBeGreaterThan(-1);
+    const body = source.slice(start, start + 900);
+
+    // 候補列挙は db_handle_pids、daemon 以外 (sqlite3 CLI 等) は is_expected_daemon_pid で除外
+    expect(body).toContain("db_handle_pids");
+    expect(body).toContain("is_expected_daemon_pid");
+    expect(body).toContain("is_pid_running");
+    // 共通 escalation を再利用し、独自実装を増やさない
+    expect(body).toContain('stop_pid_with_escalation "$handle_pid" "$timeout_sec"');
+    // 1 件で return せずループし切る (全件を落とす)
+    expect(body).not.toMatch(/stop_pid_with_escalation[^\n]*\n\s*return 0\n\s*fi/);
   });
 
   test("launchctl restart の health 失敗は runtime PID を共通 escalation へ渡す", () => {

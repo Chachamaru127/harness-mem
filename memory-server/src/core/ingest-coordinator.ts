@@ -147,6 +147,27 @@ export function resolveIngestReadSliceBytes(): number {
   return raw > 0 ? raw : Infinity;
 }
 
+/**
+ * §159-003f: 明示 WAL checkpoint の実行間隔 (ms)。
+ *
+ * `PRAGMA wal_checkpoint(PASSIVE)` は同期 DB I/O で、DB が大きいほど event loop を
+ * 占有する。SQLite 自身が `wal_autocheckpoint` (既定 1000 ページ) で commit 時に
+ * 逐次 checkpoint するため、この明示実行は WAL 肥大化に対する保険であり、頻度を
+ * 落としても安全性は autocheckpoint 側が担保する。
+ *
+ * `HARNESS_MEM_WAL_CHECKPOINT_INTERVAL_MS` で上書き可 (0 以下は既定にフォールバック。
+ * 無効化は WAL 肥大化のリスクがあるため受け付けない)。
+ */
+export const DEFAULT_WAL_CHECKPOINT_INTERVAL_MS = 300_000;
+
+export function resolveWalCheckpointIntervalMs(): number {
+  const rawText = process.env.HARNESS_MEM_WAL_CHECKPOINT_INTERVAL_MS?.trim() ?? "";
+  if (!/^[+-]?\d+$/.test(rawText)) return DEFAULT_WAL_CHECKPOINT_INTERVAL_MS;
+  const raw = Number(rawText);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_WAL_CHECKPOINT_INTERVAL_MS;
+  return raw;
+}
+
 export const DEFAULT_SLOW_TICK_LOG_MS = 1000;
 
 export function resolveSlowTickLogMs(): number {
@@ -544,6 +565,13 @@ export class IngestCoordinator {
   private readonly registeredIngesters: PlatformIngester[] = [];
   private readonly ingesterTimers = new Map<string, ReturnType<typeof setInterval>>();
 
+  /**
+   * §159-003f: 走査を budget で打ち切ったときの再開位置 (source 種別 → 次に見るファイルの index)。
+   * 打ち切りっぱなしだと末尾のファイルが永久に処理されないため、次 tick は続きから走査する。
+   * 永続化しない (restart 後は先頭から) — 公平性のための順序であって状態ではないため。
+   */
+  private readonly scanCursors = new Map<string, number>();
+
   constructor(private readonly deps: IngestCoordinatorDeps) {}
 
   /**
@@ -668,10 +696,19 @@ export class IngestCoordinator {
       this.runTick("retry_queue", () => this.deps.processRetryQueue());
     }, 15000);
 
+    // §159-003f: WAL checkpoint は同期 DB I/O なので、DB が大きいほど event loop を
+    // 塞ぐ。2026-07-28 実測 (4.9GB DB) で、他の周期ジョブがすべて 1000ms 未満なのに
+    // /health が 5 秒超えで応答しない窓が残り、`sample` の leaf は pread (SQLite の
+    // ページ読み) が支配的だった。ここだけ計測外だったため runTick で可視化する。
+    // SQLite は wal_autocheckpoint (既定 1000 ページ) で commit 時に逐次
+    // checkpoint するため、この明示 checkpoint は WAL 肥大化に対する保険。
+    // 間隔を env で緩められるようにして、大きい DB での占有頻度を下げられるようにする。
     this.checkpointTimer = setInterval(() => {
       if (this.deps.isShuttingDown()) return;
-      try { this.deps.db.exec("PRAGMA wal_checkpoint(PASSIVE);"); } catch { /* ignore post-shutdown DB errors */ }
-    }, 60000);
+      this.runTick("wal_checkpoint", () => {
+        this.deps.db.exec("PRAGMA wal_checkpoint(PASSIVE);");
+      });
+    }, resolveWalCheckpointIntervalMs());
 
     this.writeHeartbeat();
   }
@@ -1190,7 +1227,27 @@ export class IngestCoordinator {
     let slicesProcessed = 0;
     let stopTick = false;
 
-    for (const rolloutPath of files) {
+    // §159-003f: 走査そのものを budget の対象にする。
+    // 2026-07-28 実測で ~/.codex/sessions は 4721 ファイル / 9.0GB あり、
+    // 1 ファイルあたり statSync + `SELECT offset` を全件に対して毎 tick 実行すると
+    // 読み込みに到達する前に 3〜10 秒 event loop を塞いでいた (slow tick ログで観測)。
+    // 打ち切ると末尾のファイルが永久に処理されないので、次 tick は前回の続きから
+    // 走査する round-robin にして公平性を保つ。
+    const scanCursorKey = "codex_rollout";
+    const startIndex = files.length > 0 ? (this.scanCursors.get(scanCursorKey) ?? 0) % files.length : 0;
+    let filesVisited = 0;
+
+    for (let step = 0; step < files.length; step += 1) {
+      const rolloutPath = files[(startIndex + step) % files.length] as string;
+      // 進捗保証: 1 件目は budget 超過済みでも必ず見る。
+      if (
+        filesVisited > 0 &&
+        Number.isFinite(budgetMs) &&
+        Date.now() - startedAtMs > budgetMs
+      ) {
+        break;
+      }
+      filesVisited += 1;
       summary.filesScanned += 1;
       const sourceKey = `codex_rollout:${resolve(rolloutPath)}`;
 
@@ -1287,6 +1344,9 @@ export class IngestCoordinator {
             // 1 行が 64KB を超える場合は次スライスを連結する。ファイル上限または EOF
             // まで改行がなければ次 tick に回し、同一 while 内の無限再試行を防ぐ。
             if (parsedChunk.consumedBytes === 0) {
+              // §159-003f (review): 行が完結していない間も budget を見る。ここを抜けないと
+              // 1 行が複数スライスにまたがる場合に maxBytesPerFile まで読み続けてしまう。
+              if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
               if (
                 nextReadOffset >= fileSize ||
                 (Number.isFinite(maxBytesPerFile) && bytesReadThisFile >= maxBytesPerFile)
@@ -1382,6 +1442,10 @@ export class IngestCoordinator {
         continue;
       }
       if (stopTick) break;
+    }
+
+    if (files.length > 0) {
+      this.scanCursors.set(scanCursorKey, (startIndex + filesVisited) % files.length);
     }
 
     return summary;
@@ -1927,6 +1991,9 @@ export class IngestCoordinator {
           // 64KB 内に改行がない長大行は次スライスまで連結する。上限または EOF で
           // offset を据え置いて抜けるため、同じ tick 内では無限ループしない。
           if (parsedChunk.consumedBytes === 0) {
+            // §159-003f (review): 行が完結していない間も budget を見る。ここを抜けないと
+            // 1 行が複数スライスにまたがる場合に maxBytesPerFile まで読み続けてしまう。
+            if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
             if (
               nextReadOffset >= fileSize ||
               (Number.isFinite(maxBytesPerFile) && bytesReadThisFile >= maxBytesPerFile)
@@ -2596,7 +2663,29 @@ export class IngestCoordinator {
     let slicesProcessed = 0;
     let stopTick = false;
 
-    for (const filePath of files) {
+    // §159-003f: 走査そのものを budget の対象にする (codex 経路と同型)。
+    // 2026-07-28 実測で ~/.claude/projects は 1665 ファイルあり、全件の statSync +
+    // `SELECT offset` を毎 tick 実行するだけで 2.5 秒級のブロックが出ていた。
+    // 打ち切ると末尾が処理されないので、次 tick は続きから見る round-robin にする。
+    // 明示 API (replayFromStart) は先頭から全件を対象にする。
+    const scanCursorKey = "claude_code";
+    const startIndex =
+      !replayFromStart && files.length > 0
+        ? (this.scanCursors.get(scanCursorKey) ?? 0) % files.length
+        : 0;
+    let filesVisited = 0;
+
+    for (let step = 0; step < files.length; step += 1) {
+      const filePath = files[(startIndex + step) % files.length] as string;
+      // 進捗保証: 1 件目は budget 超過済みでも必ず見る。
+      if (
+        filesVisited > 0 &&
+        Number.isFinite(budgetMs) &&
+        Date.now() - startedAtMs > budgetMs
+      ) {
+        break;
+      }
+      filesVisited += 1;
       summary.filesScanned += 1;
       const sourceKey = `claude_code:${resolve(filePath)}`;
 
@@ -2691,6 +2780,9 @@ export class IngestCoordinator {
             // 64KB を超える 1 行は改行まで連結する。maxBytesPerFile または EOF に達した
             // 場合は offset を進めず次 tick に回し、同一 tick 内の無限ループを防ぐ。
             if (parsedChunk.consumedBytes === 0) {
+              // §159-003f (review): 行が完結していない間も budget を見る。ここを抜けないと
+              // 1 行が複数スライスにまたがる場合に maxBytesPerFile まで読み続けてしまう。
+              if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
               if (
                 nextReadOffset >= fileSize ||
                 (Number.isFinite(MAX_BYTES_PER_FILE) && bytesReadThisFile >= MAX_BYTES_PER_FILE)
@@ -2763,6 +2855,10 @@ export class IngestCoordinator {
         continue;
       }
       if (stopTick) break;
+    }
+
+    if (!replayFromStart && files.length > 0) {
+      this.scanCursors.set(scanCursorKey, (startIndex + filesVisited) % files.length);
     }
 
     return summary;
