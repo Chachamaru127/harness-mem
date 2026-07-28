@@ -482,11 +482,16 @@ async function runHook(client: "claude" | "codex"): Promise<HarnessClientScore> 
     seedHarnessContinuity(runtime.core, CONTINUITY_SCENARIO.project);
     writeContinuityState(projectDir);
 
-    const env = {
+    const env: Record<string, string | undefined> = {
       ...process.env,
       HARNESS_MEM_HOST: "127.0.0.1",
       HARNESS_MEM_PORT: runtime.baseUrl.split(":").pop() || "",
     };
+    // §159-008: Claude Code 親プロセスの plugin slot は continuity 計測の入力ではない。
+    // 継承すると hook-common.sh が警告を出し、state 保存先も実行元依存になるため、
+    // Claude / Codex どちらの経路でも同じ条件になるよう落とす。
+    // (parity contract テストと実経路で挙動を揃える — 2026-07-28 review 指摘)
+    delete env.CLAUDE_PLUGIN_DATA;
 
     let artifact = "";
     const start = performance.now();

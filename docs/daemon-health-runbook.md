@@ -9,7 +9,7 @@
    既定 endpoint を使っている場合は次の request で確認できる。
 
    ```bash
-   curl -i http://127.0.0.1:37888/health
+   curl -i --connect-timeout 2 --max-time 5 http://127.0.0.1:37888/health
    ```
 
    JSON が返るなら HTTP server は応答している。
@@ -65,6 +65,12 @@ kill <pid>
 ```
 
 送信後は 30 秒以上待つ。
+
+**この 30 秒は手動手順専用の値であり、`HARNESS_MEM_STOP_TIMEOUT_SEC`(既定 5 秒)とは別物**。
+env の 5 秒は `harness-memd stop` / `restart` / `offline-stop` が自動で SIGKILL へ切り替えるまでの待ち時間で、script が pid の生存を毎秒確認しながら待つ。
+一方この手順は手で `kill` を送る経路なので、daemon 内 watchdog(`HARNESS_MEM_SHUTDOWN_TIMEOUT_MS`、既定 10 秒)が働く余地と、drain が長引く場合の余裕を見て長めに取っている。
+script 経由で止めるなら待ち時間は env に従うので、この手順は不要。
+
 同じ PID がまだ生存している場合に限り、強制終了する。
 
 ```bash
@@ -100,6 +106,20 @@ launchd の `KeepAlive` がある環境で job 単位の A/B テストを行う�
 | `HARNESS_MEM_SHUTDOWN_TIMEOUT_MS` | 10000ms | graceful shutdown の強制終了までの猶予 |
 | `HARNESS_MEM_STOP_TIMEOUT_SEC` | 5秒 | script 側が SIGTERM から SIGKILL まで待つ時間 |
 | `HARNESS_MEM_BUSY_HEALTH_TIMEOUT_MS` | 10000ms | MCP client が busy daemon の回復を待つ上限 |
+
+## probe 既定値の根拠
+
+MCP client 側の health probe は現行値を据え置いている。2026-07-28 の本番実測 (300 サンプル、1 秒間隔) が根拠。
+
+| 指標 | 実測 |
+|---|---:|
+| p50 | 1ms |
+| p95 | 14ms |
+| p99 | 0.97s |
+
+- `healthTimeout` **2500ms** は p99 (0.97s) の 2.5 倍以上の余裕がある
+- `startupHealthTimeout` **5s** は cold start (eager warm-up 実測 1.2〜7.0 秒) を単独では吸収しきれないが、生存 pid を検出したら busy として待つ経路が入っているため、起動失敗と誤認しない
+- したがって probe 値を伸ばすのではなく、busy と unreachable を区別する側で対処する
 
 ## 落とし穴
 
