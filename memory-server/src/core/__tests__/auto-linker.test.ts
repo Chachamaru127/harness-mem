@@ -365,6 +365,124 @@ describe("Strategy C: Semantic Similarity", () => {
   });
 });
 
+describe("Strategy B: クエリプラン回帰 (§160-002)", () => {
+  test("linkByTemporalProximity のクエリは SCAN ではなく SEARCH になる（idx_mem_obs_session_created を使う）", () => {
+    db = createTestDb();
+    const ts = "2026-01-01T00:00:00.000Z";
+
+    insertObservation(db, "obs-1", "session-1", ts);
+    insertObservation(db, "obs-2", "session-1", ts);
+
+    // linkByTemporalProximity と同一の SQL を EXPLAIN QUERY PLAN する。
+    // §160-001 実測: project 列を先頭に持つ idx_mem_obs_project_session_created
+    // ではこのクエリが session_id をシークできず SCAN になり、340,055 行時点で
+    // recordEvent 1 件のコストの 80.6% を占めていた。session_id 先頭の
+    // idx_mem_obs_session_created を追加してからは SEARCH になるはず。
+    const plan = db
+      .query<{ id: number; parent: number; notused: number; detail: string }, [string, string, string]>(`
+        EXPLAIN QUERY PLAN
+        SELECT id
+        FROM mem_observations
+        WHERE session_id = ?
+          AND id <> ?
+          AND created_at <= ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+      `)
+      .all("session-1", "obs-3", ts);
+
+    const details = plan.map((row) => row.detail);
+    const mainStep = details.find((d) => d.includes("mem_observations"));
+
+    expect(mainStep).toBeDefined();
+    expect(mainStep).toMatch(/^SEARCH /);
+    expect(mainStep).not.toMatch(/^SCAN /);
+    expect(mainStep).toContain("idx_mem_obs_session_created");
+    // カバリングインデックスなので ORDER BY 用の別ソートが発生しないこと
+    expect(details.some((d) => d.includes("USE TEMP B-TREE"))).toBe(false);
+  });
+
+  test("idx_mem_obs_session_created は初期スキーマ・マイグレーションの両方に存在する", () => {
+    db = createTestDb();
+    const row = db
+      .query<{ name: string; sql: string }, []>(`
+        SELECT name, sql FROM sqlite_master
+        WHERE type = 'index' AND name = 'idx_mem_obs_session_created'
+      `)
+      .get();
+    expect(row).toBeDefined();
+    expect(row?.sql).toContain("mem_observations(session_id, created_at, id)");
+  });
+
+  test("既存 DB (旧スキーマ) でも migrateSchema で idx_mem_obs_session_created が張られる", () => {
+    db = createTestDb();
+    // §160-002 以前の DB を模して一度落とし、initSchema 直後の状態を再現する
+    db.exec(`DROP INDEX IF EXISTS idx_mem_obs_session_created`);
+    const before = db
+      .query(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_mem_obs_session_created'`)
+      .get();
+    expect(before).toBeNull();
+
+    migrateSchema(db);
+
+    const after = db
+      .query(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_mem_obs_session_created'`)
+      .get();
+    expect(after).toBeDefined();
+  });
+});
+
+describe("Strategy B: 同着 (tie) の決定性 (§160-002)", () => {
+  test("created_at が同値の複数行から、挿入順によらず同じ結果 (id 最大) が選ばれる", () => {
+    const tied = "2026-01-01T00:00:00.000Z";
+    // 挿入順を id の昇順・降順どちらでもシャッフルしても結果が変わらないことを確認する
+    const insertOrders = [
+      ["obs-5", "obs-1", "obs-9", "obs-3", "obs-7", "obs-2", "obs-8", "obs-4", "obs-6"],
+      ["obs-9", "obs-8", "obs-7", "obs-6", "obs-5", "obs-4", "obs-3", "obs-2", "obs-1"],
+      ["obs-1", "obs-2", "obs-3", "obs-4", "obs-5", "obs-6", "obs-7", "obs-8", "obs-9"],
+    ];
+
+    const results: string[] = [];
+    for (const order of insertOrders) {
+      const localDb = createTestDb();
+      for (const id of order) {
+        insertObservation(localDb, id, "session-tie", tied);
+      }
+      insertObservation(localDb, "obs-new", "session-tie", tied);
+
+      linkByTemporalProximity(localDb, "obs-new", "session-tie", tied);
+      const link = localDb
+        .query<{ to_observation_id: string }, [string]>(
+          `SELECT to_observation_id FROM mem_links WHERE from_observation_id = ?`,
+        )
+        .get("obs-new");
+      expect(link).toBeDefined();
+      results.push(link!.to_observation_id);
+      localDb.close();
+    }
+
+    // 全ての挿入順で同じ観測 (id が字句最大の obs-9) が選ばれる = 決定的
+    expect(new Set(results).size).toBe(1);
+    expect(results[0]).toBe("obs-9");
+  });
+
+  test("created_at が同値の場合、id が最大の observation が選ばれる（新しく採番された方を優先）", () => {
+    db = createTestDb();
+    const tied = "2026-01-01T00:00:00.000Z";
+
+    insertObservation(db, "obs-aaa", "session-1", tied);
+    insertObservation(db, "obs-zzz", "session-1", tied);
+    insertObservation(db, "obs-mmm", "session-1", tied);
+    insertObservation(db, "obs-new", "session-1", tied);
+
+    const count = linkByTemporalProximity(db, "obs-new", "session-1", tied);
+    expect(count).toBe(1);
+
+    const link = getLinks(db, "obs-new")[0];
+    expect(link.to_observation_id).toBe("obs-zzz");
+  });
+});
+
 describe("runAutoLinker", () => {
   test("semanticEnabled=false の場合 Strategy C は実行されない", () => {
     db = createTestDb();
