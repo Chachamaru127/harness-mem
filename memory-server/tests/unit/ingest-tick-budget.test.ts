@@ -268,3 +268,289 @@ describe("§159-003c codex ingest tick budget", () => {
     }
   });
 });
+
+/**
+ * §160-005c (a): legacy codex history 経路そのものの直接検査。
+ *
+ * 背景: §159-003c は `ingestCodexSessionsRollouts` に budget を入れたが、
+ * 同じ `runTick("codex", ...)` が呼ぶ `ingestLegacyCodexHistoryFile` は
+ * 検査対象から漏れていた。上の "§159-003c codex ingest tick budget" にある
+ * 既存テストは `"private ingestLegacyCodexHistoryFile"` を区切り文字
+ * (rollouts 側の body を切り出す終端) として使うだけで、legacy 関数自体には
+ * 何も assert していなかった。ここで legacy 関数の body を直接検査する。
+ */
+describe("§160-005c legacy codex history ingest 経路の直接検査", () => {
+  test("ingestLegacyCodexHistoryFile は budget primitives を直接参照する", () => {
+    const source = readFileSync(COORDINATOR, "utf8");
+    const start = source.indexOf("private ingestLegacyCodexHistoryFile");
+    expect(start).toBeGreaterThan(-1);
+    const body = source.slice(start, source.indexOf("private ingestCodexHistoryTick", start));
+    expect(body.length).toBeGreaterThan(0);
+
+    // DoD (a): 4 つの primitive を直接参照していること
+    expect(body).toContain("resolveIngestTickBudgetMs()");
+    expect(body).toContain("resolveIngestReadSliceBytes()");
+    expect(body).toContain("statSync(historyPath)");
+    expect(body).toContain("entry.lineOffset");
+
+    // rollouts / cursor / claude_code と同じ形 (read slice → parse → budget 付き
+    // insert ループ) に揃っていることも合わせて確認する
+    expect(body).toContain("resolveIngestMaxBytesPerFile()");
+    expect(body).toContain("Date.now() - startedAtMs > budgetMs");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §160-005c (b): runTick(...) から到達する ingest 経路の網羅検査
+//
+// 個別関数を名指しでリストする方式は、新しい ingest 経路が増えたときに検査対象
+// へ足し忘れると同じ穴が再発する (今回 legacy codex history が漏れたのがまさに
+// これ)。ここでは検査対象そのものを `this.runTick("<label>", () => this.<fn>())`
+// の呼び出しからソースを読んでその都度導出し、そこから `this.ingest*()` 形の
+// 呼び出しを (最大 5 段まで) 辿って budget 参照の有無を判定する。
+//
+// できること:
+//   - runTick 登録一覧をハードコードせずソースから抽出する
+//   - dispatcher (本体が他の this.ingest*() を呼ぶだけの関数) を自動でスキップし、
+//     実際に read/parse/insert する leaf 関数まで辿って判定する
+//     (ingestCodexHistoryTick → ingestCodexSessionsRollouts /
+//      ingestLegacyCodexHistoryFile のような 1 段の間接呼び出しを含む)
+//   - budget 判定は `resolveIngestTickBudgetMs(` の呼び出し、または
+//     `Date.now() - startedAtMs > budgetMs` の比較パターンの有無で行う
+//
+// できないこと (正直な限界):
+//   - あくまで文字列検査。実行時に本当にそのチェックが正しい位置 (loop の中、
+//     かつ最初の 1 件は通す等) に置かれているかまでは見ない。「該当する文字列が
+//     関数本体に存在する」ことしか保証しない
+//   - コメントや文字列リテラルに `resolveIngestTickBudgetMs(` と書かれているだけ
+//     でも「参照あり」と誤判定しうる
+//   - `this.<name>(` 形の呼び出ししか辿れない。`this.deps.<name>()` 経由
+//     (retry_queue) や、関数参照をコールバックとして渡す形 (`array.map(this.foo)`)
+//     は追えない
+//   - 宣言境界の抽出はインデント幅 (クラス直下 = 半角スペース2つ) とキーワード
+//     ブロックリストによるヒューリスティック。フォーマットが変わる (インデント幅
+//     変更、ブロックリストに無い予約語の追加等) と誤検出しうる
+//   - ingest 系メソッド名は "ingest" 始まりという命名規約に依存する
+// ---------------------------------------------------------------------------
+
+const JS_KEYWORD_BLOCKLIST = new Set([
+  "if", "for", "while", "switch", "catch", "return", "else", "do", "function",
+  "new", "typeof", "in", "of", "await", "yield", "case", "throw", "delete",
+  "void", "instanceof", "constructor", "try", "finally", "let", "const",
+  "var", "export", "import", "class",
+]);
+
+interface MethodDecl {
+  name: string;
+  start: number;
+}
+
+/**
+ * クラス直下 (半角スペース2つのインデント) にあるメソッド宣言をソースから抽出する。
+ * if/for/while 等の制御構文が偶然インデント2の位置に来るケース (トップレベル
+ * 関数の本文など) は JS_KEYWORD_BLOCKLIST で弾く。
+ */
+function extractMethodDeclarations(source: string): MethodDecl[] {
+  const decls: MethodDecl[] = [];
+  const re = /^ {2}(?:private\s+|public\s+|protected\s+|readonly\s+|async\s+|static\s+)*([A-Za-z_$][\w$]*)\s*\(/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(source))) {
+    const name = m[1] as string;
+    if (JS_KEYWORD_BLOCKLIST.has(name)) continue;
+    decls.push({ name, start: m.index });
+  }
+  return decls;
+}
+
+interface RunTickCall {
+  label: string;
+  fnName: string;
+}
+
+/**
+ * `this.runTick("<label>", () => this.<fn>(...))` の形を抽出する。
+ * `this.deps.processRetryQueue()` のような deps 経由の呼び出しや、
+ * `() => { ... }` のブロック本体 (wal_checkpoint) は意図的に対象外
+ * (直接 `this.<method>(...)` を呼ぶ形だけを追う設計のため)。
+ */
+function extractRunTickCalls(source: string): RunTickCall[] {
+  const calls: RunTickCall[] = [];
+  const re = /this\.runTick\(\s*"([^"]+)"\s*,\s*\(\)\s*=>\s*this\.(\w+)\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(source))) {
+    calls.push({ label: m[1] as string, fnName: m[2] as string });
+  }
+  return calls;
+}
+
+function getMethodBody(source: string, decls: MethodDecl[], name: string): string | null {
+  const idx = decls.findIndex((d) => d.name === name);
+  if (idx === -1) return null;
+  const start = (decls[idx] as MethodDecl).start;
+  const end = idx + 1 < decls.length ? (decls[idx + 1] as MethodDecl).start : source.length;
+  return source.slice(start, end);
+}
+
+function hasBudgetEnforcement(body: string): boolean {
+  return (
+    /resolveIngestTickBudgetMs\s*\(/.test(body) ||
+    /Date\.now\(\)\s*-\s*\w+\s*>\s*budgetMs\b/.test(body)
+  );
+}
+
+type CoverageStatus = "ok" | "missing_budget" | "not_found" | "depth_exceeded";
+
+interface CoverageResult {
+  label: string;
+  chain: string[];
+  status: CoverageStatus;
+}
+
+/**
+ * runTick(...) から到達できる ingest 系メソッドを辿り、budget 参照の有無を判定する。
+ * dispatcher (本体が他の this.ingest*() を呼ぶだけの関数) は自動的にスキップし、
+ * 実際に処理する leaf 関数だけを判定対象にする。
+ */
+function traceIngestBudgetCoverage(source: string, maxDepth = 5): CoverageResult[] {
+  const decls = extractMethodDeclarations(source);
+  const runTickCalls = extractRunTickCalls(source);
+  const results: CoverageResult[] = [];
+
+  function visit(fnName: string, chain: string[], label: string, depth: number): void {
+    if (depth > maxDepth) {
+      results.push({ label, chain: [...chain, fnName], status: "depth_exceeded" });
+      return;
+    }
+    const body = getMethodBody(source, decls, fnName);
+    if (body === null) {
+      results.push({ label, chain: [...chain, fnName], status: "not_found" });
+      return;
+    }
+    const subCalls = [...body.matchAll(/this\.(ingest\w*)\s*\(/g)]
+      .map((mm) => mm[1] as string)
+      .filter((n) => n !== fnName);
+    const uniqueSubCalls = [...new Set(subCalls)];
+
+    if (uniqueSubCalls.length > 0) {
+      // dispatcher: 自身は budget を持たなくてよい。呼び先を辿る。
+      for (const sub of uniqueSubCalls) {
+        visit(sub, [...chain, fnName], label, depth + 1);
+      }
+      return;
+    }
+
+    // leaf: 自身の body に budget 参照が必要
+    results.push({
+      label,
+      chain: [...chain, fnName],
+      status: hasBudgetEnforcement(body) ? "ok" : "missing_budget",
+    });
+  }
+
+  for (const call of runTickCalls) {
+    visit(call.fnName, [], call.label, 0);
+  }
+
+  return results;
+}
+
+describe("§160-005c runTick 到達性による ingest budget 網羅検査", () => {
+  test("抽出ロジックの死活チェック: runTick 経路が現状 6 件以上ソースから読み取れる", () => {
+    const source = readFileSync(COORDINATOR, "utf8");
+    const calls = extractRunTickCalls(source);
+    // ここが 0 件になったら (フォーマット変更等で正規表現が壊れた場合)、
+    // 以降の網羅検査が「対象 0 件だから全部 OK」に静かに堕ちてしまう。
+    // まず検査対象を実際に捕まえていることを確認する。
+    expect(calls.length).toBeGreaterThanOrEqual(6);
+    for (const label of ["codex", "opencode", "cursor", "antigravity", "gemini", "claude_code"]) {
+      expect(calls.some((c) => c.label === label)).toBe(true);
+    }
+    // retry_queue (this.deps.X 経由) と wal_checkpoint (inline block) は
+    // 設計上追わない対象なので、抽出結果に含まれないことも確認する。
+    expect(calls.some((c) => c.label === "retry_queue")).toBe(false);
+    expect(calls.some((c) => c.label === "wal_checkpoint")).toBe(false);
+  });
+
+  test("検出ロジックの正しさ: budget 無しの偽ソースを与えると検出する (実ファイルは変更しない)", () => {
+    // 実ファイルを壊さずに「検査ロジックが機能する」ことを固定するための、
+    // クラス構造だけを模した合成ソース。dispatcher → leaf の 1 段の間接呼び出しを
+    // 含む new_platform (budget 忘れ) と、leaf が直接 budget を持つ already_safe、
+    // this.deps 経由で追わない retry_queue の 3 パターンを 1 度に検証する。
+    const fakeSource = `
+export class FakeCoordinator {
+  private runTick(label: string, fn: () => void): void {
+    fn();
+  }
+
+  startTimers(): void {
+    this.runTick("new_platform", () => this.ingestNewPlatformTick());
+    this.runTick("already_safe", () => this.ingestAlreadySafeLeaf());
+    this.runTick("retry_queue", () => this.deps.processRetryQueue());
+  }
+
+  private ingestNewPlatformTick(): void {
+    this.ingestNewPlatformFiles();
+  }
+
+  private ingestNewPlatformFiles(): void {
+    // 新しい ingest 経路を追加したが budget チェックを入れ忘れた想定
+    const content = readFileSync(this.path, "utf8");
+    for (const line of content.split("\\n")) {
+      this.deps.recordEvent(line);
+    }
+  }
+
+  private ingestAlreadySafeLeaf(): void {
+    const budgetMs = resolveIngestTickBudgetMs();
+    const startedAtMs = Date.now();
+    if (Date.now() - startedAtMs > budgetMs) return;
+  }
+}
+`;
+    const results = traceIngestBudgetCoverage(fakeSource);
+
+    const newPlatform = results.find((r) => r.label === "new_platform");
+    expect(newPlatform).toBeDefined();
+    expect(newPlatform?.status).toBe("missing_budget");
+    expect(newPlatform?.chain).toEqual(["ingestNewPlatformTick", "ingestNewPlatformFiles"]);
+
+    const alreadySafe = results.find((r) => r.label === "already_safe");
+    expect(alreadySafe).toBeDefined();
+    expect(alreadySafe?.status).toBe("ok");
+
+    // retry_queue は this.deps 経由の呼び出しなので、そもそも抽出対象に入らない
+    expect(results.some((r) => r.label === "retry_queue")).toBe(false);
+  });
+
+  test("regression lock: budget 対応済みの codex / cursor / claude_code 経路は missing_budget に戻らない", () => {
+    const source = readFileSync(COORDINATOR, "utf8");
+    const results = traceIngestBudgetCoverage(source);
+    const guarded = results.filter((r) => ["codex", "cursor", "claude_code"].includes(r.label));
+
+    // guarded が空だと以下の assert が意味を持たなくなる (対象を取り逃していないか)
+    expect(guarded.length).toBeGreaterThan(0);
+    const broken = guarded.filter((r) => r.status !== "ok");
+    expect(broken).toEqual([]);
+  });
+
+  // §160-005c の独立レビューで発見: opencode / antigravity / gemini の定期 ingest は
+  // legacy codex history と同型 (無制限の read + insert ループ) だが、budget
+  // チェックが一切無い (ingestOpencodeDbMessages / ingestOpencodeStorageMessages /
+  // ingestAntigravityWorkspace / ingestAntigravityLogEvents / ingestGeminiEvents)。
+  // §160-005 のスコープは legacy codex history のみだったため未対応のまま残っている。
+  // runTick からの到達性ベースで機械的に検査すると必ず引っかかるが、このタスクは
+  // テストのみ担当でソースを直せないため、`test.failing` で現状の欠落を記録する
+  // (bun:test の test.failing は「想定どおり失敗すれば全体としては pass 扱い、
+  // 想定に反して成功したら fail 扱い」になる)。opencode/antigravity/gemini の
+  // いずれかで budget 対応が入ったらこのテストが赤くなるので、そのとき通常の
+  // test() に昇格させ、上の regression lock テストへ対象を移すこと。
+  test.failing(
+    "既知の未解決ギャップ: opencode / antigravity / gemini の ingest 経路には budget が無い (対応したら .failing を外す)",
+    () => {
+      const source = readFileSync(COORDINATOR, "utf8");
+      const results = traceIngestBudgetCoverage(source);
+      const missing = results.filter((r) => r.status !== "ok");
+      expect(missing).toEqual([]);
+    }
+  );
+});
