@@ -7,6 +7,32 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.29.4] - 2026-07-29
+
+### Fixed
+
+- **The daemon keeps answering `/health` while it ingests history**: `bun:sqlite` is a synchronous FFI binding, so every scheduled ingest tick blocked the event loop for as long as its SQLite work took, and the HTTP server could not answer during that window. The three history paths (`claude_code`, `codex`, `cursor`) now read in slices under a per-tick time budget, so a long tick yields instead of running to completion. Tunable through `HARNESS_MEM_INGEST_TICK_BUDGET_MS` (default 200), `HARNESS_MEM_INGEST_MAX_BYTES_PER_FILE` (default 512KB, previously 2MB) and `HARNESS_MEM_INGEST_READ_SLICE_BYTES` (default 64KB). Measured on a 4.9GB production database with 4721 Codex session files: non-200 health responses went from 73 / 240 samples to 3 / 300, with p50 1ms and p95 14ms.
+- **Directory scanning and WAL checkpoints no longer block the same event loop**: enumerating `~/.codex/sessions` and `~/.claude/projects` took 3–10 seconds of synchronous `statSync` plus offset lookups on every tick, and `PRAGMA wal_checkpoint(PASSIVE)` ran synchronously every 60 seconds outside any measurement. Scanning is now inside the tick budget with a round-robin cursor so late files are not starved, and the checkpoint interval is configurable through `HARNESS_MEM_WAL_CHECKPOINT_INTERVAL_MS` (default 300s).
+- **Slow ticks are now visible instead of inferred**: each scheduled tick reports how long it held the event loop, logging only above `HARNESS_MEM_SLOW_TICK_LOG_MS` (default 1000) so a healthy daemon stays quiet. This log named the responsible subsystem in one restart, after symptom-based reasoning had produced two wrong diagnoses.
+- **A busy daemon is no longer treated as a dead one**: the Go MCP proxy answered a health timeout by starting a second daemon, which then contended for the same database. It now checks whether the recorded pid is alive, waits up to 10 seconds, and reports that the daemon is busy rather than launching a competitor.
+- **Shutdown always terminates**: `SIGTERM` handling could stall before the WAL checkpoint and `db.close()`, leaving the process alive and the port held. A watchdog now forces exit after `HARNESS_MEM_SHUTDOWN_TIMEOUT_MS` (default 10000), and the retry-queue drain no longer skips the remaining shutdown steps when it throws.
+- **`harness-memd stop` reports failure when it fails**: the stop path escalated `SIGTERM` to `SIGKILL` but returned success unconditionally, so a surviving process was reported as stopped and the caller cleaned up state that was still in use. It now re-checks liveness after escalation and refuses to clean up when the process is still running.
+- **Consolidation jobs left `running` by a crashed daemon are reconciled at startup**: rows stayed `running` forever and accumulated (49 orphans observed, oldest from 2026-05-17), which made the queue look stuck when it was not. They are now marked `failed` with an explicit reason. Lightweight child processes skip this reconciliation so they cannot invalidate the parent daemon's in-flight jobs.
+- **`npm test` no longer depends on whether the developer machine runs Ollama**: `tests/benchmarks/s108-developer-domain-manifest.test.ts` reached a real local LLM through the deep freshness bench, where a single reconcile took 203 seconds. It is disabled by default under `NODE_ENV=test` and can be re-enabled explicitly. The session-start parity contract also clears inherited `CLAUDE_PLUGIN_DATA` before spawning, so a host session's plugin data directory cannot change the result.
+
+### Documentation
+
+- **Added `docs/daemon-health-runbook.md`**: how to tell a busy daemon from a hung one, why the first case resolves itself, the stop procedure for the second, how to read the slow-tick log, the tuning environment variables, and the reasoning behind the probe defaults.
+
+### Verification
+
+- Repository behavior gate (`npm test`): 3295 passed, 0 failed.
+- Production health probe after the change set: 3 non-200 responses out of 300 samples, p50 1ms / p95 14ms / p99 0.97s.
+
+### Known limits
+
+- One indivisible unit of work — parsing a single slice, or a single `recordEvent` — cannot be interrupted by the tick budget, and its cost scales with database size rather than payload size. On an empty database a 70KB payload costs 55ms; on the 4.9GB production database the same shape produced 11-second ticks. Tracked as §160.
+
 ## [0.29.3] - 2026-07-26
 
 ### Fixed
@@ -3129,7 +3155,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.3...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.4...HEAD
+[0.29.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.3...v0.29.4
 [0.29.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.2...v0.29.3
 [0.29.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.0...v0.29.1
