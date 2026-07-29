@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>harness-mem: 旧版と今週の更新版はどう違うか</title>
+<style>
+:root{
+  --bg:#F5F4F1; --surface:#FCFBF9; --surface-2:#F0EFEA;
+  --ink:#1B1B22; --ink-soft:#5A5A64; --ink-faint:#8C8C92;
+  --line:#E4E2DB; --line-strong:#D2CFC6;
+  --primary:#313A7E; --primary-soft:#E9EAF4; --primary-ink:#262E66;
+  --kernel:#191B2C; --kernel-2:#23263c; --kernel-line:#343750; --kernel-ink:#C9CBE0;
+  --done:#2F8F5B; --done-soft:#E4F2EA; --done-line:#B7DCC7;
+  --wip:#B8821C; --wip-soft:#F6EDD8;
+  --risk:#B5462F; --risk-soft:#F6E7E2; --risk-line:#E5C0B4;
+  --info:#2C5A7A; --info-soft:#E3ECF1;
+  --cf:#B5611A; --cf-soft:#F4E7D8; --cf-line:#E0C49E;
+  --plain:#1f7a6d; --plain-soft:#E1F1EE; --plain-line:#BBE0D9;
+  --api:#8B3A62; --api-soft:#F4E6EE; --api-line:#E0B8CC;
+  --sub:#2F6D5A; --sub-soft:#E2F0EB; --sub-line:#B8D9CC;
+  --radius:10px;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  line-height:1.85;word-break:keep-all;overflow-wrap:normal;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px 80px}
+a{color:var(--primary-ink)}
+
+/* hero */
+.hero{background:linear-gradient(160deg,var(--kernel) 0%,var(--kernel-2) 100%);
+  color:#fff;padding:56px 0 48px;margin-bottom:44px}
+.hero .wrap{padding-bottom:0}
+.badge{display:inline-block;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--kernel-ink);border:1px solid var(--kernel-line);border-radius:999px;
+  padding:5px 13px;margin-bottom:20px}
+.hero h1{font-size:31px;line-height:1.5;margin:0 0 14px;font-weight:700}
+.hero .tag{color:#B9BCD4;font-size:15px;margin:0 0 26px;max-width:74ch}
+.thesis{border-left:4px solid #8E97D8;padding:14px 0 14px 20px;margin:0 0 28px;
+  font-size:17px;line-height:1.8;color:#F2F3FA;max-width:76ch}
+.hero-meta{display:flex;flex-wrap:wrap;gap:10px 26px;font-size:12.5px;color:#9BA0BE;
+  border-top:1px solid var(--kernel-line);padding-top:18px}
+
+/* sections */
+section{margin:0 0 52px}
+.kicker{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint);
+  margin:0 0 7px;font-weight:600}
+h2{font-size:22px;margin:0 0 16px;line-height:1.5}
+h3{font-size:16.5px;margin:26px 0 10px;line-height:1.6}
+p{margin:0 0 15px;max-width:78ch}
+ul,ol{max-width:78ch;padding-left:1.4em;margin:0 0 15px}
+li{margin:0 0 7px}
+strong{font-weight:700}
+code{font-family:var(--mono);font-size:.9em;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+
+/* plainbox */
+.plainbox{background:var(--plain-soft);border:1px solid var(--plain-line);
+  border-left:4px solid var(--plain);border-radius:var(--radius);padding:20px 24px;margin:0 0 26px}
+.plainbox h3{margin:0 0 10px;color:#155e54;font-size:16px}
+.plainbox p{margin:0 0 11px;color:#17332f}
+.plainbox p:last-child{margin-bottom:0}
+
+/* tl;dr grid */
+.tlgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:0 0 26px}
+.tlcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+.tlcard .q{font-size:13px;font-weight:700;color:var(--primary-ink);margin:0 0 7px}
+.tlcard .a{font-size:14px;color:var(--ink-soft);margin:0;line-height:1.75}
+
+/* figure (kernel panel) */
+.figure{background:var(--kernel);border:1px solid var(--kernel-line);border-radius:var(--radius);
+  padding:26px 24px;margin:20px 0 22px;color:var(--kernel-ink)}
+.figure .cap{font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:#7E82A6;margin:0 0 18px}
+.chain{display:flex;flex-direction:column;gap:0}
+.step{background:var(--kernel-2);border:1px solid var(--kernel-line);border-radius:8px;
+  padding:13px 16px}
+.step .t{font-size:14px;font-weight:700;color:#EDEEF6;margin:0 0 4px}
+.step .d{font-size:12.5px;color:#A6AAC8;margin:0;line-height:1.7}
+.arrow{text-align:center;color:#5A5F86;font-size:15px;line-height:1;padding:6px 0}
+.num{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;
+  border-radius:50%;background:#39406E;color:#DDE0F2;font-size:11.5px;font-weight:700;
+  margin-right:9px;flex:none}
+.step .t{display:flex;align-items:center}
+.stop{border-color:#7A4436;background:#2C2028}
+.stop .t{color:#F0C6B8}
+.ok{border-color:#3A6B52;background:#1E2A26}
+.ok .t{color:#B6E2C8}
+.figure .note{font-size:12px;color:#8B8FB2;margin:16px 0 0;line-height:1.7}
+
+/* table */
+table{width:100%;border-collapse:collapse;margin:16px 0 20px;font-size:14px;background:var(--surface)}
+th,td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+th{background:var(--surface-2);font-weight:700;font-size:13px}
+td.num-cell{font-family:var(--mono);text-align:right;white-space:nowrap}
+tr.hit td{background:var(--done-soft)}
+tr.gap td{background:var(--risk-soft)}
+
+/* verdict / openbox */
+.verdict{background:var(--done-soft);border:1px solid var(--done-line);border-left:4px solid var(--done);
+  border-radius:var(--radius);padding:20px 24px;margin:0 0 24px}
+.verdict h3{margin:0 0 9px;color:#1e6b42;font-size:16px}
+.verdict p{margin:0;color:#14301f}
+.openbox{background:var(--wip-soft);border:1px solid #E2CD9C;border-left:4px solid var(--wip);
+  border-radius:var(--radius);padding:20px 24px;margin:0 0 24px}
+.openbox h3{margin:0 0 9px;color:#8a610f;font-size:16px}
+.openbox ul{margin:0;color:#3d2f12}
+
+/* footer */
+footer{border-top:1px solid var(--line-strong);padding-top:22px;margin-top:16px;
+  font-size:12.5px;color:var(--ink-faint);line-height:1.8}
+footer h4{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);
+  margin:0 0 7px}
+footer ul{padding-left:1.2em;margin:0 0 16px;max-width:none}
+footer li{margin:0 0 3px}
+.disclaimer{border-top:1px dashed var(--line-strong);padding-top:13px;margin-top:6px}
+
+@media (max-width:720px){
+  .tlgrid{grid-template-columns:1fr}
+  .hero h1{font-size:25px}
+  .wrap{padding:0 18px 60px}
+}
+@media print{
+  body{background:#fff}
+  .hero{background:var(--kernel) !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .figure,.plainbox,.verdict,.openbox,tr.hit td,tr.gap td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  section{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="badge">harness-mem ／ バージョン差分レポート</div>
+    <h1>旧版と今週の更新版で、何がどう変わったのか</h1>
+    <p class="tag">harness-mem（= Claude Code と Codex が同じ記憶を共有するための仕組み）の、2026-07-22 から 07-29 の 1 週間で起きた変化をまとめます。</p>
+    <div class="thesis">
+      公開版は 0.29.1 から <strong>0.29.3</strong> に上がり、10 日止まっていた配布が復旧しました。ただし<strong>効果の本体は「まだ公開していない 16 件の修正」の側</strong>にあります。記憶システムの応答は <strong>p95 で 14 ミリ秒</strong>になり、テストは初めて全件成功しました。
+    </div>
+    <div class="hero-meta">
+      <span>作成日: 2026-07-29</span>
+      <span>対象: operator（橘）</span>
+      <span>本レポートは派生物であり正本ではない</span>
+      <span>関連: Plans.md §159 / §160</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section>
+  <div class="plainbox">
+    <h3>やさしく言うと</h3>
+    <p>harness-mem は、あなたが Claude や Codex と話した内容を裏で読み取って記憶に貯める仕組みです。その「裏で動き続けるプログラム」を daemon（= デーモン。常駐プログラム）と呼びます。</p>
+    <p>先週まで、この daemon は<strong>毎分 1 回、数十秒だけ返事ができなくなる</strong>状態でした。記憶を引こうとすると失敗することがあったのはこれが原因です。</p>
+    <p>原因は「1 分ごとに全部のファイルを一気に調べる」処理でした。会話履歴が育って <strong>9GB / 4721 ファイル</strong>になり、調べるだけで 10 秒かかるようになっていたのです。壊れていたのではなく、<strong>想定した規模を超えた</strong>のが実態です。</p>
+    <p>今週やったのは、この処理を<strong>細切れにして、途中で手を止められるようにする</strong>ことです。結果、返事の遅さは 100 分の 1 以下になりました。</p>
+  </div>
+
+  <div class="tlgrid">
+    <div class="tlcard">
+      <p class="q">Q. 今、自分の手元は新しくなってる？</p>
+      <p class="a">なっています。あなたの daemon は main（= 開発の最新）から動いているので、16 件の修正がすべて入っています。</p>
+    </div>
+    <div class="tlcard">
+      <p class="q">Q. npm から入れた人も同じ？</p>
+      <p class="a">いいえ。npm（= 配布場所）は 0.29.3 止まりで、応答性の修正 16 件は<strong>まだ届いていません</strong>。</p>
+    </div>
+    <div class="tlcard">
+      <p class="q">Q. どれくらい速くなった？</p>
+      <p class="a">返事が来なかった回数が 240 回中 73 回 → 300 回中 3 回。応答時間は p95（= 遅い方から 5%）で 14 ミリ秒です。</p>
+    </div>
+    <div class="tlcard">
+      <p class="q">Q. 今すぐ決めることは？</p>
+      <p class="a">0.29.4 として公開するかどうかだけです。急ぎではなく、後戻りもできます。</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <p class="kicker">01 ／ Current position</p>
+  <h2>いま「版」が 3 つある</h2>
+  <p>ややこしいのは、harness-mem には<strong>意味の違う「版」が同時に 3 つ</strong>存在することです。まずここを揃えます。</p>
+
+  <table>
+    <thead>
+      <tr><th style="width:22%">どの版か</th><th style="width:14%">今の値</th><th>意味</th></tr>
+    </thead>
+    <tbody>
+      <tr class="hit">
+        <td><strong>あなたの daemon</strong></td>
+        <td class="num-cell">main 最新</td>
+        <td>実際に動いているコード。<code>LocalWork/Code/CC-harness/harness-mem</code> から起動しており、<strong>今週の修正 16 件が全部入っている</strong></td>
+      </tr>
+      <tr>
+        <td><strong>npm の公開版</strong></td>
+        <td class="num-cell">0.29.3</td>
+        <td>他の人が <code>npm install</code> で入れる版。7/26 公開。<strong>応答性の修正は含まれていない</strong></td>
+      </tr>
+      <tr>
+        <td><strong>GitHub の main</strong></td>
+        <td class="num-cell">0.29.3 +16</td>
+        <td>開発の最新。0.29.3 のタグ以降に 16 件の修正が積まれた状態</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>つまり <strong>「あなたは恩恵を受けているが、npm 経由の利用者はまだ」</strong>という状態です。これが唯一の判断事項につながります。</p>
+</section>
+
+<section>
+  <p class="kicker">02 ／ Before</p>
+  <h2>旧版で何が起きていたか</h2>
+  <p>daemon は 60 秒ごとに、他ツールの会話履歴を読んで記憶に入れます。旧版ではこの一連が<strong>ひとかたまりの処理</strong>で、途中で手を止める仕組みがありませんでした。</p>
+
+  <div class="figure">
+    <p class="cap">旧版 ── 60 秒ごとの取り込み処理（途中で止められない）</p>
+    <div class="chain">
+      <div class="step stop"><p class="t"><span class="num">1</span>ファイルを全部調べる</p><p class="d">4721 ファイル（Codex）と 1665 ファイル（Claude）の更新時刻を全件確認する。ここだけで 3〜10 秒</p></div>
+      <div class="arrow">▼</div>
+      <div class="step stop"><p class="t"><span class="num">2</span>まとめて読み込む</p><p class="d">1 ファイルにつき最大 2MB を一度に読む。読んでいる間は他のことができない</p></div>
+      <div class="arrow">▼</div>
+      <div class="step stop"><p class="t"><span class="num">3</span>まとめて解析する</p><p class="d">読んだ全部を一度に解析する。ここも途中で抜けられない</p></div>
+      <div class="arrow">▼</div>
+      <div class="step stop"><p class="t"><span class="num">4</span>1 件ずつ保存する</p><p class="d">解析した会話を記憶データベースに書き込む</p></div>
+      <div class="arrow">▼</div>
+      <div class="step stop"><p class="t"><span class="num">5</span>データベースの掃除</p><p class="d">60 秒ごとに書き込みログを本体へ反映する。4.9GB では重い</p></div>
+    </div>
+    <p class="note">この 5 段が終わるまで、生存確認（health）にも検索にも返事ができない。実測で毎分 10〜40 秒の無応答が発生していた。</p>
+  </div>
+
+  <p>加えて、これとは別に 3 つ壊れていました。</p>
+  <ul>
+    <li><strong>配布が 10 日止まっていた</strong>: GitHub には v0.29.2 があるのに、npm は 0.29.1 のまま。公開処理が途中のテストで落ちていた</li>
+    <li><strong>テストが通らなかった</strong>: 開発機に Ollama（= 手元で動く言語モデル）があるかどうかで結果が変わる状態だった</li>
+    <li><strong>状態表示が嘘をついていた</strong>: 「実行中の仕事 50 件」と出るが、実際は 2 か月前に取り残された記録だった</li>
+  </ul>
+</section>
+
+<section>
+  <p class="kicker">03 ／ After</p>
+  <h2>今週の更新版で何を直したか</h2>
+  <p>同じ 5 段を、<strong>各段に時間の上限を置いて、境界で手を止められる</strong>形に変えました。図の骨格は上と同じです。差分だけ読めます。</p>
+
+  <div class="figure">
+    <p class="cap">更新版 ── 同じ 5 段（各段で中断できる）</p>
+    <div class="chain">
+      <div class="step ok"><p class="t"><span class="num">1</span>調べるのも 200ms まで</p><p class="d">上限に達したら中断。<strong>次回は続きから</strong>調べるので、後ろのファイルが放置されない</p></div>
+      <div class="arrow">▼</div>
+      <div class="step ok"><p class="t"><span class="num">2</span>64KB ずつ読む</p><p class="d">2MB を一度に読むのをやめ、細切れにする。読むたびに時間を確認できる</p></div>
+      <div class="arrow">▼</div>
+      <div class="step ok"><p class="t"><span class="num">3</span>読んだ分だけ解析する</p><p class="d">行がぶつ切りになる問題は、解析側が「完全に読めた行まで」を返す仕組みで吸収する</p></div>
+      <div class="arrow">▼</div>
+      <div class="step ok"><p class="t"><span class="num">4</span>保存も途中で止まれる</p><p class="d">中断した位置を記録し、次回はそこから再開する</p></div>
+      <div class="arrow">▼</div>
+      <div class="step ok"><p class="t"><span class="num">5</span>掃除は 5 分ごとに</p><p class="d">60 秒 → 300 秒。データベース自身が普段から少しずつ掃除するので安全</p></div>
+    </div>
+    <p class="note">どの段でも上限に達したら中断し、次の 60 秒サイクルで続きから再開する。結果、1 回の停止時間が数十秒から数ミリ秒に縮んだ。</p>
+  </div>
+
+  <h3>あわせて直したもの</h3>
+  <table>
+    <thead><tr><th style="width:30%">直したもの</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td><strong>配布の復旧</strong></td><td>0.29.3 を公開し、10 日止まっていた npm 配布を再開した</td></tr>
+      <tr><td><strong>テストの安定化</strong></td><td>開発機に Ollama があるかどうかで結果が変わる依存を切った。Claude Code から実行しても結果が変わらないようにした</td></tr>
+      <tr><td><strong>停止処理の穴埋め</strong></td><td>daemon が止まらないとき、確実に強制終了する経路を 3 つすべてに入れた</td></tr>
+      <tr><td><strong>状態表示の修正</strong></td><td>2 か月分溜まった「実行中」の嘘の記録 49 件を起動時に自動回収するようにした</td></tr>
+      <tr><td><strong>手順書の追加</strong></td><td>daemon が応答しないときに「待つべきか止めるべきか」を自分で判断できる手順書を追加した</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <p class="kicker">04 ／ Measured</p>
+  <h2>効果（すべて本番環境での実測）</h2>
+  <p>生存確認の窓口に 1 秒ごとに問い合わせ、返事が来るかと、来るまでの時間を測った結果です。</p>
+
+  <table>
+    <thead>
+      <tr><th style="width:34%">指標</th><th style="width:22%">旧版</th><th style="width:22%">更新版</th><th>読み方</th></tr>
+    </thead>
+    <tbody>
+      <tr class="hit">
+        <td>返事が来なかった回数</td>
+        <td class="num-cell">73 / 240</td>
+        <td class="num-cell">3 / 300</td>
+        <td>30% → 1%。残る 3 件は再起動直後の追いつき処理</td>
+      </tr>
+      <tr class="hit">
+        <td>応答時間 p50（中央値）</td>
+        <td class="num-cell">測定不能</td>
+        <td class="num-cell">1 ms</td>
+        <td>ふつうに使っているときの速さ</td>
+      </tr>
+      <tr class="hit">
+        <td>応答時間 p95</td>
+        <td class="num-cell">測定不能</td>
+        <td class="num-cell">14 ms</td>
+        <td>100 回中、遅い方から 5 番目。ほぼ最悪値</td>
+      </tr>
+      <tr class="hit">
+        <td>テスト</td>
+        <td class="num-cell">失敗あり</td>
+        <td class="num-cell">3295 件 全成功</td>
+        <td>このプロジェクトで初めて全件成功した</td>
+      </tr>
+      <tr class="hit">
+        <td>状態表示の「実行中」</td>
+        <td class="num-cell">50 件（嘘）</td>
+        <td class="num-cell">0 件（実態）</td>
+        <td>2 か月分の取り残しを回収した</td>
+      </tr>
+      <tr>
+        <td>npm の公開版</td>
+        <td class="num-cell">0.29.1</td>
+        <td class="num-cell">0.29.3</td>
+        <td>10 日止まっていた配布が復旧</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>「旧版が測定不能」なのは、返事が返ってこない回数が多すぎて統計として意味を持たなかったためです。</p>
+</section>
+
+<section>
+  <p class="kicker">05 ／ Decision</p>
+  <h2>唯一の判断事項: 0.29.4 を公開するか</h2>
+  <p>応答性の修正 16 件は main にありますが、<strong>npm にはまだ出ていません</strong>。あなた自身は main から動かしているので影響はありません。</p>
+
+  <table>
+    <thead><tr><th style="width:26%">選択肢</th><th>内容と結果</th></tr></thead>
+    <tbody>
+      <tr><td><strong>A. 今すぐ公開</strong></td><td>0.29.4 として出す。npm 経由の利用者も応答性の改善を受け取る。公開処理は 7/26 に一度通っているので、同じ手順が使える</td></tr>
+      <tr><td><strong>B. しばらく寝かせる</strong></td><td>あなたの環境で数日動かし、問題がないことを確認してから出す。急ぎでないなら妥当</td></tr>
+      <tr><td><strong>C. §160 まで待つ</strong></td><td>残っている課題（データベースが大きいと 1 件の保存が遅い）を直してからまとめて出す。ただし §160 は調査から始まるので日数が読めない</td></tr>
+    </tbody>
+  </table>
+
+  <p>公開は tag を打って push するだけですが、<strong>その push だけは人の承認が要る設定</strong>（本番公開の安全装置）なので、実行するときはあなたの手で 1 コマンド打つ形になります。</p>
+</section>
+
+<div class="verdict">
+  <h3>判定</h3>
+  <p>今週の更新で、記憶システムの実用上の問題（毎分の無応答）は解消しました。あなたの手元はすでに最新で動いており、<strong>追加の作業なしで恩恵を受けています</strong>。残る判断は「npm にも出すか、いつ出すか」の 1 点だけで、どれを選んでも後戻りできます。</p>
+</div>
+
+<div class="openbox">
+  <h3>正直な但し書き</h3>
+  <ul>
+    <li><strong>完全にゼロではありません</strong>。300 回中 3 回、再起動直後の追いつき処理で返事が遅れます。定常状態では出ません。</li>
+    <li><strong>根本の下限は残っています</strong>。記憶を 1 件保存するコストがデータベースの大きさに比例して増えます。空のデータベースなら 70KB の本文でも 55 ミリ秒ですが、本番の 4.9GB では処理が 11 秒に達することがあります。§160 として起票済みで、<strong>まず計測してから対策する</strong>順序を明記しています。</li>
+    <li><strong>原因の特定に 5 回失敗しました</strong>。症状から機構を推測するたびに外し、当たったのは毎回「計測する仕組みを入れた回」でした。この教訓は decisions.md に記録しています。</li>
+    <li><strong>効果の数値は 1 台での実測です</strong>。他の環境（会話履歴の量が違う、ディスクが遅い等）で同じ比率になるかは未検証です。</li>
+  </ul>
+</div>
+
+<footer>
+  <h4>SSOT 出典</h4>
+  <ul>
+    <li><code>Plans.md</code> §159（daemon が生存しているのに health 応答不能になる残存経路、13/13 完了）</li>
+    <li><code>Plans.md</code> §160（ingest スループットが DB サイズに律速される、4 タスク起票）</li>
+    <li><code>.claude/memory/decisions.md</code> D48 および 2026-07-26 / 07-28 の追記</li>
+    <li><code>docs/daemon-health-runbook.md</code>（degraded 時の切り分け手順、probe 既定値の根拠）</li>
+    <li><code>CHANGELOG.md</code> [0.29.1] / [0.29.2] / [0.29.3]</li>
+    <li>PR #152, #153, #155, #156, #157, #158, #159, #160, #161, #162, #163, #164, #165</li>
+  </ul>
+
+  <h4>分析方法とデータの制約</h4>
+  <ul>
+    <li>応答性の数値は、本番 daemon（port 37888）に <code>curl</code> で 1 秒間隔・240〜300 サンプルの実測。タイムアウトは 5 秒</li>
+    <li>ブロック箇所の特定は macOS の <code>sample</code>（1 ミリ秒間隔でプログラムの実行位置を記録）と、daemon 自身に入れた所要時間ログ（<code>HARNESS_MEM_SLOW_TICK_LOG_MS</code>、既定 1000ms 超過のみ記録）による</li>
+    <li>ファイル数と容量は <code>find</code> と <code>du</code> の実測（2026-07-28 時点）</li>
+    <li>測定はすべて 1 台（operator の macOS 環境）で行っており、他環境での再現性は未検証</li>
+    <li>「旧版」の数値は、修正投入前に同一手順で測った値。厳密な A/B ではなく時系列比較である点に注意</li>
+  </ul>
+
+  <div class="disclaimer">
+    本レポートは Plans.md / decisions.md / CHANGELOG.md および実測ログからの派生物であり、正本ではありません。数値や判断の根拠を確認する場合は上記 SSOT を参照してください。
+  </div>
+</footer>
+
+</div>
+</body>
+</html>
