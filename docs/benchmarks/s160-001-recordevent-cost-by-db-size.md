@@ -47,8 +47,13 @@ USE TEMP B-TREE FOR ORDER BY
 （ONNX 実モデルなし・ローカルハッシュ埋め込み。埋め込み計算コストは DB サイズに
 依存しない定数項として扱う）。payload は 3 サイズ帯で固定（約 1.1KB、背景観測の
 「payload サイズではなく DB サイズが効く」という前提に合わせて変数は DB サイズのみ）。
-各セグメント 21 回（E2E は 21 回、audit_log 系のみ 10 回）測定し、中央値 (p50) を
-主指標として採用。
+測定回数は測定系ごとに異なる。E2E（表1）と分離測定（表3、`isolated_segments`）は
+21 回。内部区間（表2、`internal_segments`）は 31 回 — E2E ループの 21 回に加え、
+audit ログ検証用の追加ループ（`privacy_tags: ["private"]` 付き 10 回）も同じ
+`recordEvent` 経路を通るため合算される。`audit_log` 区間だけは後者の 10 回のみ。
+いずれも中央値 (p50) を主指標として採用。実際の回数は
+`docs/benchmarks/artifacts/s160-001-recordevent-cost-2026-07-29/*.json` の各区間の
+`n` フィールドに記録されている。
 
 DB サイズ 3 点はスクラッチ領域に合成生成（本番 DB は不使用）:
 
