@@ -1,6 +1,6 @@
 {
   "schema_version": "s108-temporal-planner.v1",
-  "generated_at": "2026-07-29T17:30:51.197Z",
+  "generated_at": "2026-07-29T17:52:48.609Z",
   "task_id": "S108-008",
   "fixture": {
     "path": "tests/benchmarks/fixtures/temporal-s108-expanded.json",
@@ -13,7 +13,7 @@
     "answer_hit_at_10": 1,
     "japanese_temporal_slice": 1,
     "current_stale_answer_regressions": 0,
-    "p95_latency_ms": 5.7825
+    "p95_latency_ms": 5.1513
   },
   "gates": {
     "temporal_order_score": {
