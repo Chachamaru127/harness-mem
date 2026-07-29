@@ -10,7 +10,7 @@
  *   startClaudeMemImport / getImportJobStatus / verifyClaudeMemImport
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -173,6 +173,260 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
       expect(second.ok).toBe(true);
       expect(second.items[0]?.events_imported).toBe(2);
     } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ingestLegacyCodexHistoryFile (§160-005b)
+//
+// legacy codex history (`~/.codex/history.jsonl`) は本番実測で 1 tick 173,528ms
+// event loop を塞いだ。readFileSync の全文読みと無制限 entry ループが原因で、
+// codex rollouts (§159-003c) と同じ「スライス読み + budget 付き entry ループ」に
+// 揃える。private メソッドは型キャストで直接呼び、budgetMs を注入して決定的に
+// 検証する。
+// ---------------------------------------------------------------------------
+
+describe("ingest-coordinator: ingestLegacyCodexHistoryFile (§160-005b)", () => {
+  type LegacyCoordinator = {
+    ingestLegacyCodexHistoryFile: (options?: { budgetMs?: number; maxBytesPerFile?: number }) => {
+      eventsImported: number;
+      historyEventsImported: number;
+    };
+  };
+
+  const ORIGINAL_READ_SLICE = process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES;
+
+  afterEach(() => {
+    if (ORIGINAL_READ_SLICE === undefined) delete process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES;
+    else process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES = ORIGINAL_READ_SLICE;
+  });
+
+  function historyLine(fields: Record<string, unknown>): string {
+    return JSON.stringify(fields);
+  }
+
+  function setupHistoryFile(dir: string, content: string): string {
+    const codexDir = join(dir, ".codex");
+    mkdirSync(codexDir, { recursive: true });
+    const historyPath = join(codexDir, "history.jsonl");
+    writeFileSync(historyPath, content, "utf8");
+    return historyPath;
+  }
+
+  test("読み込み上限より大きいファイルでも statSync の実サイズを基準に最後まで進む", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-legacy-codex-history-"));
+    try {
+      const lines = Array.from({ length: 8 }, (_, i) =>
+        historyLine({ role: i % 2 === 0 ? "user" : "assistant", session_id: "s1", ts: `2026-07-29T00:00:0${i}.000Z`, content: `line-${i}` }),
+      );
+      const historyPath = setupHistoryFile(dir, lines.join("\n") + "\n");
+      const fileSize = statSync(historyPath).size;
+
+      // 既定 64KB よりずっと小さいスライス幅を強制し、複数スライスにまたがる読み込みを
+      // 1 回の呼び出し内で発生させる。budgetMs は Infinity にして完走させ、
+      // 「readSliceBytes を超えた分は二度と読まれない」旧バグが再発していないことを見る。
+      process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES = "40";
+
+      const db = createTestDb();
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ codexHistoryEnabled: true, codexProjectRoot: dir, codexSessionsRoot: join(dir, "codex-sessions") }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as LegacyCoordinator;
+
+      const summary = coordinator.ingestLegacyCodexHistoryFile({ budgetMs: Infinity });
+      expect(summary.historyEventsImported).toBe(8);
+
+      const sourceKey = `codex_history:${dir}`;
+      const offsetRow = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetRow?.offset).toBe(fileSize);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("recordEvent が失敗した行より先へ offset を進めず、再試行で拾い直す", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-legacy-codex-history-fail-"));
+    try {
+      const lines = [
+        historyLine({ role: "user", session_id: "s1", ts: "2026-07-29T00:00:00.000Z", content: "first" }),
+        historyLine({ role: "assistant", session_id: "s1", ts: "2026-07-29T00:00:01.000Z", content: "second" }),
+        historyLine({ role: "user", session_id: "s1", ts: "2026-07-29T00:00:02.000Z", content: "third" }),
+      ];
+      const historyPath = setupHistoryFile(dir, lines.join("\n") + "\n");
+      const fileSize = statSync(historyPath).size;
+
+      const db = createTestDb();
+      let callCount = 0;
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ codexHistoryEnabled: true, codexProjectRoot: dir, codexSessionsRoot: join(dir, "codex-sessions") }),
+        recordEvent: mock(() => {
+          callCount += 1;
+          return callCount === 1 ? makeErrResponse("temporary write failure") : makeOkResponse();
+        }),
+      });
+
+      const first = new IngestCoordinator(deps).ingestCodexHistory();
+      expect(first.ok).toBe(true);
+      expect(first.items[0]?.history_events_imported).toBe(0);
+
+      const sourceKey = `codex_history:${dir}`;
+      const offsetAfterFailure = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterFailure).not.toBeNull();
+      expect(offsetAfterFailure?.offset ?? -1).toBeLessThan(fileSize);
+
+      deps.recordEvent = mock(() => makeOkResponse());
+      const second = new IngestCoordinator(deps).ingestCodexHistory();
+      expect(second.ok).toBe(true);
+      expect(second.items[0]?.history_events_imported).toBe(3);
+
+      const offsetAfterRetry = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterRetry?.offset).toBe(fileSize);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-legacy-codex-history-budget-"));
+    try {
+      const lines = [
+        historyLine({ role: "user", session_id: "s1", ts: "2026-07-29T00:00:00.000Z", content: "one" }),
+        historyLine({ role: "assistant", session_id: "s1", ts: "2026-07-29T00:00:01.000Z", content: "two" }),
+        historyLine({ role: "user", session_id: "s1", ts: "2026-07-29T00:00:02.000Z", content: "three" }),
+        historyLine({ role: "assistant", session_id: "s1", ts: "2026-07-29T00:00:03.000Z", content: "four" }),
+      ];
+      const historyPath = setupHistoryFile(dir, lines.join("\n") + "\n");
+      const fileSize = statSync(historyPath).size;
+
+      const db = createTestDb();
+      const recordedHashes: string[] = [];
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ codexHistoryEnabled: true, codexProjectRoot: dir, codexSessionsRoot: join(dir, "codex-sessions") }),
+        recordEvent: mock((event: { dedupe_hash?: string }) => {
+          // recordEvent 自体を意図的に遅くし、budgetMs 判定を wall-clock で確実に
+          // 超過させる (Date.now() の 1ms 解像度に依存すると flaky になるため)。
+          const until = Date.now() + 5;
+          while (Date.now() < until) {
+            /* busy-wait */
+          }
+          recordedHashes.push(event.dedupe_hash ?? "");
+          return makeOkResponse();
+        }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as LegacyCoordinator;
+
+      const firstTick = coordinator.ingestLegacyCodexHistoryFile({ budgetMs: 1 });
+      expect(firstTick.historyEventsImported).toBe(1);
+
+      const sourceKey = `codex_history:${dir}`;
+      const offsetAfterFirstTick = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterFirstTick?.offset ?? -1).toBeGreaterThan(0);
+      expect(offsetAfterFirstTick?.offset ?? -1).toBeLessThan(fileSize);
+
+      const secondTick = coordinator.ingestLegacyCodexHistoryFile({ budgetMs: Infinity });
+      expect(secondTick.historyEventsImported).toBe(3);
+
+      const offsetAfterSecondTick = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterSecondTick?.offset).toBe(fileSize);
+
+      // 4 行それぞれ厳密に 1 回だけ recordEvent が呼ばれている (取りこぼしも重複もない)
+      expect(recordedHashes.length).toBe(4);
+      expect(new Set(recordedHashes).size).toBe(4);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("offset がファイルサイズを超えていたら 0 にリセットして先頭から取り込み直す", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-legacy-codex-history-truncate-"));
+    try {
+      const longLines = Array.from({ length: 5 }, (_, i) =>
+        historyLine({ role: "user", session_id: "s1", ts: `2026-07-29T00:00:0${i}.000Z`, content: `pre-truncate-${i}` }),
+      );
+      const historyPath = setupHistoryFile(dir, longLines.join("\n") + "\n");
+
+      const db = createTestDb();
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ codexHistoryEnabled: true, codexProjectRoot: dir, codexSessionsRoot: join(dir, "codex-sessions") }),
+      });
+
+      const before = new IngestCoordinator(deps).ingestCodexHistory();
+      expect(before.items[0]?.history_events_imported).toBe(5);
+
+      const sourceKey = `codex_history:${dir}`;
+      const offsetBeforeTruncate = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      const sizeBeforeTruncate = statSync(historyPath).size;
+      expect(offsetBeforeTruncate?.offset).toBe(sizeBeforeTruncate);
+
+      // ファイルを短い内容で上書き (ローテーション/切り詰めを模す): 永続化済み offset > 新しい fileSize
+      const shortLine = historyLine({ role: "user", session_id: "s2", ts: "2026-07-29T01:00:00.000Z", content: "post-truncate" });
+      writeFileSync(historyPath, shortLine + "\n", "utf8");
+      const sizeAfterTruncate = statSync(historyPath).size;
+      expect(sizeAfterTruncate).toBeLessThan(sizeBeforeTruncate);
+
+      const after = new IngestCoordinator(deps).ingestCodexHistory();
+      expect(after.items[0]?.history_events_imported).toBe(1);
+
+      const offsetAfterTruncate = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterTruncate?.offset).toBe(sizeAfterTruncate);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("明示 API (ingestCodexHistory) は budget / read slice を極小に設定していても legacy を完走させる", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-legacy-codex-history-explicit-"));
+    const ORIGINAL_BUDGET = process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
+    try {
+      const lines = Array.from({ length: 6 }, (_, i) =>
+        historyLine({ role: i % 2 === 0 ? "user" : "assistant", session_id: "s1", ts: `2026-07-29T00:00:0${i}.000Z`, content: `entry-number-${i}` }),
+      );
+      const historyPath = setupHistoryFile(dir, lines.join("\n") + "\n");
+      const fileSize = statSync(historyPath).size;
+
+      // tick 用の既定値を極小にしても、明示 API は budgetMs: Infinity / maxBytesPerFile:
+      // Infinity で呼ぶため readSliceBytes が小さいだけでは完走を妨げないことを確認する。
+      process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = "1";
+      process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES = "10";
+
+      const db = createTestDb();
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ codexHistoryEnabled: true, codexProjectRoot: dir, codexSessionsRoot: join(dir, "codex-sessions") }),
+      });
+
+      const res = new IngestCoordinator(deps).ingestCodexHistory();
+      expect(res.ok).toBe(true);
+      expect(res.items[0]?.history_events_imported).toBe(6);
+
+      const sourceKey = `codex_history:${dir}`;
+      const offsetRow = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetRow?.offset).toBe(fileSize);
+    } finally {
+      if (ORIGINAL_BUDGET === undefined) delete process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
+      else process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = ORIGINAL_BUDGET;
       rmSync(dir, { recursive: true, force: true });
     }
   });
