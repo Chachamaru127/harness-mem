@@ -1398,15 +1398,21 @@ consolidation の寄与は 28 → 23 の差分 (~5) で副次的。両者は同�
 | 本番 DB (4.9GB) 稼働中の tick | `claude_code` が 11120ms、`codex` が 1417ms のブロックを記録 |
 | `sample` の main thread leaf | `pread` (SQLite のページ読み) が支配的 |
 
-つまり**払っているコストは payload サイズではなく DB サイズ**。4.9GB の DB に対する index 探索 / FTS 挿入 / vector 書き込みで、cold page cache だとページ読みが積み上がる。§159 のループ構造の問題ではない。
+つまり**払っているコストは payload サイズではなく DB サイズ**。§159 のループ構造の問題ではない。
+
+**2026-07-29 追記 (160-001 完了により、上の見立てのうち内訳部分は否定された)**: 「index 探索 / FTS 挿入 / vector 書き込みで cold page cache のページ読みが積み上がる」という当初の内訳想定は、支配区間の特定として外れた。実際の支配区間は auto-linker 系の後処理、特に `autoLinkObservation()` の 1 クエリで、`session_id` を先頭列に持つインデックスが無いためインデックス全走査になる (`EXPLAIN QUERY PLAN` で `SCAN mem_observations USING INDEX idx_mem_obs_project_session_created` を確認)。4.9GB 相当 (observation 340,055 行) で p50=31.459ms、E2E 中央値 39.048ms の **80.6%**。伸び率は空 DB 比 551.9 倍。効いている独立変数はバイト数ではなく **observation 行数**。詳細は `docs/benchmarks/s160-001-recordevent-cost-by-db-size.md`。
+
+当初想定の 4 区間 (dedupe 探索 / FTS 挿入 / vector 書き込み / audit ログ) は**「横ばい」ではない**。4.9GB でいずれも増加する (dedupe 75.0 倍 / FTS 7.8 倍 / vector 13.0 倍 / audit 23.7 倍)。ただし絶対値は 0.150〜1.675ms で auto_link (31.459ms) と 1〜2 桁の差があり、優先度が低い根拠は「サイズに対して定数だから」ではなく「絶対値が 1〜2 桁小さいから」。**この区別は 160-002 のスコープ判断に効く** (最初のレビュー時点では合成 DB の vec0 サイドカーが空のまま計測しており、vector を「横ばいだから対象外」と誤って結論していた)。
+
+なお本番 tick の 11120ms と、160-001 が測った 1 件あたり 39.048ms (4.9GB 相当) の対応づけは**未確認**。件数で説明がつく可能性はあるが (11120 ÷ 39.048 ≈ 285 件)、当該 tick の実件数は確認していない。「auto_link を直せば本番 tick も直る」とは現時点では言えない。
 
 ### タスク
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| 160-001 | `recordEvent` 1 件のコストを DB サイズ別に測る。空 DB / 1GB / 4.9GB の 3 点で、内訳 (dedupe 探索 / FTS / vector / audit) を分解する。まず計測を入れてから対策を選ぶ | サイズ別・内訳別の実測表。どの区間が DB サイズに比例するかを 1 つに特定 | - | cc:TODO |
-| 160-002 | 160-001 で特定した区間の改善。候補は index 追加、FTS 挿入の遅延化、vector 書き込みの batch 化、cold cache 対策 (`PRAGMA mmap_size` 等)。**特定前に着手しない** | 本番 tick の最大ブロックが budget + 1 単位に収まる。検索品質は非回帰 (e5 parity / dev-domain / CJK) | 160-001 | cc:TODO |
-| 160-003 | `tests/session-start-parity-contract.test.ts` が**ローカル daemon の応答性に依存**している。2026-07-28 に daemon が catch-up でブロック中だと spawn した hook が 5s timeout し false fail した (daemon 平常時は 3 回連続 5 passed)。§159-008 で閉じた `CLAUDE_PLUGIN_DATA` 漏れとは別の依存 | 本番 daemon がブロック中でも同じ結果になる。hook が実 daemon に触れる経路を stub 化するか、port を隔離する | - | cc:TODO |
+| 160-001 | `recordEvent` 1 件のコストを DB サイズ別に測る。空 DB / 1GB / 4.9GB の 3 点で、内訳 (dedupe 探索 / FTS / vector / audit) を分解する。まず計測を入れてから対策を選ぶ | サイズ別・内訳別の実測表。どの区間が DB サイズに比例するかを 1 つに特定 | - | cc:完了 [90ebd90, 00b9b26] |
+| 160-002 | **160-001 が特定した `autoLinkObservation()` の全走査を潰す。** `memory-server/src/core/auto-linker.ts` の `linkByTemporalProximity` が `WHERE session_id = ?` だけで引くのに対し、`idx_mem_obs_project_session_created` は `(project, session_id, created_at, id)` で先頭列が `project`。`session_id` を先頭に持つインデックスを足せば SCAN → SEARCH になる想定。**着手前に 2 点を確認すること**: (a) 本番 DB の実 observation 行数 (160-001 は合成 DB の 1 行≈14.6KB という構成で測っており、本番の行数は未確認)、(b) 本番 tick 11120ms の中で `recordEvent` が何件走ったか (件数が対応しないなら別の支配要因がある)。dedupe / FTS / vector / audit の 4 区間は**横ばいではなく増加する**が絶対値が 1〜2 桁小さいため後回し。特に vector 書き込み (4.9GB で 1.675ms、13.0 倍) は auto_link 対策後の次点候補で、「定数だから対象外」という理由で落とさないこと | 本番 tick の最大ブロックが budget + 1 単位に収まる。**インデックス追加は書き込みパス全体に跳ね返るので、insert 側の回帰測定を必ず添える。** 検索品質は非回帰 (e5 parity / dev-domain / CJK) | 160-001 | cc:TODO |
+| 160-003 | `tests/session-start-parity-contract.test.ts` が daemon の状態で false fail する。2026-07-28 に daemon が catch-up でブロック中だと spawn した hook が 5s timeout し false fail した (daemon 平常時は 3 回連続 5 passed)。**起票時の「hook が実 daemon に触れている」という診断は誤りだった** — 既存 5 テストは `CLIENT_SCRIPT` を mock に丸ごと差し替えており、実行中に port 37888 への接続は 0 件 (`lsof -sTCP:ESTABLISHED` で実測)。真因はホスト資源競合 (4.9GB DB への WAL checkpoint が I/O を専有) × bun 既定 5000ms タイムアウト | 本番 daemon がブロック中でも同じ結果になる。hook が実 daemon に触れる経路を stub 化するか、port を隔離する | - | cc:完了 [d10a03d] |
 
 | 160-004 | consolidation job が `running` のまま残り、誰も片付けないため単調に増える。daemon プロセス内で走るので SIGKILL / crash / launchd 再起動で中断されると回収されない。2026-07-28 の本番で **49 件の孤児** (最古 2026-05-17、最新 2026-07-26、うち 42 件は 2026-06-25 の 1 事故) が残っており、`/v1/admin/consolidation/status` の `running_jobs` が実態と乖離していた。**これを見た調査エージェントが「worker pool がスタック」と誤診し、本番 daemon の再起動を推奨した**(実際は 7 分で 3 件完了・pending 0 の健全な状態)。起動時に `failed` へ倒して理由を残す | (a) 起動時に `running` が 0 になり `error` に理由が残る、(b) `completed` / `pending` は変えない、(c) `running` が無ければ何も変えない (冪等)、(d) 2 test pass | - | cc:完了 [本 PR] |
 
