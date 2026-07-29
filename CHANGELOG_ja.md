@@ -7,6 +7,32 @@
 
 ## [Unreleased]
 
+## [0.29.4] - 2026-07-29
+
+### 修正
+
+- **履歴 ingest 中でも daemon が `/health` に応答し続ける**。`bun:sqlite` は同期 FFI のため、定期 ingest の tick が SQLite 処理の間だけ event loop を占有し、その窓では HTTP サーバが応答できなかった。`claude_code` / `codex` / `cursor` の 3 経路をスライス読み込みに変え、tick ごとの時間 budget を超えたら次回に持ち越すようにした。調整は `HARNESS_MEM_INGEST_TICK_BUDGET_MS` (既定 200)、`HARNESS_MEM_INGEST_MAX_BYTES_PER_FILE` (既定 512KB、従来 2MB)、`HARNESS_MEM_INGEST_READ_SLICE_BYTES` (既定 64KB)。DB 4.9GB / Codex session 4721 ファイルの本番実測で、非 200 応答は 73 / 240 サンプルから 3 / 300 に減り、p50 1ms / p95 14ms。
+- **ファイル走査と WAL checkpoint も同じ budget の対象にした**。`~/.codex/sessions` と `~/.claude/projects` の全件列挙が毎 tick で同期 `statSync` + offset 参照に 3〜10 秒かかっており、`PRAGMA wal_checkpoint(PASSIVE)` は 60 秒ごとに計測外で同期実行されていた。走査は budget 内に入れ、round-robin cursor で末尾のファイルが飢えないようにした。checkpoint 間隔は `HARNESS_MEM_WAL_CHECKPOINT_INTERVAL_MS` (既定 300 秒) で調整できる。
+- **遅い tick を推測ではなく計測で特定できるようにした**。各 tick が event loop を保持した時間を記録し、`HARNESS_MEM_SLOW_TICK_LOG_MS` (既定 1000) 超過時のみ出力する。平常時は無音。症状からの推論では 2 回誤診したが、このログでは再起動 1 回で原因の subsystem が名指しされた。
+- **busy な daemon を死んだ daemon として扱わない**。Go の MCP proxy が health タイムアウトに対して 2 つ目の daemon を起動し、同じ DB を奪い合っていた。記録された pid の生存を確認し、最大 10 秒待ったうえで「busy である」と報告するようにした。
+- **shutdown が必ず終わる**。`SIGTERM` 処理が WAL checkpoint と `db.close()` の手前で停止し、プロセスと port が残ることがあった。`HARNESS_MEM_SHUTDOWN_TIMEOUT_MS` (既定 10000) で強制終了する watchdog を追加し、retry queue の drain が例外を投げても残りの停止手順を飛ばさないようにした。
+- **`harness-memd stop` が失敗を失敗として返す**。`SIGTERM` → `SIGKILL` のエスカレーション後も無条件に成功を返していたため、生存中のプロセスを「停止した」と報告し、まだ使用中の状態を呼び出し側が片付けていた。エスカレーション後に生存を再確認し、残っている場合は cleanup しない。
+- **daemon が落ちて `running` のまま残った consolidation job を起動時に回収する**。回収する主体がいないため単調に増え (孤児 49 件、最古 2026-05-17)、queue が詰まっているように見えていた。理由付きで `failed` に倒す。軽量 child プロセスでは実行しないので、親 daemon の実行中 job を壊さない。
+- **`npm test` の合否が開発機の Ollama 有無に依存しなくなった**。`tests/benchmarks/s108-developer-domain-manifest.test.ts` が deep freshness bench 経由で実 LLM を呼び、reconcile 1 回に 203 秒かかっていた。`NODE_ENV=test` では既定 OFF とし、明示指定で有効化できる。session-start parity contract も spawn 前に継承した `CLAUDE_PLUGIN_DATA` を消すため、host セッションの plugin data ディレクトリが結果を変えない。
+
+### ドキュメント
+
+- **`docs/daemon-health-runbook.md` を追加**。busy な daemon とハングした daemon の見分け方、前者が自力回復する理由、後者の停止手順、slow tick ログの読み方、調整用の環境変数、probe 既定値の根拠を記載した。
+
+### 検証
+
+- リリース内容に対する repository behavior gate (`npm test`): 3295 passed / 0 failed。
+- 本番 health probe (変更適用後): 300 サンプル中 非 200 が 3 件、p50 1ms / p95 14ms / p99 0.97s。
+
+### 既知の限界
+
+- 分割できない 1 単位の処理 (1 スライスの parse、1 件の `recordEvent`) は tick budget で中断できず、そのコストは payload サイズではなく DB サイズに律速される。空 DB では 70KB payload が 55ms なのに、本番 4.9GB DB では同じ形で tick が 11 秒になった。§160 で追跡中。
+
 ## [0.29.3] - 2026-07-26
 
 ### 修正
