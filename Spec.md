@@ -385,6 +385,43 @@ profile and harness-mem keeps memory growth under configured thresholds without
 blocking `/health/ready`, while still giving the user an understandable audit
 trail and a restore window before irreversible purge.
 
+## Periodic Ingest Budget
+
+Timer-driven ingest — any source pulled in on a recurring background schedule
+rather than in response to an explicit call — must not block the daemon event
+loop for an unbounded amount of time. This contract applies uniformly to every
+such source (Cursor, Codex, OpenCode, Antigravity, Gemini, Claude Code, and any
+source added later) and to every code path a periodic run touches, including
+secondary or legacy inputs read as part of the same source. A source is not
+compliant if any part of its timer-driven path is unbounded, even if the rest
+of it is budgeted.
+
+- Each periodic ingest run has a bounded time budget. What counts against the
+  budget is implementation detail, not part of this contract.
+- Each periodic ingest run also has a bounded amount of input it may read from
+  any single source in that run. A time budget alone does not satisfy this: a
+  run that loads an entire input into memory before processing it has already
+  paid the cost by the time the first budget check can fire, so the read
+  itself must be capped independently of elapsed time.
+- Every unit of work a periodic run processes (per file, per read slice, per
+  parsed record) must check the remaining budget and be able to stop before
+  the available input for that run is exhausted.
+- Progress is tracked through a durable per-source offset. When a run stops
+  early, the next run resumes from that offset; it must not restart from the
+  beginning or silently skip the unprocessed remainder.
+- Because a run may stop early, periodic ingest is eventually complete, not
+  immediately complete: a backlog larger than one run's budget is guaranteed
+  to be absorbed over a bounded number of future runs, not necessarily the
+  next one.
+
+Explicit ingest — an API or command a user or agent invokes directly to force
+a full catch-up — is exempt from this budget and may run to completion
+unbounded, since the caller is intentionally waiting for a definitive result.
+
+Where a per-source section below defines what is captured or how setup works,
+this budget contract governs how that source behaves on the timer path, not
+what it ingests.
+
 ## Cursor Conversation Capture
 
 Cursor session continuity for harness-mem uses **official Cursor Agent Hooks**
