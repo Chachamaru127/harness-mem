@@ -50,6 +50,7 @@ import {
 } from "../memory-server/src/core/core-utils";
 import { upsertSqliteVecRow } from "../memory-server/src/vector/providers";
 import { setEventRecorderSegmentSink } from "../memory-server/src/core/event-recorder";
+import { assertScratchDbPath } from "./lib/s160-scratch-guard";
 
 interface SegmentStats {
   label: string;
@@ -161,8 +162,15 @@ async function main(): Promise<void> {
   if (dbArg === ":empty:") {
     cleanupDir = mkdtempSync(join(tmpdir(), "s160-001-empty-"));
     dbPath = join(cleanupDir, "empty.db");
-  } else if (!existsSync(dbArg)) {
-    throw new Error(`db file not found: ${dbArg}`);
+  } else {
+    if (!existsSync(dbArg)) {
+      throw new Error(`db file not found: ${dbArg}`);
+    }
+    // Review fix (round 2): this script constructs a real HarnessMemCore
+    // against --db, which runs schema migration + reconcileAbandonedConsolidationJobs()
+    // on construction, inserts synthetic rows, and temporarily drops/recreates
+    // FTS triggers. Refuse anything that isn't a scratch DB before touching it.
+    assertScratchDbPath(dbArg, "--db");
   }
 
   // --- register the internal-segment sink BEFORE any recordEvent() call ---

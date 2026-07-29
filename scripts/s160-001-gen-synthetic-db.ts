@@ -2,8 +2,9 @@
 /**
  * §160-001: recordEvent 1 件のコストを DB サイズ別に測るためのベンチ準備スクリプト。
  *
- * 本番 DB (~/.harness-mem/) には一切触れない。合成データを bulk insert して
- * 任意サイズの SQLite ファイルをスクラッチ領域に作る。
+ * 本番 DB (~/.harness-mem/) には一切触れない — `--out` は `assertScratchDbPath()`
+ * (scripts/lib/s160-scratch-guard.ts) でスクラッチ領域外を実行前に拒否する。
+ * 合成データを bulk insert して任意サイズの SQLite ファイルをスクラッチ領域に作る。
  *
  * 生成される行は本番スキーマ (memory-server/src/db/schema.ts) と同じ列・同じ
  * トリガー (FTS5) ・同じ vec0 仮想テーブルを使う。recordEvent() 自体は 1 行ごとに
@@ -25,7 +26,9 @@ import {
   migrateSchema,
 } from "../memory-server/src/db/schema";
 import { segmentJapaneseForFts } from "../memory-server/src/core/core-utils";
-import { upsertSqliteVecRow } from "../memory-server/src/vector/providers";
+import { resolveVectorEngine, upsertSqliteVecRow } from "../memory-server/src/vector/providers";
+import { configureBunCustomSqliteForSqliteVec } from "../memory-server/src/db/custom-sqlite-preflight";
+import { assertScratchDbPath } from "./lib/s160-scratch-guard";
 
 const WORDS = [
   "harness", "mem", "daemon", "ingest", "tick", "budget", "event", "loop", "sqlite",
@@ -103,15 +106,38 @@ function currentSizeBytes(dbPath: string): number {
 async function main(): Promise<void> {
   const { out, targetBytes, vectorDimension, batchSize } = parseArgs();
 
+  // Review fix (round 2): this script deletes any existing -wal/-shm sidecars
+  // at --out and then recreates the file fresh — if pointed at a real DB that
+  // is destructive, not just a correctness bug. Refuse anything that isn't a
+  // scratch path before touching the filesystem.
+  assertScratchDbPath(out, "--out");
+
   for (const suffix of ["", "-wal", "-shm"]) {
     if (existsSync(`${out}${suffix}`)) rmSync(`${out}${suffix}`);
   }
 
+  // Review fix (round 2): `new Database(out, ...)` alone does NOT load the
+  // sqlite-vec extension — only `SqliteStorageAdapter` (via HarnessMemCore)
+  // does that, by calling `configureBunCustomSqliteForSqliteVec()` (swaps in
+  // a libsqlite3 that supports .loadExtension) before construction. Without
+  // this, `upsertSqliteVecRow()` below throws internally, is caught, and
+  // silently returns `false` — so the 1gb/4.9gb synthetic DBs previously had
+  // ZERO rows in the model-specific vec0 sidecar table despite the bulk loop
+  // "succeeding". Mirror what HarnessMemCore does so vec0 is real here too.
+  configureBunCustomSqliteForSqliteVec();
   const db = new Database(out, { create: true });
   configureDatabase(db);
   initSchema(db);
   migrateSchema(db);
   initFtsIndex(db);
+
+  const vectorEngine = resolveVectorEngine(db, /* retrievalEnabled */ true, vectorDimension);
+  if (vectorEngine.engine !== "sqlite-vec" || !vectorEngine.vecTableReady) {
+    throw new Error(
+      `sqlite-vec extension did not load (engine=${vectorEngine.engine}, vecTableReady=${vectorEngine.vecTableReady}). ` +
+        `The generated DB would have an empty vec0 sidecar table, making the vector_upsert bench segment meaningless. Aborting.`,
+    );
+  }
 
   // fallback embedding provider の実テーブル名に合わせるため、model 文字列は
   // 本番と同じ "fallback_local_hash_v3" 系にしておく（vec0 の model 別テーブルを
@@ -185,7 +211,13 @@ async function main(): Promise<void> {
           now, now,
         );
         insertVector.run(observationId, model, vectorDimension, vectorJson, now, now);
-        upsertSqliteVecRow(db, observationId, vectorJson, now, { model, vectorDimension });
+        const vecOk = upsertSqliteVecRow(db, observationId, vectorJson, now, { model, vectorDimension });
+        if (!vecOk) {
+          // Review fix (round 2): don't let this fail silently — a `false`
+          // here previously meant the vec0 sidecar table stayed empty for
+          // the whole synthetic DB while the script reported success.
+          throw new Error(`upsertSqliteVecRow returned false for ${observationId} (idx=${idx}) — vec0 write failed`);
+        }
 
         if (idx % 5 === 0) {
           insertAudit.run(eventId, JSON.stringify({ reason: "private_tag", path: `bench/s160-synthetic` }), now);

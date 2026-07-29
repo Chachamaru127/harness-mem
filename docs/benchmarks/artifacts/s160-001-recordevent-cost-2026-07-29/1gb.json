@@ -1,163 +1,163 @@
 {
   "db_size_label": "1gb",
   "db_path": "/private/tmp/claude-502/-Users-tachibanashuuta-orca-workspaces-harness-mem-rudd/8d7cc6ce-c1c9-4808-8237-73b8a193efb6/scratchpad/s160-1gb.db",
-  "db_bytes": 1065658792,
-  "observation_count": 80157,
+  "db_bytes": 1031273032,
+  "observation_count": 71055,
   "vector_model": "fallback:local-hash-v3",
   "e2e": {
     "label": "e2e_recordEvent",
     "n": 21,
-    "p50_ms": 30.348,
-    "p90_ms": 41.852,
-    "min_ms": 22.285,
-    "max_ms": 57.078
+    "p50_ms": 13.392,
+    "p90_ms": 27.53,
+    "min_ms": 10.124,
+    "max_ms": 36.432
   },
   "internal_segments": [
     {
       "label": "ensure_session",
       "n": 31,
-      "p50_ms": 0.07,
-      "p90_ms": 0.145,
-      "min_ms": 0.035,
-      "max_ms": 0.353
+      "p50_ms": 0.037,
+      "p90_ms": 0.204,
+      "min_ms": 0.022,
+      "max_ms": 1.766
     },
     {
       "label": "event_insert",
       "n": 31,
-      "p50_ms": 0.196,
-      "p90_ms": 0.414,
-      "min_ms": 0.04,
-      "max_ms": 1.212
+      "p50_ms": 0.208,
+      "p90_ms": 0.866,
+      "min_ms": 0.024,
+      "max_ms": 4.652
     },
     {
       "label": "dedupe_lookup",
       "n": 31,
-      "p50_ms": 0.215,
-      "p90_ms": 0.382,
-      "min_ms": 0.074,
-      "max_ms": 1.908
+      "p50_ms": 0.208,
+      "p90_ms": 0.404,
+      "min_ms": 0.056,
+      "max_ms": 0.591
     },
     {
       "label": "observation_insert",
       "n": 31,
-      "p50_ms": 0.499,
-      "p90_ms": 1.22,
-      "min_ms": 0.186,
-      "max_ms": 10.253
+      "p50_ms": 0.38,
+      "p90_ms": 0.902,
+      "min_ms": 0.135,
+      "max_ms": 2.327
     },
     {
       "label": "tags_insert",
       "n": 31,
-      "p50_ms": 0.004,
-      "p90_ms": 0.045,
+      "p50_ms": 0.003,
+      "p90_ms": 0.027,
       "min_ms": 0.001,
-      "max_ms": 0.079
+      "max_ms": 0.151
     },
     {
       "label": "vector_upsert",
       "n": 31,
-      "p50_ms": 0.483,
-      "p90_ms": 0.739,
-      "min_ms": 0.349,
-      "max_ms": 0.979
+      "p50_ms": 0.524,
+      "p90_ms": 1.234,
+      "min_ms": 0.345,
+      "max_ms": 2.519
     },
     {
       "label": "extract_entities",
       "n": 31,
-      "p50_ms": 0.025,
-      "p90_ms": 0.042,
-      "min_ms": 0.019,
-      "max_ms": 0.055
+      "p50_ms": 0.021,
+      "p90_ms": 0.031,
+      "min_ms": 0.016,
+      "max_ms": 0.08
     },
     {
       "label": "extract_graph_relations",
       "n": 31,
-      "p50_ms": 0.025,
-      "p90_ms": 0.031,
-      "min_ms": 0.02,
-      "max_ms": 0.097
+      "p50_ms": 0.02,
+      "p90_ms": 0.034,
+      "min_ms": 0.015,
+      "max_ms": 0.058
     },
     {
       "label": "auto_link",
       "n": 31,
-      "p50_ms": 8.692,
-      "p90_ms": 10.247,
-      "min_ms": 6.781,
-      "max_ms": 11.868
+      "p50_ms": 5.828,
+      "p90_ms": 10.197,
+      "min_ms": 5.009,
+      "max_ms": 23.087
     },
     {
       "label": "auto_supersedes",
       "n": 31,
-      "p50_ms": 14.461,
-      "p90_ms": 21.322,
-      "min_ms": 3.71,
-      "max_ms": 26.127
+      "p50_ms": 2.535,
+      "p90_ms": 4.887,
+      "min_ms": 0.352,
+      "max_ms": 5.448
     },
     {
       "label": "semantic_auto_linker",
       "n": 31,
-      "p50_ms": 0.008,
-      "p90_ms": 0.026,
-      "min_ms": 0.004,
-      "max_ms": 0.057
+      "p50_ms": 0.004,
+      "p90_ms": 0.009,
+      "min_ms": 0.002,
+      "max_ms": 0.037
     },
     {
       "label": "insert_nuggets",
       "n": 31,
-      "p50_ms": 0.441,
-      "p90_ms": 0.715,
-      "min_ms": 0.285,
-      "max_ms": 0.939
+      "p50_ms": 0.266,
+      "p90_ms": 1.502,
+      "min_ms": 0.205,
+      "max_ms": 2.454
     },
     {
       "label": "audit_log",
       "n": 10,
-      "p50_ms": 0.062,
-      "p90_ms": 0.266,
-      "min_ms": 0.05,
-      "max_ms": 1.248
+      "p50_ms": 0.048,
+      "p90_ms": 0.391,
+      "min_ms": 0.032,
+      "max_ms": 0.81
     }
   ],
   "isolated_segments": [
     {
       "label": "dedupe_lookup_isolated",
       "n": 21,
-      "p50_ms": 0.121,
-      "p90_ms": 0.184,
-      "min_ms": 0.007,
-      "max_ms": 0.212
+      "p50_ms": 0.102,
+      "p90_ms": 0.124,
+      "min_ms": 0.006,
+      "max_ms": 0.172
     },
     {
       "label": "observation_insert_no_fts_isolated",
       "n": 21,
-      "p50_ms": 0.714,
-      "p90_ms": 1.092,
-      "min_ms": 0.187,
-      "max_ms": 1.143
+      "p50_ms": 0.624,
+      "p90_ms": 0.728,
+      "min_ms": 0.314,
+      "max_ms": 10.261
     },
     {
       "label": "fts_insert_isolated",
       "n": 21,
-      "p50_ms": 0.117,
-      "p90_ms": 0.31,
-      "min_ms": 0.066,
-      "max_ms": 3.678
+      "p50_ms": 0.088,
+      "p90_ms": 0.142,
+      "min_ms": 0.053,
+      "max_ms": 0.679
     },
     {
       "label": "vector_upsert_db_write_isolated",
       "n": 21,
-      "p50_ms": 0.444,
-      "p90_ms": 0.679,
-      "min_ms": 0.176,
-      "max_ms": 10.086
+      "p50_ms": 0.231,
+      "p90_ms": 0.551,
+      "min_ms": 0.166,
+      "max_ms": 0.741
     },
     {
       "label": "audit_log_insert_isolated",
       "n": 21,
-      "p50_ms": 0.065,
-      "p90_ms": 0.155,
-      "min_ms": 0.033,
-      "max_ms": 0.344
+      "p50_ms": 0.048,
+      "p90_ms": 0.081,
+      "min_ms": 0.03,
+      "max_ms": 0.347
     }
   ]
 }
