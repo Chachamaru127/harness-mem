@@ -1410,6 +1410,8 @@ consolidation の寄与は 28 → 23 の差分 (~5) で副次的。両者は同�
 
 **2026-07-30 追記 (160-002 完了時。DoD のうち「本番 tick の最大ブロックが budget + 1 単位に収まる」は未達)**: index 追加 (`idx_mem_obs_session_created ON mem_observations(session_id, created_at, id)`) により `auto_link` は SCAN から SEARCH に変わり、1GB tier の実測で 5.502ms → 0.034ms (162 倍)、E2E も 11.894ms → 3.575ms になった。insert 側の 3 区間 (`observation_insert` / `observation_insert_no_fts_isolated` / `event_insert`) はいずれも増加していない (ただし 71,000 行規模では index 追加の書き込みコストが run 間ノイズに埋もれており、「増加が検出されなかった」であって「増加しないことが保証された」ではない)。**しかし本番 tick のブロックはこれでは budget に収まらない。** 前提確認 (b) の結果、支配要因は recordEvent の単価ではなく 160-005 の無制限ループだった。1 件 39ms が 8ms になっても 5,950 件を無制限に回す構造が残るため、tick の上限は依然として数十秒規模になる。**DoD の tick 条件は 160-005 の完了をもって再判定する。**
 
+検索品質の非回帰 (DoD) は index 追加後に実測した。dev-domain の 2 ゲート (`s108-004` code-token、`s108-008` temporal-planner) はいずれも `overall_passed: yes`、CJK 判別は 3 スライス全て `improved`、e5 parity は `worst_cosine=0.999999999999859` (閾値 0.999999) で pass。生データは `docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/{code-token,temporal-planner,cjk-discrimination}/`。**ただしこの 3 ベンチはいずれも `graph_weight: 0` / `expand_links: false` で走っており、160-002 が実際に変えた auto-linker のリンクトポロジー (同着時の勝者) を経路として通っていない。** リンク経由検索の非回帰は「未観測」であって「確認済み」ではない。index 追加自体は FTS / vector の経路に触れないため実害は小さいと見ているが、これは推定である。
+
 なお 160-002 は本番の挙動を 1 点変える。`linkByTemporalProximity` の `ORDER BY created_at DESC` は `created_at` 同着時の勝者が走査順に依存しており、index を足すだけで勝者が「id 字句最小」から「id 字句最大」に変わることを実測で確認した。`ORDER BY created_at DESC, id DESC` を明示して決定化してある。`id` は生成時刻を先頭に持つため、同着時は後に採番された観察を選ぶ (意味としてはこちらが正しい)。既存のリンクは書き換えていない。
 
 ### タスク

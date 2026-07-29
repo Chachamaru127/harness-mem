@@ -529,7 +529,7 @@ describe("session-start parity contract", () => {
   //
   // wall-clock ではなく curl の呼び出し引数で検証する: 実際に閉じた port へ接続させて
   // 所要時間を測ると、結果 (exit 0 / 空コンテンツ) は正しくても所要時間はホストの
-  // CPU/IO 負荷に引きずられる。2026-07-28 の false fail も、2026-08 のレビューで
+  // CPU/IO 負荷に引きずられる。2026-07-28 の false fail も、2026-07-29 のレビューで
   // 指摘された「4000ms 閾値がホスト負荷下で再び flake する」問題も、根は同じ
   // 「wall-clock を assertion に使う」ことにあった。curl を stub 化して即座に失敗
   // させれば、検証対象を「hook が daemon 不在を正しくハンドリングするか」という
