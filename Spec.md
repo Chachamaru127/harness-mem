@@ -396,8 +396,12 @@ secondary or legacy inputs read as part of the same source. A source is not
 compliant if any part of its timer-driven path is unbounded, even if the rest
 of it is budgeted.
 
-- Each periodic ingest run has a bounded time budget. What counts against the
-  budget is implementation detail, not part of this contract.
+- Each periodic ingest run has a bounded time budget. A run here is one
+  scheduled pass over one input, not one timer firing: a timer that pulls
+  several inputs in sequence budgets each of them separately, so the worst-case
+  block for that timer is the sum of its inputs' budgets rather than a single
+  budget. What counts against an individual budget is implementation detail,
+  not part of this contract.
 - Each periodic ingest run also has a bounded amount of input it may read from
   any single source in that run. A time budget alone does not satisfy this: a
   run that loads an entire input into memory before processing it has already
