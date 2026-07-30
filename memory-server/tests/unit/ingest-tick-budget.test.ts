@@ -12,6 +12,23 @@ import {
 
 const COORDINATOR = resolve(import.meta.dir, "../../src/core/ingest-coordinator.ts");
 
+/**
+ * メソッド本体を切り出す。**両端のマーカーが見つかることを必ず assert する。**
+ *
+ * 素の `source.slice(start, source.indexOf(endMarker, start))` には静かな失敗がある:
+ * 終端マーカーがリネーム/移動されると `indexOf` が -1 を返し、`slice(start, -1)` は
+ * 「末尾の 1 文字を除く全体」を返す。結果 body にコーディネータ全体が入り、
+ * `toContain` 系の assert が対象と無関係に全部通る。`body.length > 0` では検出できない。
+ * (2026-07-30 レビュー指摘。§160-005c で塞いだ「テストが静かに通る」問題と同型。)
+ */
+function sliceMethodBody(source: string, startMarker: string, endMarker: string): string {
+  const start = source.indexOf(startMarker);
+  expect(start, `開始マーカーが見つからない: ${startMarker}`).toBeGreaterThan(-1);
+  const end = source.indexOf(endMarker, start);
+  expect(end, `終端マーカーが見つからない: ${endMarker} (開始: ${startMarker})`).toBeGreaterThan(start);
+  return source.slice(start, end);
+}
+
 const ORIGINAL = process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
 const ORIGINAL_READ_SLICE = process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES;
 
@@ -63,9 +80,7 @@ describe("§159-003b ingest tick budget", () => {
 
   test("claude_code の定期 ingest は最初のスライス後から budget を判定する", () => {
     const source = readFileSync(COORDINATOR, "utf8");
-    const start = source.indexOf("private ingestClaudeCodeSessions");
-    expect(start).toBeGreaterThan(-1);
-    const body = source.slice(start, source.indexOf("ingestClaudeCodeHistory()", start));
+    const body = sliceMethodBody(source, "private ingestClaudeCodeSessions", "ingestClaudeCodeHistory()");
 
     expect(body).toContain("resolveIngestTickBudgetMs()");
     expect(body).toContain("slicesProcessed > 0");
@@ -123,9 +138,7 @@ describe("§159-003e ingest read slice", () => {
     ] as const;
 
     for (const [method, nextMethod] of ranges) {
-      const start = source.indexOf(method);
-      expect(start).toBeGreaterThan(-1);
-      const body = source.slice(start, source.indexOf(nextMethod, start));
+      const body = sliceMethodBody(source, method, nextMethod);
       expect(body).toContain("resolveIngestReadSliceBytes()");
       expect(body).toMatch(/while \(\s*nextReadOffset < fileSize/);
       expect(body).toContain("readSync(");
@@ -137,12 +150,9 @@ describe("§159-003e ingest read slice", () => {
 
   test("最初のスライスは budget 超過済みでも処理する", () => {
     const source = readFileSync(COORDINATOR, "utf8");
-    const codexStart = source.indexOf("private ingestCodexSessionsRollouts");
-    const codexBody = source.slice(codexStart, source.indexOf("private ingestLegacyCodexHistoryFile", codexStart));
-    const cursorStart = source.indexOf("private ingestCursorHooksEvents");
-    const cursorBody = source.slice(cursorStart, source.indexOf("ingestCursorHistory()", cursorStart));
-    const claudeStart = source.indexOf("private ingestClaudeCodeSessions");
-    const claudeBody = source.slice(claudeStart, source.indexOf("ingestClaudeCodeHistory()", claudeStart));
+    const codexBody = sliceMethodBody(source, "private ingestCodexSessionsRollouts", "private ingestLegacyCodexHistoryFile");
+    const cursorBody = sliceMethodBody(source, "private ingestCursorHooksEvents", "ingestCursorHistory()");
+    const claudeBody = sliceMethodBody(source, "private ingestClaudeCodeSessions", "ingestClaudeCodeHistory()");
 
     expect(codexBody).toContain("slicesProcessed > 0");
     expect(codexBody).toContain("slicesProcessed += 1");
@@ -161,8 +171,7 @@ describe("§159-003e ingest read slice", () => {
     ] as const;
 
     for (const [method, nextMethod] of ranges) {
-      const start = source.indexOf(method);
-      const body = source.slice(start, source.indexOf(nextMethod, start));
+      const body = sliceMethodBody(source, method, nextMethod);
       expect(body).toContain("parsedChunk.consumedBytes === 0");
       expect(body).toContain("nextReadOffset >= fileSize");
       expect(body).toContain("bytesReadThisFile >=");
@@ -179,9 +188,7 @@ describe("§159-003e ingest read slice", () => {
 describe("§159-003c codex ingest tick budget", () => {
   test("codex rollouts は budget と読み込みバイト上限を持つ", () => {
     const source = readFileSync(COORDINATOR, "utf8");
-    const start = source.indexOf("private ingestCodexSessionsRollouts");
-    expect(start).toBeGreaterThan(-1);
-    const body = source.slice(start, source.indexOf("private ingestLegacyCodexHistoryFile", start));
+    const body = sliceMethodBody(source, "private ingestCodexSessionsRollouts", "private ingestLegacyCodexHistoryFile");
 
     expect(body).toContain("resolveIngestTickBudgetMs()");
     expect(body).toContain("resolveIngestMaxBytesPerFile()");
@@ -197,8 +204,7 @@ describe("§159-003c codex ingest tick budget", () => {
 
   test("読み込み合計は maxBytesPerFile で止める", () => {
     const source = readFileSync(COORDINATOR, "utf8");
-    const start = source.indexOf("private ingestCodexSessionsRollouts");
-    const body = source.slice(start, source.indexOf("private ingestLegacyCodexHistoryFile", start));
+    const body = sliceMethodBody(source, "private ingestCodexSessionsRollouts", "private ingestLegacyCodexHistoryFile");
 
     expect(body).toContain("bytesReadThisFile < maxBytesPerFile");
     expect(body).toContain("maxBytesPerFile - bytesReadThisFile");
@@ -282,9 +288,7 @@ describe("§159-003c codex ingest tick budget", () => {
 describe("§160-005c legacy codex history ingest 経路の直接検査", () => {
   test("ingestLegacyCodexHistoryFile は budget primitives を直接参照する", () => {
     const source = readFileSync(COORDINATOR, "utf8");
-    const start = source.indexOf("private ingestLegacyCodexHistoryFile");
-    expect(start).toBeGreaterThan(-1);
-    const body = source.slice(start, source.indexOf("private ingestCodexHistoryTick", start));
+    const body = sliceMethodBody(source, "private ingestLegacyCodexHistoryFile", "private ingestCodexHistoryTick");
     expect(body.length).toBeGreaterThan(0);
 
     // DoD (a): 4 つの primitive を直接参照していること
