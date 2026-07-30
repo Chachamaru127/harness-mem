@@ -1,0 +1,126 @@
+name: Test Suite
+
+# §160-008: `npm test` (repository behavior gate) はこれまで release.yml の
+# publish-npm job にしか配線されておらず、tag push まで一度も走らなかった。
+# その結果、2,600 件超のテストが緑であることを PR 時点で誰も検証できず、
+# 失敗はリリース直前に初めて表面化した (v0.29.2 の release gate drift と同型)。
+#
+# この workflow は publish-npm の「gate 部分」だけを PR / main push に前倒しする。
+# publish / tag 検証 / OIDC など release 固有のステップは持たない。
+#
+# path filter を付けないのは意図的。repository behavior gate は特定ディレクトリ
+# ではなくリポジトリ全体の契約 (hooks / skills / scripts / marketplace / spec) を
+# 検査するため、どの変更でも走らせる必要がある。
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+# 同一 PR に続けて push した場合、古い run は落とす (CI 時間の節約)。
+concurrency:
+  group: test-suite-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  repository-behavior-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          package-manager-cache: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.10"
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: mcp-server-go/go.mod
+          cache-dependency-path: mcp-server-go/go.sum
+
+      - name: Install runner prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y jq ripgrep
+
+      # release.yml は go-build job の artifact を bin/ に download するが、
+      # ここでは runner 自身のプラットフォーム 1 種だけを同 job 内で build する
+      # (artifact 受け渡しの配線を増やさないため)。
+      - name: Build Go MCP binary for this runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd mcp-server-go
+          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" \
+            -o ../bin/harness-mcp-linux-amd64 ./main.go
+          cd ..
+          chmod +x bin/harness-mcp-* || true
+
+      - name: Install UI dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd harness-mem-ui
+          bun install --frozen-lockfile
+
+      - name: Install memory-server dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd memory-server
+          bun install --frozen-lockfile
+
+      - name: Install MCP server dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd mcp-server
+          npm ci
+          npm run build --silent
+
+      - name: Restore multilingual-e5 cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.harness-mem/models/multilingual-e5
+          key: test-suite-embedding-${{ runner.os }}-multilingual-e5-v1
+
+      - name: Ensure embedding model
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/harness-mem model pull multilingual-e5 --yes
+
+      - name: Run UI quality gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd harness-mem-ui
+          bun run test:ui
+          bun run typecheck
+
+      - name: Run repository behavior gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+
+      - name: Run memory server typecheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd memory-server
+          bun run typecheck
