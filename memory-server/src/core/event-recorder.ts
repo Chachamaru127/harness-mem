@@ -48,6 +48,24 @@ import { runAutoLinker } from "./auto-linker.js";
 import { extractCodeProvenance } from "./provenance-extractor.js";
 import { stripPrivateBlocks } from "./privacy-tags.js";
 import { extractEntitiesAndRelations } from "./entity-extractor.js";
+import { resolveSlowTickLogMs } from "./ingest-coordinator.js";
+
+// ---------------------------------------------------------------------------
+// §160-001: recordEvent 内訳計測フック（bench 専用、既定は no-op）
+//
+// harness-mem-core.ts の `measureSyncSegment`（consolidation 用）と同じパターン。
+// 通常運用では console.warn が閾値超過時だけ発火するのは同じだが、bench スクリプト
+// (scripts/s160-001-recordevent-cost-by-db-size.ts) は「遅い区間だけ」ではなく
+// 全区間の実測値が必要なため、sink を設定した時だけ毎回コールバックする。
+// sink 未設定時は既存の測定パターンと完全に同じ動作（閾値超過時のみ warn）。
+// ---------------------------------------------------------------------------
+type EventRecorderSegmentSink = (label: string, elapsedMs: number) => void;
+let eventRecorderSegmentSink: EventRecorderSegmentSink | null = null;
+
+/** bench / test 専用。null を渡すと解除する。 */
+export function setEventRecorderSegmentSink(sink: EventRecorderSegmentSink | null): void {
+  eventRecorderSegmentSink = sink;
+}
 
 // ---------------------------------------------------------------------------
 // ローカルユーティリティ（recordEvent ロジックで使用する純粋関数）
@@ -529,6 +547,31 @@ export class EventRecorder {
   private linkEntityStmt: ReturnType<Database["query"]> | null = null;
 
   constructor(private readonly deps: EventRecorderDeps) {}
+
+  /**
+   * §160-001: recordEvent の中で event loop を塞いでいる同期区間を区間ごとに計測する。
+   *
+   * harness-mem-core.ts の consolidation 用 `measureSyncSegment` と同じパターン
+   * （Date.now() で計測、閾値超過時のみ console.warn）。bench 専用の sink が
+   * 設定されている場合は、閾値に関わらず毎回コールバックする（§160-001 の
+   * サイズ別内訳測定のため、閾値未満の区間も数値が必要）。
+   *
+   * consolidation 版は Date.now() だが、recordEvent の区間は概ね 1ms 未満〜数 ms と
+   * 短いため、Date.now() の 1ms 粒度では丸め誤差が支配してしまう。ここでは
+   * performance.now()（サブミリ秒精度）を使う。
+   */
+  private measureSyncSegment<T>(label: string, fn: () => T): T {
+    const startedAt = performance.now();
+    try {
+      return fn();
+    } finally {
+      const elapsed = performance.now() - startedAt;
+      eventRecorderSegmentSink?.(label, elapsed);
+      if (elapsed >= resolveSlowTickLogMs()) {
+        console.warn(`[event] slow sync segment: ${label} blocked the event loop for ${elapsed.toFixed(1)}ms`);
+      }
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // ストリームイベント管理
@@ -1283,34 +1326,38 @@ export class EventRecorder {
 
     try {
       const transaction = this.deps.db.transaction(() => {
-        ensureSession(this.deps.db, event.session_id, event.platform, normalizedProject, timestamp, event.correlation_id, userId, teamId);
+        this.measureSyncSegment("ensure_session", () =>
+          ensureSession(this.deps.db, event.session_id, event.platform, normalizedProject, timestamp, event.correlation_id, userId, teamId)
+        );
 
-        const eventInsert = this.deps.db
-          .query(`
-            INSERT OR IGNORE INTO mem_events(
-              event_id, platform, project, session_id, event_type, ts,
-              payload_json, tags_json, privacy_tags_json, dedupe_hash, observation_id, correlation_id,
-              user_id, team_id, metadata_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `)
-          .run(
-            eventId,
-            event.platform,
-            normalizedProject,
-            event.session_id,
-            event.event_type,
-            timestamp,
-            redactedPayload,
-            JSON.stringify(tags),
-            JSON.stringify(privacyTags),
-            dedupeHash,
-            observationId,
-            event.correlation_id ?? null,
-            userId,
-            teamId,
-            persistedMetadataJson,
-            current
-          );
+        const eventInsert = this.measureSyncSegment("event_insert", () =>
+          this.deps.db
+            .query(`
+              INSERT OR IGNORE INTO mem_events(
+                event_id, platform, project, session_id, event_type, ts,
+                payload_json, tags_json, privacy_tags_json, dedupe_hash, observation_id, correlation_id,
+                user_id, team_id, metadata_json, created_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `)
+            .run(
+              eventId,
+              event.platform,
+              normalizedProject,
+              event.session_id,
+              event.event_type,
+              timestamp,
+              redactedPayload,
+              JSON.stringify(tags),
+              JSON.stringify(privacyTags),
+              dedupeHash,
+              observationId,
+              event.correlation_id ?? null,
+              userId,
+              teamId,
+              persistedMetadataJson,
+              current
+            )
+        );
 
         const eventChanges = Number((eventInsert as { changes?: number }).changes ?? 0);
         if (eventChanges === 0) {
@@ -1318,16 +1365,18 @@ export class EventRecorder {
         }
 
         if (contentDedupeHash) {
-          const existingObservation = this.deps.db
-            .query(`
-              SELECT id
-              FROM mem_observations
-              WHERE content_dedupe_hash = ?
-                AND archived_at IS NULL
-                ${expiredFilterSql("mem_observations")}
-              LIMIT 1
-            `)
-            .get(contentDedupeHash) as { id: string } | null;
+          const existingObservation = this.measureSyncSegment("dedupe_lookup", () =>
+            this.deps.db
+              .query(`
+                SELECT id
+                FROM mem_observations
+                WHERE content_dedupe_hash = ?
+                  AND archived_at IS NULL
+                  ${expiredFilterSql("mem_observations")}
+                LIMIT 1
+              `)
+              .get(contentDedupeHash) as { id: string } | null
+          );
           if (existingObservation?.id) {
             this.deps.db
               .query(`UPDATE mem_events SET observation_id = ? WHERE event_id = ?`)
@@ -1363,94 +1412,98 @@ export class EventRecorder {
         const titleFts = observationBase.title ? segmentJapaneseForFts(observationBase.title) : null;
         const contentFts = segmentJapaneseForFts(redactedContent);
 
-        this.deps.db
-          .query(`
-            INSERT INTO mem_observations(
-              id, event_id, platform, project, session_id,
-              title, content, content_redacted, content_dedupe_hash, raw_text, observation_type, memory_type,
-              tags_json, privacy_tags_json,
-              signal_score, user_id, team_id,
-              event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
-              thread_id, topic, expires_at, branch,
-              title_fts, content_fts,
-              created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-              title = excluded.title,
-              content = excluded.content,
-              content_redacted = excluded.content_redacted,
-              title_fts = excluded.title_fts,
-              content_fts = excluded.content_fts,
-              content_dedupe_hash = excluded.content_dedupe_hash,
-              raw_text = excluded.raw_text,
-              observation_type = excluded.observation_type,
-              memory_type = excluded.memory_type,
-              tags_json = excluded.tags_json,
-              privacy_tags_json = excluded.privacy_tags_json,
-              signal_score = excluded.signal_score,
-              event_time = excluded.event_time,
-              observed_at = excluded.observed_at,
-              valid_from = excluded.valid_from,
-              valid_to = excluded.valid_to,
-              supersedes = excluded.supersedes,
-              invalidated_at = excluded.invalidated_at,
-              thread_id = excluded.thread_id,
-              topic = excluded.topic,
-              expires_at = excluded.expires_at,
-              branch = excluded.branch,
-              updated_at = excluded.updated_at
-          `)
-          .run(
-            observationId,
-            eventId,
-            event.platform,
-            normalizedProject,
-            event.session_id,
-            observationBase.title,
-            observationBase.content,
-            redactedContent,
-            contentDedupeHash,
-            rawText,
-            observationType,
-            memoryType,
-            JSON.stringify(tags),
-            JSON.stringify(privacyTags),
-            signalScore,
-            userId,
-            teamId,
-            temporalAnchors.event_time,
-            temporalAnchors.observed_at,
-            temporalAnchors.valid_from,
-            temporalAnchors.valid_to,
-            temporalAnchors.supersedes,
-            temporalAnchors.invalidated_at,
-            threadId,
-            topic,
-            expiresAt,
-            branch,
-            titleFts,
-            contentFts,
-            timestamp,
-            current
-          );
-
-        for (const tag of tags) {
+        this.measureSyncSegment("observation_insert", () =>
           this.deps.db
             .query(`
-              INSERT OR IGNORE INTO mem_tags(observation_id, tag, tag_type, created_at)
-              VALUES (?, ?, 'tag', ?)
+              INSERT INTO mem_observations(
+                id, event_id, platform, project, session_id,
+                title, content, content_redacted, content_dedupe_hash, raw_text, observation_type, memory_type,
+                tags_json, privacy_tags_json,
+                signal_score, user_id, team_id,
+                event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
+                thread_id, topic, expires_at, branch,
+                title_fts, content_fts,
+                created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title,
+                content = excluded.content,
+                content_redacted = excluded.content_redacted,
+                title_fts = excluded.title_fts,
+                content_fts = excluded.content_fts,
+                content_dedupe_hash = excluded.content_dedupe_hash,
+                raw_text = excluded.raw_text,
+                observation_type = excluded.observation_type,
+                memory_type = excluded.memory_type,
+                tags_json = excluded.tags_json,
+                privacy_tags_json = excluded.privacy_tags_json,
+                signal_score = excluded.signal_score,
+                event_time = excluded.event_time,
+                observed_at = excluded.observed_at,
+                valid_from = excluded.valid_from,
+                valid_to = excluded.valid_to,
+                supersedes = excluded.supersedes,
+                invalidated_at = excluded.invalidated_at,
+                thread_id = excluded.thread_id,
+                topic = excluded.topic,
+                expires_at = excluded.expires_at,
+                branch = excluded.branch,
+                updated_at = excluded.updated_at
             `)
-            .run(observationId, tag, current);
-        }
+            .run(
+              observationId,
+              eventId,
+              event.platform,
+              normalizedProject,
+              event.session_id,
+              observationBase.title,
+              observationBase.content,
+              redactedContent,
+              contentDedupeHash,
+              rawText,
+              observationType,
+              memoryType,
+              JSON.stringify(tags),
+              JSON.stringify(privacyTags),
+              signalScore,
+              userId,
+              teamId,
+              temporalAnchors.event_time,
+              temporalAnchors.observed_at,
+              temporalAnchors.valid_from,
+              temporalAnchors.valid_to,
+              temporalAnchors.supersedes,
+              temporalAnchors.invalidated_at,
+              threadId,
+              topic,
+              expiresAt,
+              branch,
+              titleFts,
+              contentFts,
+              timestamp,
+              current
+            )
+        );
 
-        for (const tag of privacyTags) {
-          this.deps.db
-            .query(`
-              INSERT OR IGNORE INTO mem_tags(observation_id, tag, tag_type, created_at)
-              VALUES (?, ?, 'privacy', ?)
-            `)
-            .run(observationId, tag, current);
-        }
+        this.measureSyncSegment("tags_insert", () => {
+          for (const tag of tags) {
+            this.deps.db
+              .query(`
+                INSERT OR IGNORE INTO mem_tags(observation_id, tag, tag_type, created_at)
+                VALUES (?, ?, 'tag', ?)
+              `)
+              .run(observationId, tag, current);
+          }
+
+          for (const tag of privacyTags) {
+            this.deps.db
+              .query(`
+                INSERT OR IGNORE INTO mem_tags(observation_id, tag, tag_type, created_at)
+                VALUES (?, ?, 'privacy', ?)
+              `)
+              .run(observationId, tag, current);
+          }
+        });
 
         // S74-005: Code Provenance — tool_use イベントから file: タグと code_provenance を付与
         if (event.event_type === "tool_use") {
@@ -1488,7 +1541,9 @@ export class EventRecorder {
         const embeddingSource = rawText ?? redactedContent;
         if (!deferEmbedding) {
           try {
-            this.upsertVector(observationId, embeddingSource, timestamp);
+            this.measureSyncSegment("vector_upsert", () =>
+              this.upsertVector(observationId, embeddingSource, timestamp)
+            );
           } catch (error) {
             if (event.event_type !== "checkpoint" || !isRetryableWriteEmbeddingFailure(error)) {
               throw error;
@@ -1497,24 +1552,38 @@ export class EventRecorder {
           }
         }
         if (!deferEmbedding) {
-          this.extractAndStoreEntities(observationId, redactedContent, timestamp);
+          this.measureSyncSegment("extract_entities", () =>
+            this.extractAndStoreEntities(observationId, redactedContent, timestamp)
+          );
           // S78-C02: Populate co-occurrence relations for graph memory
-          this.extractAndStoreGraphRelations(observationId, redactedContent, tags, timestamp, temporalAnchors);
-          this.autoLinkObservation(observationId, event.session_id, timestamp);
-          this.autoSupersedes(observationId, normalizedProject, observationType, redactedContent, timestamp);
-          this.runSemanticAutoLinkerIfEnabled(observationId, event.session_id, timestamp);
-          this.insertNuggets(observationId, redactedContent, timestamp);
+          this.measureSyncSegment("extract_graph_relations", () =>
+            this.extractAndStoreGraphRelations(observationId, redactedContent, tags, timestamp, temporalAnchors)
+          );
+          this.measureSyncSegment("auto_link", () =>
+            this.autoLinkObservation(observationId, event.session_id, timestamp)
+          );
+          this.measureSyncSegment("auto_supersedes", () =>
+            this.autoSupersedes(observationId, normalizedProject, observationType, redactedContent, timestamp)
+          );
+          this.measureSyncSegment("semantic_auto_linker", () =>
+            this.runSemanticAutoLinkerIfEnabled(observationId, event.session_id, timestamp)
+          );
+          this.measureSyncSegment("insert_nuggets", () =>
+            this.insertNuggets(observationId, redactedContent, timestamp)
+          );
         }
 
         if (isPrivateTag(privacyTags)) {
-          this.deps.db.query(`
-            INSERT INTO mem_audit_log(action, actor, target_type, target_id, details_json, created_at)
-            VALUES ('privacy_filter', ?, 'event', ?, ?, ?)
-          `).run(
-            event.platform,
-            eventId,
-            JSON.stringify({ reason: "private_tag", path: `${event.platform}/${normalizedProject}`, privacy_tags: privacyTags }),
-            current
+          this.measureSyncSegment("audit_log", () =>
+            this.deps.db.query(`
+              INSERT INTO mem_audit_log(action, actor, target_type, target_id, details_json, created_at)
+              VALUES ('privacy_filter', ?, 'event', ?, ?, ?)
+            `).run(
+              event.platform,
+              eventId,
+              JSON.stringify({ reason: "private_tag", path: `${event.platform}/${normalizedProject}`, privacy_tags: privacyTags }),
+              current
+            )
           );
         }
 

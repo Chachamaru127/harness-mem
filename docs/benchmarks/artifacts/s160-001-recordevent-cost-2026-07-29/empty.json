@@ -1,0 +1,163 @@
+{
+  "db_size_label": "empty",
+  "db_path": "/var/folders/3f/917p7ynn7976192t0qv1gjhm0000gp/T/s160-001-empty-hjULTT/empty.db",
+  "db_bytes": 7275560,
+  "observation_count": 55,
+  "vector_model": "fallback:local-hash-v3",
+  "e2e": {
+    "label": "e2e_recordEvent",
+    "n": 21,
+    "p50_ms": 4.286,
+    "p90_ms": 7.122,
+    "min_ms": 2.174,
+    "max_ms": 8.335
+  },
+  "internal_segments": [
+    {
+      "label": "ensure_session",
+      "n": 31,
+      "p50_ms": 0.015,
+      "p90_ms": 0.023,
+      "min_ms": 0.01,
+      "max_ms": 0.046
+    },
+    {
+      "label": "event_insert",
+      "n": 31,
+      "p50_ms": 0.011,
+      "p90_ms": 0.018,
+      "min_ms": 0.008,
+      "max_ms": 0.057
+    },
+    {
+      "label": "dedupe_lookup",
+      "n": 31,
+      "p50_ms": 0.032,
+      "p90_ms": 0.05,
+      "min_ms": 0.016,
+      "max_ms": 0.082
+    },
+    {
+      "label": "observation_insert",
+      "n": 31,
+      "p50_ms": 0.057,
+      "p90_ms": 0.073,
+      "min_ms": 0.047,
+      "max_ms": 0.12
+    },
+    {
+      "label": "tags_insert",
+      "n": 31,
+      "p50_ms": 0.001,
+      "p90_ms": 0.01,
+      "min_ms": 0,
+      "max_ms": 0.031
+    },
+    {
+      "label": "vector_upsert",
+      "n": 31,
+      "p50_ms": 0.216,
+      "p90_ms": 0.308,
+      "min_ms": 0.141,
+      "max_ms": 0.594
+    },
+    {
+      "label": "extract_entities",
+      "n": 31,
+      "p50_ms": 0.015,
+      "p90_ms": 0.021,
+      "min_ms": 0.009,
+      "max_ms": 0.046
+    },
+    {
+      "label": "extract_graph_relations",
+      "n": 31,
+      "p50_ms": 0.015,
+      "p90_ms": 0.023,
+      "min_ms": 0.01,
+      "max_ms": 0.07
+    },
+    {
+      "label": "auto_link",
+      "n": 31,
+      "p50_ms": 0.057,
+      "p90_ms": 0.101,
+      "min_ms": 0.037,
+      "max_ms": 0.202
+    },
+    {
+      "label": "auto_supersedes",
+      "n": 31,
+      "p50_ms": 1.693,
+      "p90_ms": 3.958,
+      "min_ms": 0.243,
+      "max_ms": 5.041
+    },
+    {
+      "label": "semantic_auto_linker",
+      "n": 31,
+      "p50_ms": 0.003,
+      "p90_ms": 0.005,
+      "min_ms": 0.001,
+      "max_ms": 0.006
+    },
+    {
+      "label": "insert_nuggets",
+      "n": 31,
+      "p50_ms": 0.199,
+      "p90_ms": 0.31,
+      "min_ms": 0.134,
+      "max_ms": 0.335
+    },
+    {
+      "label": "audit_log",
+      "n": 10,
+      "p50_ms": 0.013,
+      "p90_ms": 0.014,
+      "min_ms": 0.01,
+      "max_ms": 0.18
+    }
+  ],
+  "isolated_segments": [
+    {
+      "label": "dedupe_lookup_isolated",
+      "n": 21,
+      "p50_ms": 0.002,
+      "p90_ms": 0.003,
+      "min_ms": 0.002,
+      "max_ms": 0.056
+    },
+    {
+      "label": "observation_insert_no_fts_isolated",
+      "n": 21,
+      "p50_ms": 0.094,
+      "p90_ms": 0.113,
+      "min_ms": 0.076,
+      "max_ms": 0.216
+    },
+    {
+      "label": "fts_insert_isolated",
+      "n": 21,
+      "p50_ms": 0.071,
+      "p90_ms": 0.122,
+      "min_ms": 0.051,
+      "max_ms": 0.189
+    },
+    {
+      "label": "vector_upsert_db_write_isolated",
+      "n": 21,
+      "p50_ms": 0.129,
+      "p90_ms": 0.233,
+      "min_ms": 0.112,
+      "max_ms": 3.548
+    },
+    {
+      "label": "audit_log_insert_isolated",
+      "n": 21,
+      "p50_ms": 0.023,
+      "p90_ms": 0.034,
+      "min_ms": 0.022,
+      "max_ms": 0.078
+    }
+  ]
+}

@@ -315,6 +315,16 @@ export function initSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_obs_project_session_created
       ON mem_observations(project, session_id, created_at, id);
 
+    -- §160-002: auto-linker Strategy B (linkByTemporalProximity) queries
+    -- "WHERE session_id = ? AND id <> ? AND created_at <= ? ORDER BY
+    -- created_at DESC LIMIT 1" without a project filter, so the
+    -- project-first index above cannot be seeked and SQLite falls back to
+    -- a full table/index SCAN. session_id first lets SQLite SEARCH; id is
+    -- included so the covering index also serves as the ORDER BY
+    -- created_at DESC, id DESC tie-breaker without a separate sort.
+    CREATE INDEX IF NOT EXISTS idx_mem_obs_session_created
+      ON mem_observations(session_id, created_at, id);
+
     CREATE TABLE IF NOT EXISTS mem_tags (
       observation_id TEXT NOT NULL,
       tag TEXT NOT NULL,
@@ -827,6 +837,11 @@ export function migrateSchema(db: Database): void {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_mem_obs_project_session_created
       ON mem_observations(project, session_id, created_at, id);
+
+    -- §160-002: see initSchema for rationale (session_id-first covering
+    -- index for auto-linker's temporal-proximity lookup).
+    CREATE INDEX IF NOT EXISTS idx_mem_obs_session_created
+      ON mem_observations(session_id, created_at, id);
 
     CREATE INDEX IF NOT EXISTS idx_mem_vectors_model_dim_obs
       ON mem_vectors(model, dimension, observation_id);

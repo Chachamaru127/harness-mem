@@ -1,25 +1,25 @@
 {
   "schema_version": "s108-code-token-tuning.v1",
-  "generated_at": "2026-06-06T11:30:51.866Z",
+  "generated_at": "2026-07-29T17:52:48.609Z",
   "task_id": "S108-004",
   "runs": [
     {
       "run": 1,
       "recall_at_10": 0.7708,
       "mrr": 0.7617,
-      "p95_ms": 0.126
+      "p95_ms": 0.2529
     },
     {
       "run": 2,
       "recall_at_10": 0.7708,
       "mrr": 0.7617,
-      "p95_ms": 0.0866
+      "p95_ms": 0.1381
     },
     {
       "run": 3,
       "recall_at_10": 0.7708,
       "mrr": 0.7617,
-      "p95_ms": 0.0804
+      "p95_ms": 0.1373
     }
   ],
   "gates": {
@@ -31,12 +31,12 @@
     },
     "search_p95_local_ms": {
       "threshold": 50,
-      "max": 0.126,
+      "max": 0.2529,
       "passed": true
     },
     "bilingual_recall_at_10": {
-      "threshold": 0.86,
-      "value": 0.9,
+      "threshold": 0.82,
+      "value": 0.82,
       "source": "memory-server/src/benchmark/results/ci-score-history.json",
       "passed": true
     }

@@ -156,6 +156,12 @@ export function linkByTemporalProximity(
   sessionId: string,
   createdAt: string,
 ): number {
+  // §160-002: ORDER BY created_at DESC, id DESC は tie-breaker。同一
+  // created_at (同一ミリ秒) の行が複数あるとき、created_at 単独の ORDER
+  // BY は走査順（＝使われるインデックスの列順）に依存して非決定になる。
+  // id を明示的な第2ソートキーにすることで、どのインデックスが選ばれても
+  // 結果が一意に決まる。id は生成時刻を先頭に持つため、created_at が同値
+  // の場合は id が大きい方（＝より新しく採番された方）を選ぶ。
   const previous = db
     .query<{ id: string }, [string, string, string]>(`
       SELECT id
@@ -163,7 +169,7 @@ export function linkByTemporalProximity(
       WHERE session_id = ?
         AND id <> ?
         AND created_at <= ?
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT 1
     `)
     .get(sessionId, observationId, createdAt);

@@ -1,0 +1,737 @@
+{
+  "schema_version": "s154-cjk-discrimination.v1",
+  "generated_at": "2026-07-29T17:52:48.609Z",
+  "task_id": "S154-152",
+  "fixture": {
+    "path": "tests/benchmarks/fixtures/cjk-discrimination.json",
+    "count": 11
+  },
+  "min_delta": 0.02,
+  "regression_delta": 0.02,
+  "variants": {
+    "baseline": {
+      "label": "baseline",
+      "env": {
+        "HARNESS_MEM_DISABLE_CJK_NORMALIZE": "1",
+        "HARNESS_MEM_LEXICAL_BOOST": null,
+        "HARNESS_MEM_DUAL_QUERY": null
+      },
+      "per_case": [
+        {
+          "case_id": "cjk-nfkc-001",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_cjk-nfkc-001-cjk-nfkc-001-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 1.2358
+        },
+        {
+          "case_id": "cjk-nfkc-002",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_cjk-nfkc-002-cjk-nfkc-002-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.3936
+        },
+        {
+          "case_id": "cjk-nfkc-003",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_cjk-nfkc-003-cjk-nfkc-003-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.3103
+        },
+        {
+          "case_id": "cjk-nfkc-004",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_cjk-nfkc-004-cjk-nfkc-004-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.2823
+        },
+        {
+          "case_id": "cjk-ortho-001",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_cjk-ortho-001-cjk-ortho-001-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.8506
+        },
+        {
+          "case_id": "cjk-ortho-002",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_cjk-ortho-002-cjk-ortho-002-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 1.0495
+        },
+        {
+          "case_id": "cjk-ortho-003",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_cjk-ortho-003-cjk-ortho-003-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.7813
+        },
+        {
+          "case_id": "cjk-ortho-004",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_cjk-ortho-004-cjk-ortho-004-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.7663
+        },
+        {
+          "case_id": "cjk-mixed-001",
+          "slice": "mixed_en_ja",
+          "expected_observation_id": "obs_cjk-mixed-001-cjk-mixed-001-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.6393
+        },
+        {
+          "case_id": "cjk-mixed-002",
+          "slice": "mixed_en_ja",
+          "expected_observation_id": "obs_cjk-mixed-002-cjk-mixed-002-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.6004
+        },
+        {
+          "case_id": "cjk-mixed-003",
+          "slice": "mixed_en_ja",
+          "expected_observation_id": "obs_cjk-mixed-003-cjk-mixed-003-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.5365
+        }
+      ],
+      "per_slice": {
+        "nfkc_fixable": {
+          "recall": 0,
+          "top1": 0,
+          "mrr": 0
+        },
+        "non_nfkc_orthographic": {
+          "recall": 0,
+          "top1": 0,
+          "mrr": 0
+        },
+        "mixed_en_ja": {
+          "recall": 0,
+          "top1": 0,
+          "mrr": 0
+        }
+      },
+      "fts_path_asserted": true,
+      "search_request": {
+        "limit": 26,
+        "vector_search": false,
+        "graph_weight": 0,
+        "expand_links": false,
+        "include_private": true,
+        "strict_project": true
+      }
+    },
+    "candidate": {
+      "label": "candidate",
+      "env": {
+        "HARNESS_MEM_DISABLE_CJK_NORMALIZE": null,
+        "HARNESS_MEM_LEXICAL_BOOST": "1",
+        "HARNESS_MEM_DUAL_QUERY": "1"
+      },
+      "per_case": [
+        {
+          "case_id": "cjk-nfkc-001",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_cjk-nfkc-001-cjk-nfkc-001-e-target",
+          "retrieved_ids": [
+            "obs_cjk-nfkc-001-cjk-nfkc-001-e-target"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 1.8239
+        },
+        {
+          "case_id": "cjk-nfkc-002",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_cjk-nfkc-002-cjk-nfkc-002-e-target",
+          "retrieved_ids": [
+            "obs_cjk-nfkc-002-cjk-nfkc-002-e-target"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 0.9849
+        },
+        {
+          "case_id": "cjk-nfkc-003",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_cjk-nfkc-003-cjk-nfkc-003-e-target",
+          "retrieved_ids": [
+            "obs_cjk-nfkc-003-cjk-nfkc-003-e-target"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 2.0273
+        },
+        {
+          "case_id": "cjk-nfkc-004",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_cjk-nfkc-004-cjk-nfkc-004-e-target",
+          "retrieved_ids": [
+            "obs_cjk-nfkc-004-cjk-nfkc-004-e-target"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 0.7185
+        },
+        {
+          "case_id": "cjk-ortho-001",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_cjk-ortho-001-cjk-ortho-001-e-target",
+          "retrieved_ids": [
+            "obs_cjk-ortho-001-cjk-ortho-001-e-target",
+            "obs_cjk-ortho-001-cjk-ortho-001-e-d1",
+            "obs_cjk-ortho-001-cjk-ortho-001-e-d2",
+            "obs_cjk-ortho-001-cjk-ortho-001-e-d3"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 1.2299
+        },
+        {
+          "case_id": "cjk-ortho-002",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_cjk-ortho-002-cjk-ortho-002-e-target",
+          "retrieved_ids": [
+            "obs_cjk-ortho-002-cjk-ortho-002-e-target",
+            "obs_cjk-ortho-002-cjk-ortho-002-e-d1",
+            "obs_cjk-ortho-002-cjk-ortho-002-e-d3",
+            "obs_cjk-ortho-002-cjk-ortho-002-e-d2"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 1.5242
+        },
+        {
+          "case_id": "cjk-ortho-003",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_cjk-ortho-003-cjk-ortho-003-e-target",
+          "retrieved_ids": [
+            "obs_cjk-ortho-003-cjk-ortho-003-e-target"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 1.8662
+        },
+        {
+          "case_id": "cjk-ortho-004",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_cjk-ortho-004-cjk-ortho-004-e-target",
+          "retrieved_ids": [
+            "obs_cjk-ortho-004-cjk-ortho-004-e-target",
+            "obs_cjk-ortho-004-cjk-ortho-004-e-d1",
+            "obs_cjk-ortho-004-cjk-ortho-004-e-d3",
+            "obs_cjk-ortho-004-cjk-ortho-004-e-d2"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 1.6238
+        },
+        {
+          "case_id": "cjk-mixed-001",
+          "slice": "mixed_en_ja",
+          "expected_observation_id": "obs_cjk-mixed-001-cjk-mixed-001-e-target",
+          "retrieved_ids": [
+            "obs_cjk-mixed-001-cjk-mixed-001-e-target",
+            "obs_cjk-mixed-001-cjk-mixed-001-e-d3"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 1.5037
+        },
+        {
+          "case_id": "cjk-mixed-002",
+          "slice": "mixed_en_ja",
+          "expected_observation_id": "obs_cjk-mixed-002-cjk-mixed-002-e-target",
+          "retrieved_ids": [
+            "obs_cjk-mixed-002-cjk-mixed-002-e-target",
+            "obs_cjk-mixed-002-cjk-mixed-002-e-d1"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 1.9441
+        },
+        {
+          "case_id": "cjk-mixed-003",
+          "slice": "mixed_en_ja",
+          "expected_observation_id": "obs_cjk-mixed-003-cjk-mixed-003-e-target",
+          "retrieved_ids": [
+            "obs_cjk-mixed-003-cjk-mixed-003-e-target",
+            "obs_cjk-mixed-003-cjk-mixed-003-e-d1",
+            "obs_cjk-mixed-003-cjk-mixed-003-e-d2",
+            "obs_cjk-mixed-003-cjk-mixed-003-e-d3"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 1.8118
+        }
+      ],
+      "per_slice": {
+        "nfkc_fixable": {
+          "recall": 1,
+          "top1": 1,
+          "mrr": 1
+        },
+        "non_nfkc_orthographic": {
+          "recall": 1,
+          "top1": 1,
+          "mrr": 1
+        },
+        "mixed_en_ja": {
+          "recall": 1,
+          "top1": 1,
+          "mrr": 1
+        }
+      },
+      "fts_path_asserted": true,
+      "search_request": {
+        "limit": 26,
+        "vector_search": false,
+        "graph_weight": 0,
+        "expand_links": false,
+        "include_private": true,
+        "strict_project": true
+      }
+    }
+  },
+  "per_case": [
+    {
+      "case_id": "cjk-nfkc-001",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_cjk-nfkc-001-cjk-nfkc-001-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 1.2358,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "cjk-nfkc-002",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_cjk-nfkc-002-cjk-nfkc-002-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.3936,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "cjk-nfkc-003",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_cjk-nfkc-003-cjk-nfkc-003-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.3103,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "cjk-nfkc-004",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_cjk-nfkc-004-cjk-nfkc-004-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.2823,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "cjk-ortho-001",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_cjk-ortho-001-cjk-ortho-001-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.8506,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "cjk-ortho-002",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_cjk-ortho-002-cjk-ortho-002-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 1.0495,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "cjk-ortho-003",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_cjk-ortho-003-cjk-ortho-003-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.7813,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "cjk-ortho-004",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_cjk-ortho-004-cjk-ortho-004-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.7663,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "cjk-mixed-001",
+      "slice": "mixed_en_ja",
+      "expected_observation_id": "obs_cjk-mixed-001-cjk-mixed-001-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.6393,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "cjk-mixed-002",
+      "slice": "mixed_en_ja",
+      "expected_observation_id": "obs_cjk-mixed-002-cjk-mixed-002-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.6004,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "cjk-mixed-003",
+      "slice": "mixed_en_ja",
+      "expected_observation_id": "obs_cjk-mixed-003-cjk-mixed-003-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.5365,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "cjk-nfkc-001",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_cjk-nfkc-001-cjk-nfkc-001-e-target",
+      "retrieved_ids": [
+        "obs_cjk-nfkc-001-cjk-nfkc-001-e-target"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 1.8239,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "cjk-nfkc-002",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_cjk-nfkc-002-cjk-nfkc-002-e-target",
+      "retrieved_ids": [
+        "obs_cjk-nfkc-002-cjk-nfkc-002-e-target"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 0.9849,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "cjk-nfkc-003",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_cjk-nfkc-003-cjk-nfkc-003-e-target",
+      "retrieved_ids": [
+        "obs_cjk-nfkc-003-cjk-nfkc-003-e-target"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 2.0273,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "cjk-nfkc-004",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_cjk-nfkc-004-cjk-nfkc-004-e-target",
+      "retrieved_ids": [
+        "obs_cjk-nfkc-004-cjk-nfkc-004-e-target"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 0.7185,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "cjk-ortho-001",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_cjk-ortho-001-cjk-ortho-001-e-target",
+      "retrieved_ids": [
+        "obs_cjk-ortho-001-cjk-ortho-001-e-target",
+        "obs_cjk-ortho-001-cjk-ortho-001-e-d1",
+        "obs_cjk-ortho-001-cjk-ortho-001-e-d2",
+        "obs_cjk-ortho-001-cjk-ortho-001-e-d3"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 1.2299,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "cjk-ortho-002",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_cjk-ortho-002-cjk-ortho-002-e-target",
+      "retrieved_ids": [
+        "obs_cjk-ortho-002-cjk-ortho-002-e-target",
+        "obs_cjk-ortho-002-cjk-ortho-002-e-d1",
+        "obs_cjk-ortho-002-cjk-ortho-002-e-d3",
+        "obs_cjk-ortho-002-cjk-ortho-002-e-d2"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 1.5242,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "cjk-ortho-003",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_cjk-ortho-003-cjk-ortho-003-e-target",
+      "retrieved_ids": [
+        "obs_cjk-ortho-003-cjk-ortho-003-e-target"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 1.8662,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "cjk-ortho-004",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_cjk-ortho-004-cjk-ortho-004-e-target",
+      "retrieved_ids": [
+        "obs_cjk-ortho-004-cjk-ortho-004-e-target",
+        "obs_cjk-ortho-004-cjk-ortho-004-e-d1",
+        "obs_cjk-ortho-004-cjk-ortho-004-e-d3",
+        "obs_cjk-ortho-004-cjk-ortho-004-e-d2"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 1.6238,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "cjk-mixed-001",
+      "slice": "mixed_en_ja",
+      "expected_observation_id": "obs_cjk-mixed-001-cjk-mixed-001-e-target",
+      "retrieved_ids": [
+        "obs_cjk-mixed-001-cjk-mixed-001-e-target",
+        "obs_cjk-mixed-001-cjk-mixed-001-e-d3"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 1.5037,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "cjk-mixed-002",
+      "slice": "mixed_en_ja",
+      "expected_observation_id": "obs_cjk-mixed-002-cjk-mixed-002-e-target",
+      "retrieved_ids": [
+        "obs_cjk-mixed-002-cjk-mixed-002-e-target",
+        "obs_cjk-mixed-002-cjk-mixed-002-e-d1"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 1.9441,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "cjk-mixed-003",
+      "slice": "mixed_en_ja",
+      "expected_observation_id": "obs_cjk-mixed-003-cjk-mixed-003-e-target",
+      "retrieved_ids": [
+        "obs_cjk-mixed-003-cjk-mixed-003-e-target",
+        "obs_cjk-mixed-003-cjk-mixed-003-e-d1",
+        "obs_cjk-mixed-003-cjk-mixed-003-e-d2",
+        "obs_cjk-mixed-003-cjk-mixed-003-e-d3"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 1.8118,
+      "variant": "candidate"
+    }
+  ],
+  "per_slice": {
+    "nfkc_fixable": {
+      "baseline": {
+        "recall": 0,
+        "top1": 0,
+        "mrr": 0
+      },
+      "candidate": {
+        "recall": 1,
+        "top1": 1,
+        "mrr": 1
+      }
+    },
+    "non_nfkc_orthographic": {
+      "baseline": {
+        "recall": 0,
+        "top1": 0,
+        "mrr": 0
+      },
+      "candidate": {
+        "recall": 1,
+        "top1": 1,
+        "mrr": 1
+      }
+    },
+    "mixed_en_ja": {
+      "baseline": {
+        "recall": 0,
+        "top1": 0,
+        "mrr": 0
+      },
+      "candidate": {
+        "recall": 1,
+        "top1": 1,
+        "mrr": 1
+      }
+    }
+  },
+  "deltas": {
+    "nfkc_fixable": [
+      {
+        "metric": "recall",
+        "baseline": 0,
+        "candidate": 1,
+        "delta": 1
+      },
+      {
+        "metric": "top1",
+        "baseline": 0,
+        "candidate": 1,
+        "delta": 1
+      },
+      {
+        "metric": "mrr",
+        "baseline": 0,
+        "candidate": 1,
+        "delta": 1
+      }
+    ],
+    "non_nfkc_orthographic": [
+      {
+        "metric": "recall",
+        "baseline": 0,
+        "candidate": 1,
+        "delta": 1
+      },
+      {
+        "metric": "top1",
+        "baseline": 0,
+        "candidate": 1,
+        "delta": 1
+      },
+      {
+        "metric": "mrr",
+        "baseline": 0,
+        "candidate": 1,
+        "delta": 1
+      }
+    ],
+    "mixed_en_ja": [
+      {
+        "metric": "recall",
+        "baseline": 0,
+        "candidate": 1,
+        "delta": 1
+      },
+      {
+        "metric": "top1",
+        "baseline": 0,
+        "candidate": 1,
+        "delta": 1
+      },
+      {
+        "metric": "mrr",
+        "baseline": 0,
+        "candidate": 1,
+        "delta": 1
+      }
+    ]
+  },
+  "decision": {
+    "nfkc_fixable": "improved",
+    "non_nfkc_orthographic": "improved",
+    "mixed_en_ja": "improved",
+    "overall": "improved",
+    "reasons": {
+      "nfkc_fixable": "all metrics improved by >= 2%pt (weakest mrr +100.00%pt)",
+      "non_nfkc_orthographic": "all metrics improved by >= 2%pt (weakest mrr +100.00%pt)",
+      "mixed_en_ja": "all metrics improved by >= 2%pt (weakest mrr +100.00%pt)"
+    }
+  },
+  "fts_path_asserted": true,
+  "overall_passed": true,
+  "artifacts": {
+    "summary_json": "docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/cjk-discrimination/summary.json"
+  }
+}

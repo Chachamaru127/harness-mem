@@ -1,33 +1,111 @@
 {
+  "flagship_kpi": {
+    "name": "bilingual_coding_memory_freshness_at_k",
+    "label": "Bilingual Coding-Memory Freshness@k",
+    "value": 0.99,
+    "green_threshold": 0.95,
+    "green": true,
+    "measured_by": "knowledge-update freshness@10 (memory-server/src/benchmark/run-ci.ts)",
+    "depth": "shallow",
+    "scope_note": "self-seeded relative metric; not a superiority claim over competitors",
+    "freshness_source": "ci-run-manifest results.freshness",
+    "evidence": {
+      "current_stale_answer_regressions": 0,
+      "dreaming_rewrite_evidence": "memory-server/tests/integration/dreaming-consolidation.test.ts (S154-303 rewrite counts + false-positive negatives)",
+      "deep_freshness": {
+        "depth": "deep",
+        "report_only": true,
+        "tense_rewrite": {
+          "status": "measured",
+          "n": 32,
+          "accuracy": 0.969,
+          "false_positive_rate": 0
+        },
+        "supersession": {
+          "status": "measured",
+          "n": 21,
+          "precision": 1,
+          "recall": 0.6,
+          "f1": 0.75
+        },
+        "freshness_lag": {
+          "status": "measured",
+          "n": 7,
+          "p50_ms": 16167.916,
+          "p95_ms": 16916.489
+        },
+        "measured_by": "scripts/s154-deep-freshness-bench.ts",
+        "gate_verdict": "green",
+        "gate_detail": {
+          "shallow_ok": true,
+          "tense_rewrite_ok": true,
+          "supersession_ok": true
+        },
+        "lag_warn": true,
+        "thresholds_source": "data/deep-freshness-thresholds.json"
+      }
+    }
+  },
   "schema_version": "s108-developer-domain-manifest.v1",
   "task_id": "S108-005b",
-  "generated_at": "2026-06-06T11:30:51.866Z",
+  "generated_at": "2026-07-29T17:52:48.609Z",
   "manifest_path": "memory-server/src/benchmark/results/ci-run-manifest-latest.json",
   "inputs": {
     "code_token_runs": 3,
-    "temporal_cases": 69
+    "temporal_cases": 69,
+    "cjk_cases": 11
   },
   "metrics": {
     "dev_workflow_recall_at_10": 0.7708,
     "dev_workflow_recall_mean": 0.7708,
-    "bilingual_recall_at_10": 0.9,
-    "temporal_order_score": 0.8213,
+    "bilingual_recall_at_10": 0.82,
+    "temporal_order_score": 0.8575,
     "temporal_answer_hit_at_10": 1,
     "japanese_temporal_slice": 1,
     "current_stale_answer_regressions": 0,
-    "temporal_p95_latency_ms": 5.6856
+    "temporal_p95_latency_ms": 5.1513,
+    "cjk_nfkc_fixable_top1": 1,
+    "cjk_non_nfkc_orthographic_top1": 1,
+    "cjk_mixed_en_ja_top1": 1,
+    "cjk_discrimination_min_top1": 1,
+    "cjk_discrimination_regressions": 0
   },
   "gates": {
+    "flagship_freshness": true,
     "dev_workflow": true,
     "bilingual": true,
     "temporal_order": true,
     "japanese_temporal": true,
-    "current_stale_regressions": true
+    "current_stale_regressions": true,
+    "cjk_discrimination": true,
+    "deep_freshness_enforce": true
   },
   "artifacts": {
     "report_json": "docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/summary.json",
     "code_token_summary_json": "docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/code-token/summary.json",
-    "temporal_planner_summary_json": "docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/temporal-planner/summary.json"
+    "temporal_planner_summary_json": "docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/temporal-planner/summary.json",
+    "cjk_discrimination_summary_json": "docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/cjk-discrimination/summary.json"
+  },
+  "cjk_discrimination_baseline": {
+    "schema_version": "s154-103-cjk-baseline.v1",
+    "per_slice_top1": {
+      "nfkc_fixable": 1,
+      "non_nfkc_orthographic": 1,
+      "mixed_en_ja": 1
+    },
+    "recorded_at": "2026-07-29T17:30:51.197Z"
+  },
+  "cjk_discrimination_current": {
+    "per_slice_top1": {
+      "nfkc_fixable": 1,
+      "non_nfkc_orthographic": 1,
+      "mixed_en_ja": 1
+    },
+    "per_slice_mrr": {
+      "nfkc_fixable": 1,
+      "non_nfkc_orthographic": 1,
+      "mixed_en_ja": 1
+    }
   },
   "rollback": "Restore memory-server/src/benchmark/results/ci-run-manifest-latest.json from version control, or rerun npm run benchmark:developer-domain from a known-good checkout.",
   "overall_passed": true
