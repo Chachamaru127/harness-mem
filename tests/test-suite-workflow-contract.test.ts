@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { parse } from "yaml";
 
 /**
  * §160-008: `npm test` (repository behavior gate) が PR で走ることを固定する。
@@ -20,7 +19,41 @@ import { parse } from "yaml";
  * 分からないこと: 実際に CI が緑になるか、step の順序が正しいか、
  * 必要な事前条件 (依存インストール、モデル取得) が揃っているか。
  * それらは実際の CI run でしか確認できない。
+ *
+ * 実装上の制約: このテストは `npm test` (repository behavior gate) の対象なので、
+ * **root の依存を一切 import できない**。gate は root の `node_modules` を用意せずに
+ * 走る (初版で `yaml` を import して CI だけで落ちた)。そのため YAML パーサは使わず、
+ * `on:` ブロックのインデント構造だけを行単位で読む。
  */
+
+/** `on:` ブロックだけを抽出し、trigger 名 → その配下の行 に分解する。 */
+function parseTriggers(source: string): Map<string, string[]> {
+  const lines = source.split("\n");
+  const triggers = new Map<string, string[]>();
+
+  // `on:` は行頭 (インデント 0)。YAML 1.1 で真偽値に読まれる罠は文字列走査では起きない。
+  const onIndex = lines.findIndex((line) => /^on:\s*$/.test(line) || /^on:\s*\S/.test(line));
+  if (onIndex === -1) return triggers;
+
+  let current: string | null = null;
+  for (let i = onIndex + 1; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
+    // インデント 0 の行が来たら `on:` ブロックは終わり。
+    if (!/^\s/.test(line)) break;
+
+    const indent = line.length - line.trimStart().length;
+    if (indent === 2) {
+      const name = line.trim().replace(/:.*$/, "");
+      current = name;
+      triggers.set(name, []);
+    } else if (current) {
+      triggers.get(current)?.push(line.trim());
+    }
+  }
+
+  return triggers;
+}
 
 const WORKFLOWS_DIR = join(process.cwd(), ".github", "workflows");
 const BEHAVIOR_GATE_COMMAND = "npm test";
@@ -39,26 +72,12 @@ export function findBehaviorGateCoverage(sources: ReadonlyArray<readonly [string
   for (const [file, source] of sources) {
     if (!source.includes(BEHAVIOR_GATE_COMMAND)) continue;
 
-    let doc: Record<string, unknown>;
-    try {
-      doc = parse(source) as Record<string, unknown>;
-    } catch {
-      continue;
-    }
-
-    // `on:` は YAML 1.1 では boolean にも読まれうるため両方見る。
-    const triggers = (doc.on ?? (doc as Record<string, unknown>)["true"]) as
-      | Record<string, unknown>
-      | undefined;
-    if (!triggers || typeof triggers !== "object") {
-      coverage.push({ file, hasPullRequestTrigger: false, pullRequestIsPathFiltered: false });
-      continue;
-    }
-
-    const hasPullRequestTrigger = "pull_request" in triggers;
-    const pr = triggers.pull_request as Record<string, unknown> | null | undefined;
+    const triggers = parseTriggers(source);
+    const prBody = triggers.get("pull_request");
+    const hasPullRequestTrigger = prBody !== undefined;
     const pullRequestIsPathFiltered =
-      hasPullRequestTrigger && pr != null && typeof pr === "object" && ("paths" in pr || "paths-ignore" in pr);
+      hasPullRequestTrigger &&
+      (prBody ?? []).some((line) => /^paths(-ignore)?:/.test(line));
 
     coverage.push({ file, hasPullRequestTrigger, pullRequestIsPathFiltered });
   }
