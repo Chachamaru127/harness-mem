@@ -2404,7 +2404,19 @@ export class IngestCoordinator {
   // Antigravity ingest メソッド（core から移動）
   // ---------------------------------------------------------------------------
 
-  private ingestAntigravityWorkspace(rootDir: string): AntigravityIngestSummary {
+  /**
+   * §160-007: runTick から毎 tick 呼ばれるのに読み込み上限も budget も無かった経路。
+   * 1 ファイル = 高々 1 event (JSONL のような複数 entry ではない) なので、
+   * ingestLegacyCodexHistoryFile (§160-005b) 型のスライス読みは対象外
+   * (parseAntigravityFile は見出し抽出に文書全体の trim 済みテキストを要求するため、
+   * 部分読みに切り替えると dedupeHash/内容が変わってしまう)。budget が効くべきなのは
+   * 「何百ファイルも回る外側ループ」なので、ingestCodexSessionsRollouts
+   * (§159-003c/f) の外側 round-robin + budget だけを移植する。
+   */
+  private ingestAntigravityWorkspace(
+    rootDir: string,
+    options?: { budgetMs?: number }
+  ): AntigravityIngestSummary {
     const summary = emptyAntigravityIngestSummary();
     if (!existsSync(rootDir)) {
       return summary;
@@ -2424,7 +2436,23 @@ export class IngestCoordinator {
     const uniqueFiles = [...new Set(candidates)].sort((lhs, rhs) => lhs.localeCompare(rhs));
     const cutoffMs = Date.now() - Math.max(0, this.getAntigravityBackfillHours()) * 60 * 60 * 1000;
 
-    for (const filePath of uniqueFiles) {
+    const startedAtMs = Date.now();
+    const budgetMs = options?.budgetMs ?? resolveIngestTickBudgetMs();
+
+    // §159-003f と同型: 走査そのものを budget の対象にする。打ち切ると末尾のファイルが
+    // 永久に処理されないので、次 tick は前回の続きから走査する round-robin にする。
+    const scanCursorKey = `antigravity_workspace:${resolve(rootDir)}`;
+    const startIndex =
+      uniqueFiles.length > 0 ? (this.scanCursors.get(scanCursorKey) ?? 0) % uniqueFiles.length : 0;
+    let filesVisited = 0;
+
+    for (let step = 0; step < uniqueFiles.length; step += 1) {
+      const filePath = uniqueFiles[(startIndex + step) % uniqueFiles.length] as string;
+      // 進捗保証: 1 件目は budget 超過済みでも必ず見る。
+      if (filesVisited > 0 && Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) {
+        break;
+      }
+      filesVisited += 1;
       summary.filesScanned += 1;
       const sourceKey = `antigravity_file:${resolve(filePath)}`;
 
@@ -2473,6 +2501,10 @@ export class IngestCoordinator {
         fallbackNowIso: nowIso,
       });
 
+      // §160-007: updateIngestOffset は recordEvent が完了した範囲に対してのみ呼ぶ。
+      // 旧実装は recordEvent の成否を見ずに無条件で fileSize まで進めていたため、
+      // 書き込み失敗時にこのファイルのイベントが二度と読まれず消えていた。
+      let recordFailed = false;
       if (parsed) {
         const tags =
           parsed.eventType === "checkpoint"
@@ -2493,34 +2525,74 @@ export class IngestCoordinator {
           },
           { allowQueue: false }
         );
-        const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
-        if (result.ok && !deduped) {
-          summary.eventsImported += 1;
-          if (parsed.eventType === "checkpoint") {
-            summary.checkpointEventsImported += 1;
-          } else {
-            summary.toolEventsImported += 1;
+        if (!result.ok) {
+          recordFailed = true;
+        } else {
+          const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+          if (!deduped) {
+            summary.eventsImported += 1;
+            if (parsed.eventType === "checkpoint") {
+              summary.checkpointEventsImported += 1;
+            } else {
+              summary.toolEventsImported += 1;
+            }
           }
         }
       }
 
-      this.updateIngestOffset(sourceKey, fileSize);
+      if (!recordFailed) {
+        this.updateIngestOffset(sourceKey, fileSize);
+      }
+    }
+
+    if (uniqueFiles.length > 0) {
+      this.scanCursors.set(scanCursorKey, (startIndex + filesVisited) % uniqueFiles.length);
     }
 
     return summary;
   }
 
-  private ingestAntigravityLogEvents(): AntigravityIngestSummary {
+  /**
+   * §160-007: legacy codex history (§160-005b) と同じ「readFileSync 全文読み + budget
+   * 無し entry ループ」だったうえ、複数ログファイルを回る外側ループにも budget が無い
+   * (ingestCodexSessionsRollouts §159-003c/f と同じ穴)。両方を組み合わせて移植する:
+   * 外側は round-robin + budget、1 ファイルの中身はスライス読み + budget 付き entry
+   * ループ。gemini/codex と異なり複数ファイルに跨る文脈 (context) は無いので、その
+   * 部分だけ削って移植する。
+   */
+  private ingestAntigravityLogEvents(options?: {
+    budgetMs?: number;
+    maxBytesPerFile?: number;
+  }): AntigravityIngestSummary {
     const summary = emptyAntigravityIngestSummary();
     const logsRoot = this.getAntigravityLogsRoot();
     if (!existsSync(logsRoot)) {
       return summary;
     }
 
+    const startedAtMs = Date.now();
+    const budgetMs = options?.budgetMs ?? resolveIngestTickBudgetMs();
+    const maxBytesPerFile = options?.maxBytesPerFile ?? resolveIngestMaxBytesPerFile();
+    const readSliceBytes = resolveIngestReadSliceBytes();
+
     const logFiles = listAntigravityPlannerLogFiles(logsRoot);
     const cutoffMs = Date.now() - Math.max(0, this.getAntigravityBackfillHours()) * 60 * 60 * 1000;
 
-    for (const filePath of logFiles) {
+    // §159-003f と同型: 走査そのものを budget の対象にする。打ち切ると末尾のファイルが
+    // 永久に処理されないので、次 tick は前回の続きから走査する round-robin にする。
+    const scanCursorKey = `antigravity_log_scan:${resolve(logsRoot)}`;
+    const startIndex = logFiles.length > 0 ? (this.scanCursors.get(scanCursorKey) ?? 0) % logFiles.length : 0;
+    let filesVisited = 0;
+    let slicesProcessed = 0;
+    let stopTick = false;
+
+    for (let step = 0; step < logFiles.length; step += 1) {
+      const filePath = logFiles[(startIndex + step) % logFiles.length] as string;
+      // 進捗保証: 1 ファイル目は budget 超過済みでも必ず見る。
+      if (filesVisited > 0 && Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) {
+        break;
+      }
+      filesVisited += 1;
       summary.filesScanned += 1;
       summary.logFilesScanned += 1;
       const sourceKey = `antigravity_log:${resolve(filePath)}`;
@@ -2554,57 +2626,140 @@ export class IngestCoordinator {
         continue;
       }
 
-      let chunk = "";
-      try {
-        const buffer = readFileSync(filePath);
-        chunk = buffer.subarray(offset).toString("utf8");
-      } catch {
-        continue;
+      // 進捗保証: tick 全体で最初のスライスは budget 超過済みでも必ず処理する
+      // (さもないと offset が進まず走査だけを繰り返す)。
+      if (slicesProcessed > 0 && Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) {
+        break;
       }
 
       const resolved = this.resolveAntigravityLogProject(filePath);
-      const parsedChunk = parseAntigravityLogChunk({
-        sourceKey,
-        baseOffset: offset,
-        chunk,
-        fallbackNowIso: nowIso,
-        project: resolved.project || "unknown",
-        sessionSeed: resolved.sessionSeed || "planner",
-        filePath,
-      });
+      let currentOffset = offset;
+      let nextReadOffset = offset;
+      let bytesReadThisFile = 0;
+      let pending = Buffer.alloc(0);
 
-      let imported = 0;
-      for (const entry of parsedChunk.events) {
-        const result = this.deps.recordEvent(
-          {
-            platform: "antigravity",
-            project: entry.project,
-            session_id: entry.sessionId,
-            event_type: entry.eventType,
-            ts: entry.timestamp,
-            payload: {
-              ...entry.payload,
-              workspace_root: resolved.workspaceRoot || undefined,
-            },
-            tags: ["antigravity_logs_ingest", "planner_request"],
-            privacy_tags: [],
-            dedupe_hash: entry.dedupeHash,
-          },
-          { allowQueue: false }
-        );
+      try {
+        const fd = openSync(filePath, "r");
+        try {
+          while (
+            nextReadOffset < fileSize &&
+            (!Number.isFinite(maxBytesPerFile) || bytesReadThisFile < maxBytesPerFile)
+          ) {
+            const remainingFileBytes = fileSize - nextReadOffset;
+            const remainingReadBytes = Number.isFinite(maxBytesPerFile)
+              ? maxBytesPerFile - bytesReadThisFile
+              : remainingFileBytes;
+            const readSize = Math.min(
+              remainingFileBytes,
+              remainingReadBytes,
+              Number.isFinite(readSliceBytes) ? readSliceBytes : remainingFileBytes
+            );
+            if (readSize <= 0) break;
 
-        const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
-        if (result.ok && !deduped) {
-          imported += 1;
+            const buffer = Buffer.alloc(readSize);
+            const bytesRead = readSync(fd, buffer, 0, readSize, nextReadOffset);
+            if (bytesRead <= 0) break;
+            pending = Buffer.concat([pending, buffer.subarray(0, bytesRead)]);
+            bytesReadThisFile += bytesRead;
+            nextReadOffset += bytesRead;
+            slicesProcessed += 1;
+
+            const parsedChunk = parseAntigravityLogChunk({
+              sourceKey,
+              baseOffset: currentOffset,
+              chunk: pending.toString("utf8"),
+              fallbackNowIso: nowIso,
+              project: resolved.project || "unknown",
+              sessionSeed: resolved.sessionSeed || "planner",
+              filePath,
+            });
+
+            // 1 行が readSliceBytes を超える場合は次スライスと連結する。上限または EOF
+            // まで改行が来なければ次 tick に回し、同一 while 内で無限に待ち続けない
+            // (§159-003f / §160-005b と同型)。
+            if (parsedChunk.consumedBytes === 0) {
+              if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
+              if (
+                nextReadOffset >= fileSize ||
+                (Number.isFinite(maxBytesPerFile) && bytesReadThisFile >= maxBytesPerFile)
+              ) {
+                break;
+              }
+              continue;
+            }
+
+            let nextOffset = currentOffset + parsedChunk.consumedBytes;
+            let budgetExhausted = false;
+            let sliceDeferred = false;
+            let entryIndex = 0;
+            let imported = 0;
+            for (const entry of parsedChunk.events) {
+              // 1 件目は budget 超過済みでも必ず処理する (さもないと offset が進まず
+              // 同じ chunk を読み直し続ける)。
+              if (entryIndex > 0 && Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) {
+                nextOffset = Math.max(currentOffset, entry.lineOffset);
+                budgetExhausted = true;
+                sliceDeferred = true;
+                break;
+              }
+              entryIndex += 1;
+              const result = this.deps.recordEvent(
+                {
+                  platform: "antigravity",
+                  project: entry.project,
+                  session_id: entry.sessionId,
+                  event_type: entry.eventType,
+                  ts: entry.timestamp,
+                  payload: {
+                    ...entry.payload,
+                    workspace_root: resolved.workspaceRoot || undefined,
+                  },
+                  tags: ["antigravity_logs_ingest", "planner_request"],
+                  privacy_tags: [],
+                  dedupe_hash: entry.dedupeHash,
+                },
+                { allowQueue: false }
+              );
+              if (!result.ok) {
+                nextOffset = Math.max(currentOffset, entry.lineOffset);
+                sliceDeferred = true;
+                break;
+              }
+              const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+              if (!deduped) {
+                imported += 1;
+              }
+            }
+
+            summary.eventsImported += imported;
+            summary.logEventsImported += imported;
+            // §160-007: updateIngestOffset は recordEvent が完了した範囲に対してのみ
+            // 呼ぶ。先に楽観的に進めると未処理行が二度と読まれず消える。
+            this.updateIngestOffset(sourceKey, nextOffset);
+
+            if (sliceDeferred) {
+              if (budgetExhausted) stopTick = true;
+              break;
+            }
+
+            currentOffset = nextOffset;
+            pending = pending.subarray(parsedChunk.consumedBytes);
+            if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) {
+              stopTick = true;
+              break;
+            }
+          }
+        } finally {
+          closeSync(fd);
         }
+      } catch {
+        continue;
       }
+      if (stopTick) break;
+    }
 
-      summary.eventsImported += imported;
-      summary.logEventsImported += imported;
-
-      if (parsedChunk.consumedBytes > 0) {
-        this.updateIngestOffset(sourceKey, offset + parsedChunk.consumedBytes);
-      }
+    if (logFiles.length > 0) {
+      this.scanCursors.set(scanCursorKey, (startIndex + filesVisited) % logFiles.length);
     }
 
     return summary;
@@ -2666,7 +2821,17 @@ export class IngestCoordinator {
   // Gemini ingest メソッド（core から移動）
   // ---------------------------------------------------------------------------
 
-  private ingestGeminiEvents(): GeminiIngestSummary {
+  /**
+   * §160-007: 本番ログで最大 3,030ms event loop を塞いだ gemini イベントスプールの
+   * 取り込み。旧実装は `Buffer.alloc(fileSize - offset)` でファイル残り全部を一括読み
+   * し、entry ループに budget も無く、`updateIngestOffset` が処理済み範囲と無関係に
+   * (`offset + parsedChunk.consumedBytes` を常に) 進んでいた。ingestLegacyCodexHistoryFile
+   * (§160-005b) が既に解いた「スライス読み → parse → budget 付き insert ループ」の形に
+   * そろえる。gemini のパーサ (parseGeminiEventsChunk) は codex-sessions.ts と同じ
+   * バイト走査 (`buffer.indexOf(0x0a, cursor)`) で `lineOffset` を `.trim()` 前に
+   * 確定済みなので、パーサ側の変更は不要。
+   */
+  private ingestGeminiEvents(options?: { budgetMs?: number; maxBytesPerFile?: number }): GeminiIngestSummary {
     const summary = emptyGeminiIngestSummary();
     const eventsPath = this.getGeminiEventsPath();
     if (!existsSync(eventsPath)) {
@@ -2677,6 +2842,10 @@ export class IngestCoordinator {
     const sourceKey = `gemini_events:${resolve(eventsPath)}`;
     const cutoffMs = Date.now() - Math.max(0, this.getGeminiBackfillHours()) * 60 * 60 * 1000;
 
+    // §160-005b DoD (a) と同じ理由: 完了判定は statSync の実ファイルサイズを基準にする。
+    // スライス読みに切り替えた後、途中経過 buffer 長を「ファイル全体」として使うと
+    // readSliceBytes を超えた時点で毎回 offset > buffer.length が成立し、それ以降が
+    // 永久に truncate 扱い (offset=0 リセット) になる。
     let fileSize = 0;
     let mtimeMs = Date.now();
     try {
@@ -2706,55 +2875,118 @@ export class IngestCoordinator {
       return summary;
     }
 
-    let chunk = "";
+    const startedAtMs = Date.now();
+    const budgetMs = options?.budgetMs ?? resolveIngestTickBudgetMs();
+    const maxBytesPerFile = options?.maxBytesPerFile ?? resolveIngestMaxBytesPerFile();
+    const readSliceBytes = resolveIngestReadSliceBytes();
+
+    let currentOffset = offset;
+    let nextReadOffset = offset;
+    let bytesReadThisFile = 0;
+    let pending = Buffer.alloc(0);
+    let imported = 0;
+
     try {
-      const bytesToRead = fileSize - offset;
-      const buf = Buffer.alloc(bytesToRead);
       const fd = openSync(eventsPath, "r");
       try {
-        readSync(fd, buf, 0, bytesToRead, offset);
+        while (
+          nextReadOffset < fileSize &&
+          (!Number.isFinite(maxBytesPerFile) || bytesReadThisFile < maxBytesPerFile)
+        ) {
+          const remainingFileBytes = fileSize - nextReadOffset;
+          const remainingReadBytes = Number.isFinite(maxBytesPerFile)
+            ? maxBytesPerFile - bytesReadThisFile
+            : remainingFileBytes;
+          const readSize = Math.min(
+            remainingFileBytes,
+            remainingReadBytes,
+            Number.isFinite(readSliceBytes) ? readSliceBytes : remainingFileBytes
+          );
+          if (readSize <= 0) break;
+
+          const buffer = Buffer.alloc(readSize);
+          const bytesRead = readSync(fd, buffer, 0, readSize, nextReadOffset);
+          if (bytesRead <= 0) break;
+          pending = Buffer.concat([pending, buffer.subarray(0, bytesRead)]);
+          bytesReadThisFile += bytesRead;
+          nextReadOffset += bytesRead;
+
+          const parsedChunk = parseGeminiEventsChunk({
+            sourceKey,
+            baseOffset: currentOffset,
+            chunk: pending.toString("utf8"),
+            fallbackNowIso: nowIso,
+          });
+
+          // 1 行が readSliceBytes (既定 64KB) を超える場合は次スライスと連結する。
+          // 上限または EOF まで改行が来なければ次 tick に回し、同一 while 内で無限に
+          // 待ち続けない (§159-003f / §160-005b と同型)。
+          if (parsedChunk.consumedBytes === 0) {
+            if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
+            if (
+              nextReadOffset >= fileSize ||
+              (Number.isFinite(maxBytesPerFile) && bytesReadThisFile >= maxBytesPerFile)
+            ) {
+              break;
+            }
+            continue;
+          }
+
+          let nextOffset = currentOffset + parsedChunk.consumedBytes;
+          let sliceDeferred = false;
+          let entryIndex = 0;
+          for (const entry of parsedChunk.events) {
+            // §160-005b DoD (b)/(d) と同型: 1 件目は budget 超過済みでも必ず処理する。
+            // さもないと offset が進まず同じ chunk を読み直し続ける。
+            if (entryIndex > 0 && Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) {
+              nextOffset = Math.max(currentOffset, entry.lineOffset);
+              sliceDeferred = true;
+              break;
+            }
+            entryIndex += 1;
+            const result = this.deps.recordEvent(
+              {
+                platform: "gemini",
+                project: entry.project,
+                session_id: entry.sessionId,
+                event_type: entry.eventType,
+                ts: entry.timestamp,
+                payload: entry.payload,
+                tags: ["gemini_events_ingest"],
+                privacy_tags: [],
+                dedupe_hash: entry.dedupeHash,
+              },
+              { allowQueue: false }
+            );
+            if (!result.ok) {
+              nextOffset = Math.max(currentOffset, entry.lineOffset);
+              sliceDeferred = true;
+              break;
+            }
+            const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+            if (!deduped) {
+              imported += 1;
+            }
+          }
+
+          // §160-005b DoD (b) と同型: updateIngestOffset は recordEvent が完了した範囲
+          // に対してのみ呼ぶ。先に楽観的に進めると未処理行が二度と読まれず消える。
+          this.updateIngestOffset(sourceKey, nextOffset);
+
+          if (sliceDeferred) break;
+
+          currentOffset = nextOffset;
+          pending = pending.subarray(parsedChunk.consumedBytes);
+          if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
+        }
       } finally {
         closeSync(fd);
       }
-      chunk = buf.toString("utf8");
     } catch {
-      return summary;
-    }
-
-    const parsedChunk = parseGeminiEventsChunk({
-      sourceKey,
-      baseOffset: offset,
-      chunk,
-      fallbackNowIso: nowIso,
-    });
-
-    let imported = 0;
-    for (const entry of parsedChunk.events) {
-      const result = this.deps.recordEvent(
-        {
-          platform: "gemini",
-          project: entry.project,
-          session_id: entry.sessionId,
-          event_type: entry.eventType,
-          ts: entry.timestamp,
-          payload: entry.payload,
-          tags: ["gemini_events_ingest"],
-          privacy_tags: [],
-          dedupe_hash: entry.dedupeHash,
-        },
-        { allowQueue: false }
-      );
-      const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
-      if (result.ok && !deduped) {
-        imported += 1;
-      }
+      // 読み込み失敗時は offset を進めず、次 tick で再試行する。
     }
 
     summary.eventsImported += imported;
-
-    if (parsedChunk.consumedBytes > 0) {
-      this.updateIngestOffset(sourceKey, offset + parsedChunk.consumedBytes);
-    }
 
     return summary;
   }

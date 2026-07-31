@@ -1026,6 +1026,480 @@ describe("ingest-coordinator: ingestGeminiHistory", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// ingestGeminiEvents (§160-007)
+//
+// gemini イベントスプールは本番ログで最大 3,030ms event loop を塞いだ実測がある。
+// 旧実装は Buffer.alloc(fileSize - offset) でファイル残り全部を一括読みし、entry
+// ループに budget も無かった。ingestLegacyCodexHistoryFile (§160-005b) と同じ
+// 「スライス読み → parse → budget 付き insert ループ」に揃える。private メソッドを
+// 型キャストで直接呼び、budgetMs を注入して決定的に検証する。
+// ---------------------------------------------------------------------------
+
+describe("ingest-coordinator: ingestGeminiEvents (§160-007)", () => {
+  type GeminiLeafCoordinator = {
+    ingestGeminiEvents: (options?: { budgetMs?: number; maxBytesPerFile?: number }) => {
+      eventsImported: number;
+      filesScanned: number;
+      filesSkippedBackfill: number;
+    };
+  };
+
+  const ORIGINAL_READ_SLICE = process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES;
+
+  afterEach(() => {
+    if (ORIGINAL_READ_SLICE === undefined) delete process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES;
+    else process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES = ORIGINAL_READ_SLICE;
+  });
+
+  function geminiLine(fields: Record<string, unknown>): string {
+    return JSON.stringify(fields);
+  }
+
+  function setupGeminiEventsFile(dir: string, content: string): string {
+    const eventsPath = join(dir, "gemini-events.jsonl");
+    writeFileSync(eventsPath, content, "utf8");
+    return eventsPath;
+  }
+
+  test("読み込み上限より大きいファイルでも statSync の実サイズを基準に最後まで進む", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-gemini-events-"));
+    try {
+      const lines = Array.from({ length: 8 }, (_, i) =>
+        geminiLine({
+          event_type: "user_prompt",
+          session_id: "s1",
+          project: "p1",
+          ts: `2026-07-29T00:00:0${i}.000Z`,
+          payload: { content: `line-${i}` },
+        })
+      );
+      const eventsPath = setupGeminiEventsFile(dir, lines.join("\n") + "\n");
+      const fileSize = statSync(eventsPath).size;
+
+      // 既定 64KB よりずっと小さいスライス幅を強制し、複数スライスにまたがる読み込みを
+      // 1 回の呼び出し内で発生させる。「readSliceBytes を超えた分は二度と読まれない」
+      // 旧バグ (buffer 長を完了判定に使う) が再発していないことを見る。
+      process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES = "40";
+
+      const db = createTestDb();
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ geminiIngestEnabled: true, geminiEventsPath: eventsPath }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as GeminiLeafCoordinator;
+
+      const summary = coordinator.ingestGeminiEvents({ budgetMs: Infinity });
+      expect(summary.eventsImported).toBe(8);
+
+      const sourceKey = `gemini_events:${eventsPath}`;
+      const offsetRow = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetRow?.offset).toBe(fileSize);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("recordEvent が失敗した行より先へ offset を進めず、再試行で拾い直す", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-gemini-events-fail-"));
+    try {
+      const lines = [
+        geminiLine({ event_type: "user_prompt", session_id: "s1", project: "p1", ts: "2026-07-29T00:00:00.000Z", payload: { content: "first" } }),
+        geminiLine({ event_type: "checkpoint", session_id: "s1", project: "p1", ts: "2026-07-29T00:00:01.000Z", payload: { content: "second" } }),
+        geminiLine({ event_type: "user_prompt", session_id: "s1", project: "p1", ts: "2026-07-29T00:00:02.000Z", payload: { content: "third" } }),
+      ];
+      const eventsPath = setupGeminiEventsFile(dir, lines.join("\n") + "\n");
+      const fileSize = statSync(eventsPath).size;
+
+      const db = createTestDb();
+      let callCount = 0;
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ geminiIngestEnabled: true, geminiEventsPath: eventsPath }),
+        recordEvent: mock(() => {
+          callCount += 1;
+          return callCount === 1 ? makeErrResponse("temporary write failure") : makeOkResponse();
+        }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as GeminiLeafCoordinator;
+
+      const first = coordinator.ingestGeminiEvents({ budgetMs: Infinity });
+      expect(first.eventsImported).toBe(0);
+
+      const sourceKey = `gemini_events:${eventsPath}`;
+      const offsetAfterFailure = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterFailure).not.toBeNull();
+      expect(offsetAfterFailure?.offset ?? -1).toBeLessThan(fileSize);
+
+      const second = coordinator.ingestGeminiEvents({ budgetMs: Infinity });
+      expect(second.eventsImported).toBe(3);
+
+      const offsetAfterRetry = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterRetry?.offset).toBe(fileSize);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-gemini-events-budget-"));
+    try {
+      const lines = [
+        geminiLine({ event_type: "user_prompt", session_id: "s1", project: "p1", ts: "2026-07-29T00:00:00.000Z", payload: { content: "one" } }),
+        geminiLine({ event_type: "checkpoint", session_id: "s1", project: "p1", ts: "2026-07-29T00:00:01.000Z", payload: { content: "two" } }),
+        geminiLine({ event_type: "user_prompt", session_id: "s1", project: "p1", ts: "2026-07-29T00:00:02.000Z", payload: { content: "three" } }),
+        geminiLine({ event_type: "checkpoint", session_id: "s1", project: "p1", ts: "2026-07-29T00:00:03.000Z", payload: { content: "four" } }),
+      ];
+      const eventsPath = setupGeminiEventsFile(dir, lines.join("\n") + "\n");
+      const fileSize = statSync(eventsPath).size;
+
+      const db = createTestDb();
+      const recordedHashes: string[] = [];
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ geminiIngestEnabled: true, geminiEventsPath: eventsPath }),
+        recordEvent: mock((event: { dedupe_hash?: string }) => {
+          // recordEvent 自体を意図的に遅くし、budgetMs 判定を wall-clock で確実に
+          // 超過させる (Date.now() の 1ms 解像度に依存すると flaky になるため)。
+          const until = Date.now() + 5;
+          while (Date.now() < until) {
+            /* busy-wait */
+          }
+          recordedHashes.push(event.dedupe_hash ?? "");
+          return makeOkResponse();
+        }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as GeminiLeafCoordinator;
+
+      const firstTick = coordinator.ingestGeminiEvents({ budgetMs: 1 });
+      expect(firstTick.eventsImported).toBe(1);
+
+      const sourceKey = `gemini_events:${eventsPath}`;
+      const offsetAfterFirstTick = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterFirstTick?.offset ?? -1).toBeGreaterThan(0);
+      expect(offsetAfterFirstTick?.offset ?? -1).toBeLessThan(fileSize);
+
+      const secondTick = coordinator.ingestGeminiEvents({ budgetMs: Infinity });
+      expect(secondTick.eventsImported).toBe(3);
+
+      const offsetAfterSecondTick = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterSecondTick?.offset).toBe(fileSize);
+
+      // 4 行それぞれ厳密に 1 回だけ recordEvent が呼ばれている (取りこぼしも重複もない)
+      expect(recordedHashes.length).toBe(4);
+      expect(new Set(recordedHashes).size).toBe(4);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ingestAntigravityLogEvents / ingestAntigravityWorkspace (§160-007)
+//
+// antigravity 2 経路もこの環境では実データ 0 件 (not_observed) だが、gemini と
+// 同型の「readFileSync 全文読み + budget 無し entry ループ」で、runTick から毎 tick
+// 呼ばれる。ingestCodexSessionsRollouts (§159-003c/f) が持つ「複数ファイルの
+// round-robin + budget」と ingestLegacyCodexHistoryFile (§160-005b) が持つ
+// 「スライス読み + budget 付き entry ループ」を、対象に合わせて組み合わせて移植する。
+// ---------------------------------------------------------------------------
+
+type AntigravitySummary = {
+  eventsImported: number;
+  filesScanned: number;
+  filesSkippedBackfill: number;
+  rootsScanned: number;
+  checkpointEventsImported: number;
+  toolEventsImported: number;
+  logEventsImported: number;
+  logFilesScanned: number;
+};
+
+describe("ingest-coordinator: ingestAntigravityLogEvents (§160-007)", () => {
+  type AntigravityLogCoordinator = {
+    ingestAntigravityLogEvents: (options?: { budgetMs?: number; maxBytesPerFile?: number }) => AntigravitySummary;
+  };
+
+  function plannerLine(ts: string, chatMessages: number): string {
+    return `${ts} [info] Requesting planner with ${chatMessages} chat messages`;
+  }
+
+  /** `Antigravity.log` は名前固定 + パスに `/google.antigravity/` を含む必要がある (listAntigravityPlannerLogFiles の制約)。 */
+  function setupAntigravityLogFile(root: string, workspaceId: string, content: string): string {
+    const logDir = join(root, workspaceId, "google.antigravity", "1", "exthost1", "output_logging_x");
+    mkdirSync(logDir, { recursive: true });
+    const logPath = join(logDir, "Antigravity.log");
+    writeFileSync(logPath, content, "utf8");
+    return logPath;
+  }
+
+  test("recordEvent が失敗した行より先へ offset を進めず、再試行で拾い直す", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-log-fail-"));
+    try {
+      const lines = [
+        plannerLine("2026-07-29 00:00:00.000", 1),
+        plannerLine("2026-07-29 00:00:01.000", 2),
+        plannerLine("2026-07-29 00:00:02.000", 3),
+      ];
+      const logPath = setupAntigravityLogFile(dir, "ws-fail", lines.join("\n") + "\n");
+      const fileSize = statSync(logPath).size;
+
+      const db = createTestDb();
+      let callCount = 0;
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ antigravityIngestEnabled: true, antigravityLogsRoot: dir }),
+        recordEvent: mock(() => {
+          callCount += 1;
+          return callCount === 1 ? makeErrResponse("temporary write failure") : makeOkResponse();
+        }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as AntigravityLogCoordinator;
+
+      const first = coordinator.ingestAntigravityLogEvents({ budgetMs: Infinity });
+      expect(first.logEventsImported).toBe(0);
+
+      const sourceKey = `antigravity_log:${logPath}`;
+      const offsetAfterFailure = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterFailure).not.toBeNull();
+      expect(offsetAfterFailure?.offset ?? -1).toBeLessThan(fileSize);
+
+      const second = coordinator.ingestAntigravityLogEvents({ budgetMs: Infinity });
+      expect(second.logEventsImported).toBe(3);
+
+      const offsetAfterRetry = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterRetry?.offset).toBe(fileSize);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-log-budget-"));
+    try {
+      const lines = [
+        plannerLine("2026-07-29 00:00:00.000", 1),
+        plannerLine("2026-07-29 00:00:01.000", 2),
+        plannerLine("2026-07-29 00:00:02.000", 3),
+        plannerLine("2026-07-29 00:00:03.000", 4),
+      ];
+      const logPath = setupAntigravityLogFile(dir, "ws-budget", lines.join("\n") + "\n");
+      const fileSize = statSync(logPath).size;
+
+      const db = createTestDb();
+      const recordedHashes: string[] = [];
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ antigravityIngestEnabled: true, antigravityLogsRoot: dir }),
+        recordEvent: mock((event: { dedupe_hash?: string }) => {
+          const until = Date.now() + 5;
+          while (Date.now() < until) {
+            /* busy-wait: budgetMs 判定を wall-clock で確実に超過させる */
+          }
+          recordedHashes.push(event.dedupe_hash ?? "");
+          return makeOkResponse();
+        }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as AntigravityLogCoordinator;
+
+      const firstTick = coordinator.ingestAntigravityLogEvents({ budgetMs: 1 });
+      expect(firstTick.logEventsImported).toBe(1);
+
+      const sourceKey = `antigravity_log:${logPath}`;
+      const offsetAfterFirstTick = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterFirstTick?.offset ?? -1).toBeGreaterThan(0);
+      expect(offsetAfterFirstTick?.offset ?? -1).toBeLessThan(fileSize);
+
+      const secondTick = coordinator.ingestAntigravityLogEvents({ budgetMs: Infinity });
+      expect(secondTick.logEventsImported).toBe(3);
+
+      const offsetAfterSecondTick = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterSecondTick?.offset).toBe(fileSize);
+
+      expect(recordedHashes.length).toBe(4);
+      expect(new Set(recordedHashes).size).toBe(4);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("budget 超過で打ち切ったファイル走査は次 tick で round-robin の続きから再開し、後続ファイルが永久にスキップされない", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-log-roundrobin-"));
+    try {
+      const logPathA = setupAntigravityLogFile(dir, "a-ws", plannerLine("2026-07-29 00:00:00.000", 1) + "\n");
+      const logPathB = setupAntigravityLogFile(dir, "b-ws", plannerLine("2026-07-29 00:00:01.000", 2) + "\n");
+      const fileSizeA = statSync(logPathA).size;
+      const fileSizeB = statSync(logPathB).size;
+
+      const db = createTestDb();
+      const recordedHashes: string[] = [];
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ antigravityIngestEnabled: true, antigravityLogsRoot: dir }),
+        recordEvent: mock((event: { dedupe_hash?: string }) => {
+          const until = Date.now() + 5;
+          while (Date.now() < until) {
+            /* busy-wait */
+          }
+          recordedHashes.push(event.dedupe_hash ?? "");
+          return makeOkResponse();
+        }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as AntigravityLogCoordinator;
+
+      // budgetMs を極小にすると、1 ファイル目 (a-ws, 進捗保証で必ず処理される) の後、
+      // 2 ファイル目 (b-ws) に着手する前に budget 超過で打ち切られるはず。
+      const firstTick = coordinator.ingestAntigravityLogEvents({ budgetMs: 1 });
+      expect(firstTick.logEventsImported).toBe(1);
+
+      const sourceKeyA = `antigravity_log:${logPathA}`;
+      const sourceKeyB = `antigravity_log:${logPathB}`;
+      const offsetA = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKeyA) as { offset: number } | null;
+      const offsetB = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKeyB) as { offset: number } | null;
+      expect(offsetA?.offset).toBe(fileSizeA);
+      // b-ws はこの tick では一切触れられていない (打ち切り後の永久スキップではなく、
+      // 単に「まだ来ていない」状態であることを row の有無で確認する)。
+      expect(offsetB).toBeNull();
+
+      const secondTick = coordinator.ingestAntigravityLogEvents({ budgetMs: Infinity });
+      expect(secondTick.logEventsImported).toBe(1);
+
+      const offsetBAfter = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKeyB) as {
+        offset: number;
+      } | null;
+      expect(offsetBAfter?.offset).toBe(fileSizeB);
+
+      expect(recordedHashes.length).toBe(2);
+      expect(new Set(recordedHashes).size).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("ingest-coordinator: ingestAntigravityWorkspace (§160-007)", () => {
+  type AntigravityWorkspaceCoordinator = {
+    ingestAntigravityWorkspace: (
+      rootDir: string,
+      options?: { budgetMs?: number; maxBytesPerFile?: number }
+    ) => AntigravitySummary;
+  };
+
+  function setupAntigravityCheckpointFile(root: string, name: string, content: string): string {
+    const checkpointDir = join(root, "docs", "checkpoints");
+    mkdirSync(checkpointDir, { recursive: true });
+    const filePath = join(checkpointDir, name);
+    writeFileSync(filePath, content, "utf8");
+    return filePath;
+  }
+
+  test("recordEvent が失敗した時に offset を進めず、再試行で拾い直す", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-workspace-fail-"));
+    try {
+      const filePath = setupAntigravityCheckpointFile(dir, "checkpoint-one.md", "# Checkpoint One\n\nSome content.\n");
+
+      const db = createTestDb();
+      let callCount = 0;
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ antigravityIngestEnabled: true }),
+        recordEvent: mock(() => {
+          callCount += 1;
+          return callCount === 1 ? makeErrResponse("temporary write failure") : makeOkResponse();
+        }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as AntigravityWorkspaceCoordinator;
+
+      const first = coordinator.ingestAntigravityWorkspace(dir, { budgetMs: Infinity });
+      expect(first.checkpointEventsImported).toBe(0);
+
+      const sourceKey = `antigravity_file:${filePath}`;
+      const offsetAfterFailure = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      // recordEvent が完了していないので offset は進まない (row 無し、または fileSize 未満)。
+      expect(offsetAfterFailure === null || offsetAfterFailure.offset < statSync(filePath).size).toBe(true);
+
+      const second = coordinator.ingestAntigravityWorkspace(dir, { budgetMs: Infinity });
+      expect(second.checkpointEventsImported).toBe(1);
+
+      const offsetAfterRetry = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterRetry?.offset).toBe(statSync(filePath).size);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("budget 超過で打ち切ったファイル走査は次 tick で round-robin の続きから再開し、後続ファイルが永久にスキップされない", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-workspace-roundrobin-"));
+    try {
+      const filePathA = setupAntigravityCheckpointFile(dir, "checkpoint-a.md", "# Checkpoint A\n\nContent A.\n");
+      const filePathB = setupAntigravityCheckpointFile(dir, "checkpoint-b.md", "# Checkpoint B\n\nContent B.\n");
+
+      const db = createTestDb();
+      const recordedHashes: string[] = [];
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ antigravityIngestEnabled: true }),
+        recordEvent: mock((event: { dedupe_hash?: string }) => {
+          const until = Date.now() + 5;
+          while (Date.now() < until) {
+            /* busy-wait: budgetMs 判定を wall-clock で確実に超過させる */
+          }
+          recordedHashes.push(event.dedupe_hash ?? "");
+          return makeOkResponse();
+        }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as AntigravityWorkspaceCoordinator;
+
+      // 進捗保証で 1 ファイル目 (checkpoint-a.md) は必ず処理されるが、2 ファイル目に
+      // 着手する前に budget 超過で打ち切られるはず。
+      const firstTick = coordinator.ingestAntigravityWorkspace(dir, { budgetMs: 1 });
+      expect(firstTick.checkpointEventsImported).toBe(1);
+
+      const sourceKeyA = `antigravity_file:${filePathA}`;
+      const sourceKeyB = `antigravity_file:${filePathB}`;
+      const offsetA = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKeyA) as { offset: number } | null;
+      const offsetB = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKeyB) as { offset: number } | null;
+      expect(offsetA?.offset).toBe(statSync(filePathA).size);
+      expect(offsetB).toBeNull();
+
+      const secondTick = coordinator.ingestAntigravityWorkspace(dir, { budgetMs: Infinity });
+      expect(secondTick.checkpointEventsImported).toBe(1);
+
+      const offsetBAfter = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKeyB) as {
+        offset: number;
+      } | null;
+      expect(offsetBAfter?.offset).toBe(statSync(filePathB).size);
+
+      expect(recordedHashes.length).toBe(2);
+      expect(new Set(recordedHashes).size).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("ingest-coordinator: Claude Code timer startup", () => {
   test("delays Claude Code ingest startup until the configured interval", () => {
     const originalSetTimeout = globalThis.setTimeout;
