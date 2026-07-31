@@ -184,6 +184,26 @@ function normalizeString(value: unknown): string {
 
 const MAX_CURSOR_HOOK_EVENTS_PER_INGEST = 50;
 
+/**
+ * §160-007: opencode DB 経路 (`ingestOpencodeDbMessages`) が 1 tick で SQL から
+ * 読む行数の上限。
+ *
+ * 旧実装は `SELECT ... ORDER BY m.rowid ASC` に `LIMIT` が無く、offset 以降 (または
+ * backfill window 内) の全行を `.all()` で一括メモリ展開していた。budget チェックは
+ * insert ループの中にしか無かったため、Spec.md の「## Periodic Ingest Budget」契約
+ * (時間 budget だけでは読み込み量の上限にならない。読み込み自体を budget 判定と
+ * 独立に上限化する) を満たしていなかった。
+ *
+ * 値の根拠 (§160-001 recordEvent コスト実測 `docs/benchmarks/s160-001-recordevent-cost-by-db-size.md`):
+ * recordEvent 1 件のコストは空 DB で p50=4.286ms/p90=7.122ms、4.9GB DB で
+ * p50=39.048ms/max=49.519ms。既定 tick budget (200ms) 内で処理できる件数は
+ * 空 DB で ~28 件、4.9GB DB で ~4 件と DB サイズに強く依存するため、行数上限は
+ * 「通常運用では entry ループの時間 budget が先に効き、この LIMIT はほぼ発火しない」
+ * 程度に余裕を持たせつつ、ロング再起動後の大量バックログ流入時にメモリ展開量を
+ * 有限にする防御的な上限として 500 を選ぶ。
+ */
+const MAX_OPENCODE_DB_ROWS_PER_INGEST = 500;
+
 // ---------------------------------------------------------------------------
 // ファイルリスト系ヘルパー（core から移動）
 // ---------------------------------------------------------------------------
@@ -618,7 +638,7 @@ export class IngestCoordinator {
     if (config.opencodeIngestEnabled !== false) {
       this.opencodeIngestTimer = setInterval(() => {
         if (this.deps.isShuttingDown()) return;
-        this.runTick("opencode", () => this.ingestOpencodeHistory());
+        this.runTick("opencode", () => this.ingestOpencodeHistoryTick());
       }, clampLimit(Number(config.opencodeIngestIntervalMs || DEFAULT_OPENCODE_INGEST_INTERVAL_MS), DEFAULT_OPENCODE_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
@@ -1674,12 +1694,28 @@ export class IngestCoordinator {
   // Opencode ingest メソッド（core から移動）
   // ---------------------------------------------------------------------------
 
-  private ingestOpencodeDbMessages(): OpencodeIngestSummary {
+  /**
+   * §160-007: opencode DB 経路。`SELECT ... ORDER BY m.rowid ASC` に `LIMIT` が無く
+   * offset 以降の全行を `.all()` で一括メモリ展開し、insert (entry) ループにも
+   * budget チェックが無かった。本番実測で 1 tick 最大 4,618ms event loop を塞いだ。
+   * ingestLegacyCodexHistoryFile (§160-005b) と同じ「入力を tick 単位で有限にする /
+   * budget で打ち切る / 完了した範囲だけ offset を進める」形に揃える。SQL 経路なので
+   * ファイル読みのようなスライスの概念は無く、`LIMIT` で 1 tick の読み込み行数を絞る
+   * (MAX_OPENCODE_DB_ROWS_PER_INGEST のコメント参照)。
+   */
+  private ingestOpencodeDbMessages(options?: { budgetMs?: number; maxRows?: number }): OpencodeIngestSummary {
     const summary = emptyOpencodeIngestSummary();
     const sourceDbPath = this.getOpencodeDbPath();
     if (!existsSync(sourceDbPath)) {
       return summary;
     }
+
+    const startedAtMs = Date.now();
+    const budgetMs = options?.budgetMs ?? resolveIngestTickBudgetMs();
+    const rawMaxRows = options?.maxRows ?? MAX_OPENCODE_DB_ROWS_PER_INGEST;
+    // SQLite の LIMIT は負値で「無制限」を意味する。Infinity をそのまま bind すると
+    // integer binding に失敗するため、Infinity/0 以下は -1 (無制限) に変換する。
+    const maxRows = Number.isFinite(rawMaxRows) && rawMaxRows > 0 ? Math.floor(rawMaxRows) : -1;
 
     summary.filesScanned += 1;
     const sourceKey = `opencode_db_message:${resolve(sourceDbPath)}`;
@@ -1688,7 +1724,7 @@ export class IngestCoordinator {
       .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
       .get(sourceKey) as { offset: number } | null;
     const hasOffset = offsetRow !== null && Number.isFinite(offsetRow.offset);
-    let cursor = hasOffset ? Math.max(0, Math.floor(offsetRow?.offset ?? 0)) : 0;
+    const cursor = hasOffset ? Math.max(0, Math.floor(offsetRow?.offset ?? 0)) : 0;
 
     let sourceDb: Database | null = null;
     try {
@@ -1713,9 +1749,10 @@ export class IngestCoordinator {
                 LEFT JOIN session s ON s.id = m.session_id
                 WHERE m.rowid > ?
                 ORDER BY m.rowid ASC
+                LIMIT ?
               `
             )
-            .all(cursor)
+            .all(cursor, maxRows)
         : sourceDb
             .query(
               `
@@ -1730,9 +1767,10 @@ export class IngestCoordinator {
                 LEFT JOIN session s ON s.id = m.session_id
                 WHERE m.time_created >= ?
                 ORDER BY m.rowid ASC
+                LIMIT ?
               `
             )
-            .all(cutoffMs)) as Array<{
+            .all(cutoffMs, maxRows)) as Array<{
         rowid: number;
         message_id: string;
         session_id: string;
@@ -1741,6 +1779,13 @@ export class IngestCoordinator {
         session_directory: string;
       }>;
 
+      // §160-007 レビュー: !hasOffset && rows.length === 0 の早期リターンは
+      // 「0 件処理したのに offset を最大まで進める」ように見えるが、ファイル経路の
+      // `!hasOffset && mtimeMs < cutoffMs` (backfill window の外側は初回から
+      // 取り込み対象外にする) と同型の意図的な設計。cutoffMs 以降に対象行が 1 件も
+      // 無い = backfill window の外側にしかデータが無いということなので、その古い
+      // 行は元から取り込み対象外であり「取りこぼし」ではない (LIMIT を追加しても
+      // rows.length === 0 の判定自体は変わらない)。
       if (!hasOffset && rows.length === 0 && maxRow > 0) {
         this.updateIngestOffset(sourceKey, maxRow);
         summary.filesSkippedBackfill += 1;
@@ -1752,10 +1797,19 @@ export class IngestCoordinator {
       }
 
       let imported = 0;
+      let entryIndex = 0;
+      let advancedTo = cursor;
       for (const row of rows) {
-        cursor = Math.max(cursor, Math.floor(row.rowid || 0));
+        // §160-005b と同型: 1 件目は budget 超過済みでも必ず処理する。さもないと
+        // offset (rowid カーソル) が進まず、次 tick も同じ範囲を読み直し続ける。
+        if (entryIndex > 0 && Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) {
+          break;
+        }
+        entryIndex += 1;
+
+        const rowId = Math.floor(row.rowid || 0);
         const normalizedRow: OpencodeDbMessageRow = {
-          rowid: Math.floor(row.rowid || 0),
+          rowid: rowId,
           messageId: typeof row.message_id === "string" ? row.message_id : "",
           sessionId: typeof row.session_id === "string" ? row.session_id : "",
           timeCreated: Number(row.time_created || 0),
@@ -1769,7 +1823,12 @@ export class IngestCoordinator {
           fallbackNowIso: nowIso,
           resolveMessageText: (messageId) => this.readOpencodeMessageTextFromDb(sourceDb as Database, messageId),
         });
-        if (!parsed) continue;
+        if (!parsed) {
+          // recordEvent すべき内容が無い行 (role が user/assistant でない等)。
+          // データは変化しないため恒久的にスキップして良く、offset を進めて構わない。
+          advancedTo = Math.max(advancedTo, rowId);
+          continue;
+        }
 
         const result = this.deps.recordEvent(
           {
@@ -1786,14 +1845,21 @@ export class IngestCoordinator {
           { allowQueue: false }
         );
 
+        if (!result.ok) {
+          // §160-007 罠 2: updateIngestOffset は recordEvent が完了した範囲にのみ
+          // 呼ぶ。未完了の行より先へ進めず、次 tick に再試行させる。
+          break;
+        }
+
+        advancedTo = Math.max(advancedTo, rowId);
         const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
-        if (result.ok && !deduped) {
+        if (!deduped) {
           imported += 1;
         }
       }
 
-      if (cursor > 0) {
-        this.updateIngestOffset(sourceKey, cursor);
+      if (advancedTo > 0) {
+        this.updateIngestOffset(sourceKey, advancedTo);
       }
 
       summary.eventsImported += imported;
@@ -1812,7 +1878,17 @@ export class IngestCoordinator {
     }
   }
 
-  private ingestOpencodeStorageMessages(): OpencodeIngestSummary {
+  /**
+   * §160-007: opencode ストレージ経路。旧実装は `readFileSync` でファイル残り全体を
+   * 一括読みし、ファイル一覧のループにも entry ループにも budget チェックが無かった。
+   * 本番実測で 1 tick 最大 4,618ms event loop を塞いだ。メッセージファイルは 1 件
+   * あたり小さいが、件数 (ファイル数) が多いと合計時間が積み上がるため、
+   * ingestCodexSessionsRollouts (§159-003c) と同型の「ファイル一覧を round-robin で
+   * 走査し、1 件目は必ず処理する budget 付きファイルループ」を外側に、
+   * ingestLegacyCodexHistoryFile (§160-005b) と同型の「statSync 基準のスライス読み +
+   * budget 付き entry ループ」を内側に組み合わせる。
+   */
+  private ingestOpencodeStorageMessages(options?: { budgetMs?: number; maxBytesPerFile?: number }): OpencodeIngestSummary {
     const summary = emptyOpencodeIngestSummary();
     const storageRoot = this.getOpencodeStorageRoot();
     const messageRoot = join(storageRoot, "message");
@@ -1823,11 +1899,30 @@ export class IngestCoordinator {
       return summary;
     }
 
+    const startedAtMs = Date.now();
+    const budgetMs = options?.budgetMs ?? resolveIngestTickBudgetMs();
+    const maxBytesPerFile = options?.maxBytesPerFile ?? resolveIngestMaxBytesPerFile();
+    const readSliceBytes = resolveIngestReadSliceBytes();
+
     const files = listOpencodeMessageFiles(messageRoot);
     const sessionDirectoryMap = this.loadOpencodeSessionDirectoryMap(sessionRoot);
     const cutoffMs = Date.now() - Math.max(0, this.getOpencodeBackfillHours()) * 60 * 60 * 1000;
 
-    for (const messagePath of files) {
+    // §159-003f と同型: ファイル一覧の走査そのものを budget の対象にする。件数が
+    // 多い場合に打ち切ると末尾のファイルが永久に処理されないため、次 tick は前回の
+    // 続きから走査する round-robin にして公平性を保つ。
+    const scanCursorKey = "opencode_storage_message";
+    const startIndex = files.length > 0 ? (this.scanCursors.get(scanCursorKey) ?? 0) % files.length : 0;
+    let filesVisited = 0;
+    let stopTick = false;
+
+    for (let step = 0; step < files.length; step += 1) {
+      const messagePath = files[(startIndex + step) % files.length] as string;
+      // 進捗保証: 1 件目は budget 超過済みでも必ず見る。
+      if (filesVisited > 0 && Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) {
+        break;
+      }
+      filesVisited += 1;
       summary.filesScanned += 1;
       const sourceKey = `opencode_rollout:${resolve(messagePath)}`;
 
@@ -1861,65 +1956,143 @@ export class IngestCoordinator {
         continue;
       }
 
-      let chunk = "";
+      let currentOffset = offset;
+      let nextReadOffset = offset;
+      let bytesReadThisFile = 0;
+      let pending = Buffer.alloc(0);
+
       try {
-        const buffer = readFileSync(messagePath);
-        chunk = buffer.subarray(offset).toString("utf8");
+        const fd = openSync(messagePath, "r");
+        try {
+          while (
+            nextReadOffset < fileSize &&
+            (!Number.isFinite(maxBytesPerFile) || bytesReadThisFile < maxBytesPerFile)
+          ) {
+            const remainingFileBytes = fileSize - nextReadOffset;
+            const remainingReadBytes = Number.isFinite(maxBytesPerFile)
+              ? maxBytesPerFile - bytesReadThisFile
+              : remainingFileBytes;
+            const readSize = Math.min(
+              remainingFileBytes,
+              remainingReadBytes,
+              Number.isFinite(readSliceBytes) ? readSliceBytes : remainingFileBytes
+            );
+            if (readSize <= 0) break;
+
+            const buffer = Buffer.alloc(readSize);
+            const bytesRead = readSync(fd, buffer, 0, readSize, nextReadOffset);
+            if (bytesRead <= 0) break;
+            pending = Buffer.concat([pending, buffer.subarray(0, bytesRead)]);
+            bytesReadThisFile += bytesRead;
+            nextReadOffset += bytesRead;
+
+            const parsedChunk = parseOpencodeMessageChunk({
+              sourceKey,
+              baseOffset: currentOffset,
+              chunk: pending.toString("utf8"),
+              fallbackNowIso: nowIso,
+              resolveSessionDirectory: (sessionId) => sessionDirectoryMap.get(sessionId),
+              resolveMessageText: (messageId) => this.readOpencodeMessageText(partsRoot, messageId),
+            });
+
+            // メッセージファイルは 1 件で 1 つの JSON オブジェクトなので、
+            // readSliceBytes を超える大きさなら次スライスと連結する。上限または
+            // EOF まで完結しなければ次 tick に回し、同一 while 内で無限に
+            // 待ち続けない (§159-003f と同型)。
+            if (parsedChunk.consumedBytes === 0) {
+              if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
+              if (
+                nextReadOffset >= fileSize ||
+                (Number.isFinite(maxBytesPerFile) && bytesReadThisFile >= maxBytesPerFile)
+              ) {
+                break;
+              }
+              continue;
+            }
+
+            let nextOffset = currentOffset + parsedChunk.consumedBytes;
+            let sliceDeferred = false;
+            let entryIndex = 0;
+            let imported = 0;
+            for (const entry of parsedChunk.events) {
+              // 1 件目は budget 超過済みでも必ず処理する。さもないと offset が
+              // 進まず同じ chunk を読み直し続ける。
+              if (entryIndex > 0 && Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) {
+                nextOffset = Math.max(currentOffset, entry.lineOffset);
+                sliceDeferred = true;
+                break;
+              }
+              entryIndex += 1;
+              const result = this.deps.recordEvent(
+                {
+                  platform: "opencode",
+                  project: entry.project,
+                  session_id: entry.sessionId,
+                  event_type: entry.eventType,
+                  ts: entry.timestamp,
+                  payload: entry.payload,
+                  tags: ["opencode_sessions_ingest"],
+                  privacy_tags: [],
+                  dedupe_hash: entry.dedupeHash,
+                },
+                { allowQueue: false }
+              );
+              if (!result.ok) {
+                // §160-007 罠 2: 未完了の entry より先へ offset を進めない。この
+                // ファイルは次 tick に再試行させ、他のファイルの処理は続ける
+                // (budget 超過ではないので stopTick は立てない)。
+                nextOffset = Math.max(currentOffset, entry.lineOffset);
+                sliceDeferred = true;
+                break;
+              }
+              const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+              if (!deduped) {
+                imported += 1;
+              }
+            }
+
+            summary.eventsImported += imported;
+            summary.storageEventsImported += imported;
+            this.updateIngestOffset(sourceKey, nextOffset);
+
+            if (sliceDeferred) {
+              break;
+            }
+
+            currentOffset = nextOffset;
+            pending = pending.subarray(parsedChunk.consumedBytes);
+            if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) {
+              stopTick = true;
+              break;
+            }
+          }
+        } finally {
+          closeSync(fd);
+        }
       } catch {
         continue;
       }
+      if (stopTick) break;
+    }
 
-      let cachedSessionId = "";
-      let cachedMessageId = "";
-      const parsedChunk = parseOpencodeMessageChunk({
-        sourceKey,
-        baseOffset: offset,
-        chunk,
-        fallbackNowIso: nowIso,
-        resolveSessionDirectory: (sessionId) => {
-          cachedSessionId = sessionId;
-          return sessionDirectoryMap.get(sessionId);
-        },
-        resolveMessageText: (messageId) => {
-          cachedMessageId = messageId;
-          return this.readOpencodeMessageText(partsRoot, messageId);
-        },
-      });
-
-      let imported = 0;
-      for (const entry of parsedChunk.events) {
-        const result = this.deps.recordEvent(
-          {
-            platform: "opencode",
-            project: entry.project,
-            session_id: entry.sessionId,
-            event_type: entry.eventType,
-            ts: entry.timestamp,
-            payload: entry.payload,
-            tags: ["opencode_sessions_ingest"],
-            privacy_tags: [],
-            dedupe_hash: entry.dedupeHash,
-          },
-          { allowQueue: false }
-        );
-        const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
-        if (result.ok && !deduped) {
-          imported += 1;
-        }
-      }
-      summary.eventsImported += imported;
-      summary.storageEventsImported += imported;
-
-      if (parsedChunk.consumedBytes > 0) {
-        this.updateIngestOffset(sourceKey, offset + parsedChunk.consumedBytes);
-      }
-
-      if (!parsedChunk.events.length && !cachedSessionId && !cachedMessageId && parsedChunk.consumedBytes === 0) {
-        continue;
-      }
+    if (files.length > 0) {
+      this.scanCursors.set(scanCursorKey, (startIndex + filesVisited) % files.length);
     }
 
     return summary;
+  }
+
+  /**
+   * §160-007: 定期 tick 用の opencode 取り込み。`ingestOpencodeHistory()` は
+   * 明示 API として完走させる契約 (Spec.md「## Periodic Ingest Budget」の
+   * explicit ingest exemption) なので、scheduler からはこちらを呼んで tick
+   * budget を効かせる。ingestCodexHistoryTick (§159-003c) と同じ理由で経路を分ける:
+   * scheduler が公開 API をそのまま呼ぶと budget が無効化される。
+   */
+  private ingestOpencodeHistoryTick(): void {
+    if (!this.isOpencodeIngestEnabled()) return;
+    this.ingestOpencodeDbMessages();
+    this.ingestOpencodeStorageMessages();
   }
 
   ingestOpencodeHistory(): ApiResponse {
@@ -1942,8 +2115,15 @@ export class IngestCoordinator {
     }
 
     const summary = emptyOpencodeIngestSummary();
-    mergeOpencodeIngestSummary(summary, this.ingestOpencodeDbMessages());
-    mergeOpencodeIngestSummary(summary, this.ingestOpencodeStorageMessages());
+    // 明示 API は完走させる (§159-003c/§160-007 の budget は定期実行のみに効かせる)
+    mergeOpencodeIngestSummary(
+      summary,
+      this.ingestOpencodeDbMessages({ budgetMs: Infinity, maxRows: Infinity })
+    );
+    mergeOpencodeIngestSummary(
+      summary,
+      this.ingestOpencodeStorageMessages({ budgetMs: Infinity, maxBytesPerFile: Infinity })
+    );
 
     return makeResponse(
       startedAt,

@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { Database } from "bun:sqlite";
 import {
   IngestCoordinator,
   type IngestCoordinatorDeps,
@@ -453,6 +454,497 @@ describe("ingest-coordinator: ingestOpencodeHistory", () => {
   test("存在しないパスでもクラッシュしない", () => {
     const res = coordinator.ingestOpencodeHistory();
     expect(typeof res.ok).toBe("boolean");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ingestOpencodeDbMessages / ingestOpencodeStorageMessages (§160-007)
+//
+// runTick("opencode", ...) が毎 tick 呼ぶこの 2 経路には読み込み上限も budget
+// チェックも無く、本番ログで最大 4,618ms event loop を塞いだ (§160-005c の網羅
+// テストが検出)。ingestLegacyCodexHistoryFile (§160-005b) / ingestCodexSessionsRollouts
+// (§159-003c) と同型の「入力を tick 単位で有限にする / budget で打ち切る / 完了した
+// 範囲だけ offset を進める」形に揃える。private メソッドは型キャストで直接呼び、
+// options を注入して決定的に検証する。
+// ---------------------------------------------------------------------------
+
+describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
+  type DbCoordinator = {
+    ingestOpencodeDbMessages: (options?: { budgetMs?: number; maxRows?: number }) => {
+      eventsImported: number;
+      dbEventsImported: number;
+      filesScanned: number;
+      filesSkippedBackfill: number;
+    };
+  };
+
+  function setupOpencodeDb(dbPath: string): void {
+    const db = new Database(dbPath, { create: true, strict: false });
+    try {
+      db.exec(`
+        CREATE TABLE session (
+          id TEXT PRIMARY KEY,
+          directory TEXT
+        );
+        CREATE TABLE message (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          time_created INTEGER NOT NULL,
+          time_updated INTEGER NOT NULL,
+          data TEXT NOT NULL
+        );
+      `);
+      db.query(`INSERT INTO session (id, directory) VALUES (?, ?)`).run("ses_1", "/tmp/opencode-db-test-project");
+    } finally {
+      db.close(false);
+    }
+  }
+
+  function insertMessage(
+    dbPath: string,
+    params: { id: string; role: "user" | "assistant"; timeCreated: number; finish?: string }
+  ): void {
+    const db = new Database(dbPath, { create: false, strict: false });
+    try {
+      const data =
+        params.role === "user"
+          ? JSON.stringify({ role: "user", summary: { title: `title-${params.id}` } })
+          : JSON.stringify({ role: "assistant", finish: params.finish ?? "stop" });
+      db.query(
+        `INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?, 'ses_1', ?, ?, ?)`
+      ).run(params.id, params.timeCreated, params.timeCreated, data);
+    } finally {
+      db.close(false);
+    }
+  }
+
+  test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-db-budget-"));
+    try {
+      const dbPath = join(dir, "opencode.db");
+      setupOpencodeDb(dbPath);
+      const recentTs = Date.now() - 1000;
+      ["m1", "m2", "m3", "m4"].forEach((id, i) =>
+        insertMessage(dbPath, { id, role: i % 2 === 0 ? "user" : "assistant", timeCreated: recentTs + i })
+      );
+
+      const db = createTestDb();
+      const recordedHashes: string[] = [];
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ opencodeIngestEnabled: true, opencodeDbPath: dbPath, opencodeBackfillHours: 24 }),
+        recordEvent: mock((event: { dedupe_hash?: string }) => {
+          // recordEvent 自体を意図的に遅くし、budgetMs 判定を wall-clock で確実に超過させる
+          const until = Date.now() + 5;
+          while (Date.now() < until) {
+            /* busy-wait */
+          }
+          recordedHashes.push(event.dedupe_hash ?? "");
+          return makeOkResponse();
+        }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as DbCoordinator;
+
+      const firstTick = coordinator.ingestOpencodeDbMessages({ budgetMs: 1 });
+      expect(firstTick.dbEventsImported).toBe(1);
+
+      const sourceKey = `opencode_db_message:${dbPath}`;
+      const offsetAfterFirstTick = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterFirstTick?.offset).toBe(1);
+
+      const secondTick = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity });
+      expect(secondTick.dbEventsImported).toBe(3);
+
+      const offsetAfterSecondTick = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterSecondTick?.offset).toBe(4);
+
+      // 4 行それぞれ厳密に 1 回だけ recordEvent が呼ばれている (取りこぼしも重複もない)
+      expect(recordedHashes.length).toBe(4);
+      expect(new Set(recordedHashes).size).toBe(4);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("recordEvent が失敗した行より先へ offset を進めず、再試行で拾い直す", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-db-fail-"));
+    try {
+      const dbPath = join(dir, "opencode.db");
+      setupOpencodeDb(dbPath);
+      const recentTs = Date.now() - 1000;
+      ["m1", "m2", "m3"].forEach((id, i) =>
+        insertMessage(dbPath, { id, role: i % 2 === 0 ? "user" : "assistant", timeCreated: recentTs + i })
+      );
+
+      const db = createTestDb();
+      let callCount = 0;
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ opencodeIngestEnabled: true, opencodeDbPath: dbPath, opencodeBackfillHours: 24 }),
+        recordEvent: mock(() => {
+          callCount += 1;
+          return callCount === 1 ? makeErrResponse("temporary write failure") : makeOkResponse();
+        }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as DbCoordinator;
+
+      const first = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity });
+      expect(first.dbEventsImported).toBe(0);
+
+      const sourceKey = `opencode_db_message:${dbPath}`;
+      const offsetAfterFailure = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      // 1 行目 (m1) が失敗しているので、成功した行が 1 件も無く offset は永続化されない
+      expect(offsetAfterFailure).toBeNull();
+
+      const second = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity });
+      expect(second.dbEventsImported).toBe(3);
+
+      const offsetAfterRetry = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterRetry?.offset).toBe(3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("1 tick の読み込み行数は maxRows で上限を持つ (budget が無制限でも打ち切る)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-db-maxrows-"));
+    try {
+      const dbPath = join(dir, "opencode.db");
+      setupOpencodeDb(dbPath);
+      const recentTs = Date.now() - 1000;
+      ["m1", "m2", "m3", "m4", "m5"].forEach((id, i) =>
+        insertMessage(dbPath, { id, role: i % 2 === 0 ? "user" : "assistant", timeCreated: recentTs + i })
+      );
+
+      const db = createTestDb();
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ opencodeIngestEnabled: true, opencodeDbPath: dbPath, opencodeBackfillHours: 24 }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as DbCoordinator;
+
+      // Spec.md「## Periodic Ingest Budget」: 時間 budget だけでは読み込み量の上限
+      // にならない (budget チェックの前に全行をメモリへロードし終えているため)。
+      // budgetMs を無制限にしても maxRows だけで打ち切れることを確認する。
+      const firstTick = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity, maxRows: 2 });
+      expect(firstTick.dbEventsImported).toBe(2);
+
+      const secondTick = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity, maxRows: 2 });
+      expect(secondTick.dbEventsImported).toBe(2);
+
+      const thirdTick = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity, maxRows: 2 });
+      expect(thirdTick.dbEventsImported).toBe(1);
+
+      const fourthTick = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity, maxRows: 2 });
+      expect(fourthTick.dbEventsImported).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("hasOffset が無く直近データも無い場合は maxRow まで進み、以後の新規行から再開する (早期リターン経路)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-db-earlyreturn-"));
+    try {
+      const dbPath = join(dir, "opencode.db");
+      setupOpencodeDb(dbPath);
+      const oldTs = Date.now() - 48 * 60 * 60 * 1000; // 48h 前 (24h backfill window の外)
+      insertMessage(dbPath, { id: "m_old_1", role: "user", timeCreated: oldTs });
+      insertMessage(dbPath, { id: "m_old_2", role: "assistant", timeCreated: oldTs + 1 });
+
+      const db = createTestDb();
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ opencodeIngestEnabled: true, opencodeDbPath: dbPath, opencodeBackfillHours: 24 }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as DbCoordinator;
+
+      const first = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity });
+      expect(first.dbEventsImported).toBe(0);
+      expect(first.filesSkippedBackfill).toBe(1);
+
+      const sourceKey = `opencode_db_message:${dbPath}`;
+      const offsetAfterSkip = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      // maxRow (m_old_2 の rowid = 2) まで進む — 意図的な backfill skip であり、
+      // 「未処理データの取りこぼし」ではない (report 参照)
+      expect(offsetAfterSkip?.offset).toBe(2);
+
+      // その後に追加された新しい行は、通常どおり取り込まれる (取りこぼしなし)
+      const recentTs = Date.now() - 1000;
+      insertMessage(dbPath, { id: "m_new_1", role: "user", timeCreated: recentTs });
+
+      const second = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity });
+      expect(second.dbEventsImported).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("ingest-coordinator: ingestOpencodeStorageMessages (§160-007)", () => {
+  type StorageCoordinator = {
+    ingestOpencodeStorageMessages: (options?: { budgetMs?: number; maxBytesPerFile?: number }) => {
+      eventsImported: number;
+      storageEventsImported: number;
+      filesScanned: number;
+      filesSkippedBackfill: number;
+    };
+  };
+
+  function setupOpencodeStorage(storageRoot: string): void {
+    mkdirSync(join(storageRoot, "message", "ses_1"), { recursive: true });
+    mkdirSync(join(storageRoot, "session"), { recursive: true });
+    writeFileSync(
+      join(storageRoot, "session", "ses_1.json"),
+      JSON.stringify({ id: "ses_1", directory: "/tmp/opencode-storage-test-project" }),
+      "utf8"
+    );
+  }
+
+  function writeMessageFile(
+    storageRoot: string,
+    params: { id: string; role: "user" | "assistant"; timeCreated: number; finish?: string; extra?: Record<string, unknown> }
+  ): string {
+    const messagePath = join(storageRoot, "message", "ses_1", `${params.id}.json`);
+    const body =
+      params.role === "user"
+        ? {
+            id: params.id,
+            sessionID: "ses_1",
+            role: "user",
+            time: { created: params.timeCreated },
+            summary: { title: `title-${params.id}` },
+            ...params.extra,
+          }
+        : {
+            id: params.id,
+            sessionID: "ses_1",
+            role: "assistant",
+            finish: params.finish ?? "stop",
+            time: { created: params.timeCreated },
+            ...params.extra,
+          };
+    writeFileSync(messagePath, JSON.stringify(body), "utf8");
+    return messagePath;
+  }
+
+  test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-storage-budget-"));
+    try {
+      const storageRoot = join(dir, "opencode-storage");
+      setupOpencodeStorage(storageRoot);
+      const recentTs = Date.now() - 1000;
+      const ids = ["msg_1", "msg_2", "msg_3", "msg_4"];
+      ids.forEach((id, i) =>
+        writeMessageFile(storageRoot, { id, role: i % 2 === 0 ? "user" : "assistant", timeCreated: recentTs + i })
+      );
+
+      const db = createTestDb();
+      const recordedHashes: string[] = [];
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ opencodeIngestEnabled: true, opencodeStorageRoot: storageRoot, opencodeBackfillHours: 24 }),
+        recordEvent: mock((event: { dedupe_hash?: string }) => {
+          const until = Date.now() + 5;
+          while (Date.now() < until) {
+            /* busy-wait */
+          }
+          recordedHashes.push(event.dedupe_hash ?? "");
+          return makeOkResponse();
+        }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as StorageCoordinator;
+
+      const firstTick = coordinator.ingestOpencodeStorageMessages({ budgetMs: 1 });
+      expect(firstTick.storageEventsImported).toBe(1);
+
+      const secondTick = coordinator.ingestOpencodeStorageMessages({ budgetMs: Infinity });
+      expect(secondTick.storageEventsImported).toBe(3);
+
+      expect(recordedHashes.length).toBe(4);
+      expect(new Set(recordedHashes).size).toBe(4);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("recordEvent が失敗したファイルの offset を進めず、後続ファイルは同一 tick 内で処理を続ける", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-storage-fail-"));
+    try {
+      const storageRoot = join(dir, "opencode-storage");
+      setupOpencodeStorage(storageRoot);
+      const recentTs = Date.now() - 1000;
+      const msg1Path = writeMessageFile(storageRoot, { id: "msg_1", role: "user", timeCreated: recentTs });
+      const msg2Path = writeMessageFile(storageRoot, { id: "msg_2", role: "assistant", timeCreated: recentTs + 1 });
+      writeMessageFile(storageRoot, { id: "msg_3", role: "user", timeCreated: recentTs + 2 });
+
+      const db = createTestDb();
+      let callCount = 0;
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ opencodeIngestEnabled: true, opencodeStorageRoot: storageRoot, opencodeBackfillHours: 24 }),
+        recordEvent: mock(() => {
+          callCount += 1;
+          return callCount === 1 ? makeErrResponse("temporary write failure") : makeOkResponse();
+        }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as StorageCoordinator;
+
+      const first = coordinator.ingestOpencodeStorageMessages({ budgetMs: Infinity });
+      // msg_1 は失敗するが、msg_2 / msg_3 は同一 tick 内で処理が続く
+      expect(first.storageEventsImported).toBe(2);
+
+      const sourceKeyMsg1 = `opencode_rollout:${msg1Path}`;
+      const offsetMsg1 = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKeyMsg1) as {
+        offset: number;
+      } | null;
+      expect(offsetMsg1?.offset ?? -1).toBe(0);
+
+      const sourceKeyMsg2 = `opencode_rollout:${msg2Path}`;
+      const fileSize2 = statSync(msg2Path).size;
+      const offsetMsg2 = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKeyMsg2) as {
+        offset: number;
+      } | null;
+      expect(offsetMsg2?.offset).toBe(fileSize2);
+
+      const second = coordinator.ingestOpencodeStorageMessages({ budgetMs: Infinity });
+      expect(second.storageEventsImported).toBe(1);
+
+      const fileSize1 = statSync(msg1Path).size;
+      const offsetMsg1AfterRetry = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKeyMsg1) as {
+        offset: number;
+      } | null;
+      expect(offsetMsg1AfterRetry?.offset).toBe(fileSize1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("読み込み上限より大きい 1 メッセージでも statSync の実サイズを基準に複数スライスにまたがって完走する", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-storage-slice-"));
+    const ORIGINAL_READ_SLICE = process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES;
+    try {
+      const storageRoot = join(dir, "opencode-storage");
+      setupOpencodeStorage(storageRoot);
+      const recentTs = Date.now() - 1000;
+      // 既定 64KB よりずっと小さいスライス幅を強制し、1 ファイルの読み込みが複数
+      // スライスにまたがることを保証する。「offset > buffer.length (= スライス長)」
+      // で完了判定すると、スライス幅を超えた時点で恒常的に取り込み不能になる旧バグの
+      // 再発を防ぐ回帰ガード。
+      process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES = "40";
+      const bigTitle = "x".repeat(500);
+      const msgPath = writeMessageFile(storageRoot, {
+        id: "msg_big",
+        role: "user",
+        timeCreated: recentTs,
+        extra: { summary: { title: bigTitle } },
+      });
+      expect(statSync(msgPath).size).toBeGreaterThan(40);
+
+      const db = createTestDb();
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ opencodeIngestEnabled: true, opencodeStorageRoot: storageRoot, opencodeBackfillHours: 24 }),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as StorageCoordinator;
+
+      const result = coordinator.ingestOpencodeStorageMessages({ budgetMs: Infinity });
+      expect(result.storageEventsImported).toBe(1);
+
+      const sourceKey = `opencode_rollout:${msgPath}`;
+      const offsetRow = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetRow?.offset).toBe(statSync(msgPath).size);
+    } finally {
+      if (ORIGINAL_READ_SLICE === undefined) delete process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES;
+      else process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES = ORIGINAL_READ_SLICE;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("ingest-coordinator: ingestOpencodeHistory は明示 API として budget 無制限で完走する (§160-007)", () => {
+  test("tick 用の budget を極小に設定していても DB 経路とファイル経路の両方を完走させる", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-explicit-"));
+    const ORIGINAL_BUDGET = process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
+    const recentTs = Date.now() - 1000;
+    try {
+      const dbPath = join(dir, "opencode.db");
+      const db2 = new Database(dbPath, { create: true, strict: false });
+      try {
+        db2.exec(`
+          CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT);
+          CREATE TABLE message (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            time_created INTEGER NOT NULL,
+            time_updated INTEGER NOT NULL,
+            data TEXT NOT NULL
+          );
+        `);
+        db2.query(`INSERT INTO session (id, directory) VALUES ('ses_1', '/tmp/opencode-explicit-test')`).run();
+        for (let i = 0; i < 6; i += 1) {
+          const role = i % 2 === 0 ? "user" : "assistant";
+          const data = role === "user" ? JSON.stringify({ role, summary: { title: `t${i}` } }) : JSON.stringify({ role, finish: "stop" });
+          db2
+            .query(`INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?, 'ses_1', ?, ?, ?)`)
+            .run(`m${i}`, recentTs + i, recentTs + i, data);
+        }
+      } finally {
+        db2.close(false);
+      }
+
+      const storageRoot = join(dir, "opencode-storage");
+      mkdirSync(join(storageRoot, "message", "ses_2"), { recursive: true });
+      for (let i = 0; i < 4; i += 1) {
+        const role = i % 2 === 0 ? "user" : "assistant";
+        const body =
+          role === "user"
+            ? { id: `msg_s${i}`, sessionID: "ses_2", role, time: { created: recentTs + i }, summary: { title: `s${i}` } }
+            : { id: `msg_s${i}`, sessionID: "ses_2", role, finish: "stop", time: { created: recentTs + i } };
+        writeFileSync(join(storageRoot, "message", "ses_2", `msg_s${i}.json`), JSON.stringify(body), "utf8");
+      }
+
+      process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = "1";
+
+      const db = createTestDb();
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({
+          opencodeIngestEnabled: true,
+          opencodeDbPath: dbPath,
+          opencodeStorageRoot: storageRoot,
+          opencodeBackfillHours: 24,
+        }),
+        recordEvent: mock(() => {
+          // tick 用の極小 budget を必ず超過させる
+          const until = Date.now() + 5;
+          while (Date.now() < until) {
+            /* busy-wait */
+          }
+          return makeOkResponse();
+        }),
+      });
+
+      const res = new IngestCoordinator(deps).ingestOpencodeHistory();
+      expect(res.ok).toBe(true);
+      expect(res.items[0]?.db_events_imported).toBe(6);
+      expect(res.items[0]?.storage_events_imported).toBe(4);
+    } finally {
+      if (ORIGINAL_BUDGET === undefined) delete process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
+      else process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = ORIGINAL_BUDGET;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
