@@ -526,10 +526,21 @@ export class FakeCoordinator {
     expect(results.some((r) => r.label === "retry_queue")).toBe(false);
   });
 
-  test("regression lock: budget 対応済みの codex / cursor / claude_code 経路は missing_budget に戻らない", () => {
+  test("regression lock: runTick から到達する全 ingest 経路が budget-aware である", () => {
     const source = readFileSync(COORDINATOR, "utf8");
     const results = traceIngestBudgetCoverage(source);
-    const guarded = results.filter((r) => ["codex", "cursor", "claude_code"].includes(r.label));
+    // §160-007 で opencode / antigravity / gemini も対応済みになったため、
+    // 「一部の経路だけ」ではなく **runTick から到達する全経路** を対象にする。
+    // 新しい ingest 経路を runTick に足して budget を入れ忘れたら、ここで落ちる。
+    //
+    // この検査の限界 (2026-07-31 に実測で確認):
+    // budget 参照の有無を **ソース文字列** で見ているだけなので、実行時に budget が
+    // 正しく効くことは保証しない。判定は `resolveIngestTickBudgetMs(` または
+    // `Date.now() - startedAtMs > budgetMs` の **いずれか**が本体に現れるかで、
+    // 片方だけ残して他方を潰しても検出できない (両方消せば落ちることは実測済み)。
+    // 「break が正しい位置にあるか」「1 件目を通す guard になっているか」も見ない。
+    // それらは各経路の振る舞いテスト (ingest-coordinator.test.ts) の責務。
+    const guarded = results.filter((r) => r.label !== "already_safe");
 
     // guarded が空だと以下の assert が意味を持たなくなる (対象を取り逃していないか)
     expect(guarded.length).toBeGreaterThan(0);
@@ -537,24 +548,4 @@ export class FakeCoordinator {
     expect(broken).toEqual([]);
   });
 
-  // §160-005c の独立レビューで発見: opencode / antigravity / gemini の定期 ingest は
-  // legacy codex history と同型 (無制限の read + insert ループ) だが、budget
-  // チェックが一切無い (ingestOpencodeDbMessages / ingestOpencodeStorageMessages /
-  // ingestAntigravityWorkspace / ingestAntigravityLogEvents / ingestGeminiEvents)。
-  // §160-005 のスコープは legacy codex history のみだったため未対応のまま残っている。
-  // runTick からの到達性ベースで機械的に検査すると必ず引っかかるが、このタスクは
-  // テストのみ担当でソースを直せないため、`test.failing` で現状の欠落を記録する
-  // (bun:test の test.failing は「想定どおり失敗すれば全体としては pass 扱い、
-  // 想定に反して成功したら fail 扱い」になる)。opencode/antigravity/gemini の
-  // いずれかで budget 対応が入ったらこのテストが赤くなるので、そのとき通常の
-  // test() に昇格させ、上の regression lock テストへ対象を移すこと。
-  test.failing(
-    "既知の未解決ギャップ: opencode / antigravity / gemini の ingest 経路には budget が無い (対応したら .failing を外す)",
-    () => {
-      const source = readFileSync(COORDINATOR, "utf8");
-      const results = traceIngestBudgetCoverage(source);
-      const missing = results.filter((r) => r.status !== "ok");
-      expect(missing).toEqual([]);
-    }
-  );
 });
