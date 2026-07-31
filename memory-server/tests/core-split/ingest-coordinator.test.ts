@@ -1218,6 +1218,7 @@ type AntigravitySummary = {
   eventsImported: number;
   filesScanned: number;
   filesSkippedBackfill: number;
+  filesSkippedTooLarge: number;
   rootsScanned: number;
   checkpointEventsImported: number;
   toolEventsImported: number;
@@ -1446,6 +1447,63 @@ describe("ingest-coordinator: ingestAntigravityWorkspace (§160-007)", () => {
       } | null;
       expect(offsetAfterRetry?.offset).toBe(statSync(filePath).size);
     } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // §160-007 レビュー指摘: budget は経過時間でしか判定できず、readFileSync でファイル
+  // 全文を読み終えるまで一度もチェックが走らない。1 ファイルが maxBytesPerFile を
+  // 超える場合は読まずにスキップし、かつそれが観測可能であることを固定する。
+  test("maxBytesPerFile を超えるファイルは読まずにスキップし、summary カウンタと console.warn の両方で観測できる", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-workspace-toolarge-"));
+    const originalWarn = console.warn;
+    const warnMessages: string[] = [];
+    console.warn = (...args: unknown[]) => {
+      warnMessages.push(args.map(String).join(" "));
+    };
+    try {
+      const bigContent = `# Big Checkpoint\n\n${"x".repeat(200)}\n`;
+      const filePath = setupAntigravityCheckpointFile(dir, "checkpoint-big.md", bigContent);
+      const fileSize = statSync(filePath).size;
+      expect(fileSize).toBeGreaterThan(50);
+
+      const db = createTestDb();
+      const deps = makeDeps({
+        db,
+        config: createTestConfig({ antigravityIngestEnabled: true }),
+        recordEvent: mock(() => makeOkResponse()),
+      });
+      const coordinator = new IngestCoordinator(deps) as unknown as AntigravityWorkspaceCoordinator;
+
+      // maxBytesPerFile をファイルサイズより小さく設定 → readFileSync に到達せずスキップされるはず。
+      const skipped = coordinator.ingestAntigravityWorkspace(dir, { budgetMs: Infinity, maxBytesPerFile: 50 });
+      expect(skipped.filesSkippedTooLarge).toBe(1);
+      expect(skipped.checkpointEventsImported).toBe(0);
+      expect(skipped.eventsImported).toBe(0);
+
+      // 観測手段 (1): summary カウンタ経由で分かる (すでに上で確認)。
+      // 観測手段 (2): console.warn 経由でも分かる。
+      expect(warnMessages.some((m) => m.includes("too large") && m.includes(filePath))).toBe(true);
+
+      const sourceKey = `antigravity_file:${filePath}`;
+      const offsetAfterSkip = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      // offset は進めない: スキップは「欠落」ではなく「まだ取り込んでいない」でなければならない。
+      expect(offsetAfterSkip).toBeNull();
+
+      // maxBytesPerFile を引き上げれば (運用者が設定を変える、または既定値のままの通常運用)、
+      // このファイルは失われておらず取り込める — offset を進めなかったことの裏付け。
+      const recovered = coordinator.ingestAntigravityWorkspace(dir, { budgetMs: Infinity, maxBytesPerFile: Infinity });
+      expect(recovered.checkpointEventsImported).toBe(1);
+      expect(recovered.filesSkippedTooLarge).toBe(0);
+
+      const offsetAfterRecovery = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
+        offset: number;
+      } | null;
+      expect(offsetAfterRecovery?.offset).toBe(fileSize);
+    } finally {
+      console.warn = originalWarn;
       rmSync(dir, { recursive: true, force: true });
     }
   });

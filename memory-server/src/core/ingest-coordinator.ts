@@ -490,6 +490,10 @@ interface AntigravityIngestSummary {
   eventsImported: number;
   filesScanned: number;
   filesSkippedBackfill: number;
+  // §160-007 (review 指摘): readFileSync 前のサイズ上限判定で読まずにスキップした
+  // ファイル数。filesSkippedBackfill と混ぜない (原因が違うと運用時の切り分けが
+  // できなくなる)。
+  filesSkippedTooLarge: number;
   rootsScanned: number;
   checkpointEventsImported: number;
   toolEventsImported: number;
@@ -502,6 +506,7 @@ function emptyAntigravityIngestSummary(): AntigravityIngestSummary {
     eventsImported: 0,
     filesScanned: 0,
     filesSkippedBackfill: 0,
+    filesSkippedTooLarge: 0,
     rootsScanned: 0,
     checkpointEventsImported: 0,
     toolEventsImported: 0,
@@ -514,6 +519,7 @@ function mergeAntigravityIngestSummary(target: AntigravityIngestSummary, partial
   target.eventsImported += partial.eventsImported;
   target.filesScanned += partial.filesScanned;
   target.filesSkippedBackfill += partial.filesSkippedBackfill;
+  target.filesSkippedTooLarge += partial.filesSkippedTooLarge;
   target.rootsScanned += partial.rootsScanned;
   target.checkpointEventsImported += partial.checkpointEventsImported;
   target.toolEventsImported += partial.toolEventsImported;
@@ -2411,11 +2417,17 @@ export class IngestCoordinator {
    * (parseAntigravityFile は見出し抽出に文書全体の trim 済みテキストを要求するため、
    * 部分読みに切り替えると dedupeHash/内容が変わってしまう)。budget が効くべきなのは
    * 「何百ファイルも回る外側ループ」なので、ingestCodexSessionsRollouts
-   * (§159-003c/f) の外側 round-robin + budget だけを移植する。
+   * (§159-003c/f) の外側 round-robin + budget を移植する。
+   *
+   * §160-007 (review 指摘): budget は経過時間でしか判定できず、readFileSync で
+   * ファイル全文を読み終えるまで一度もチェックが走らない。1 ファイルが巨大だと
+   * budget があっても意味を成さない (Spec.md `## Periodic Ingest Budget`)。そのため
+   * readFileSync の前に maxBytesPerFile (既定 512KB, resolveIngestMaxBytesPerFile())
+   * でサイズ判定し、超えるファイルは読まずにスキップする。
    */
   private ingestAntigravityWorkspace(
     rootDir: string,
-    options?: { budgetMs?: number }
+    options?: { budgetMs?: number; maxBytesPerFile?: number }
   ): AntigravityIngestSummary {
     const summary = emptyAntigravityIngestSummary();
     if (!existsSync(rootDir)) {
@@ -2438,6 +2450,10 @@ export class IngestCoordinator {
 
     const startedAtMs = Date.now();
     const budgetMs = options?.budgetMs ?? resolveIngestTickBudgetMs();
+    // §160-007 (review 指摘): budget は「読んだ後」にしか効かない。1 ファイルが
+    // maxBytesPerFile を超える場合、readFileSync に到達する前にサイズで弾く
+    // (Spec.md `## Periodic Ingest Budget`: 読み込み量そのものを時間と独立に上限化する)。
+    const maxBytesPerFile = options?.maxBytesPerFile ?? resolveIngestMaxBytesPerFile();
 
     // §159-003f と同型: 走査そのものを budget の対象にする。打ち切ると末尾のファイルが
     // 永久に処理されないので、次 tick は前回の続きから走査する round-robin にする。
@@ -2482,6 +2498,21 @@ export class IngestCoordinator {
         offset = 0;
       }
       if (offset === fileSize) {
+        continue;
+      }
+
+      // §160-007 (review 指摘): サイズ上限を超えるファイルは読まずにスキップする。
+      // offset は進めない — 進めるとこのファイルのイベントは二度と取り込まれない
+      // (欠落は無害な繰り返しより悪い)。進めなくても、このチェックは readFileSync
+      // より前にあるので毎 round-robin サイクルの再訪問コストは statSync 1 回分
+      // (O(1)) で済み、event loop を塞がない。round-robin の進捗保証
+      // (`filesVisited > 0`) は「訪問したか」だけを見て「実際に読めたか」は見ない
+      // ので、この軽いスキップを繰り返しても他ファイルの走査を飢餓させない。
+      if (Number.isFinite(maxBytesPerFile) && fileSize > maxBytesPerFile) {
+        summary.filesSkippedTooLarge += 1;
+        console.warn(
+          `[ingest] antigravity file too large, skipping this tick: ${filePath} (${fileSize} bytes > maxBytesPerFile=${maxBytesPerFile})`
+        );
         continue;
       }
 
@@ -2775,6 +2806,7 @@ export class IngestCoordinator {
             events_imported: 0,
             files_scanned: 0,
             files_skipped_backfill: 0,
+            files_skipped_too_large: 0,
             roots_scanned: 0,
             checkpoint_events_imported: 0,
             tool_events_imported: 0,
@@ -2801,6 +2833,7 @@ export class IngestCoordinator {
           events_imported: summary.eventsImported,
           files_scanned: summary.filesScanned,
           files_skipped_backfill: summary.filesSkippedBackfill,
+          files_skipped_too_large: summary.filesSkippedTooLarge,
           roots_scanned: summary.rootsScanned,
           checkpoint_events_imported: summary.checkpointEventsImported,
           tool_events_imported: summary.toolEventsImported,
