@@ -3,6 +3,14 @@ import type { PlatformIngester, IngesterDeps } from "./types";
 
 export interface CodexHistoryEvent {
   lineIndex: number;
+  /**
+   * §160-005a: `.trim()` する前の、この行の先頭の絶対バイト位置 (`baseOffset` からの
+   * オフセット込み)。`codex-sessions.ts` の `lineOffset` と同じ契約 — budget 打ち切り
+   * 時の再開位置として使う。lineIndex (行番号) からの再計算はしない。空行・JSON
+   * parse 失敗行を `continue` で読み飛ばしても後続行の lineOffset がずれないよう、
+   * skip した行も含めてバッファを "\n" 区切りで走査する (実装は下記参照)。
+   */
+  lineOffset: number;
   line: string;
   parsed: Record<string, unknown>;
   role: string;
@@ -26,8 +34,29 @@ export function parseCodexHistoryChunk(params: {
 
   const events: CodexHistoryEvent[] = [];
 
+  // §160-005a (review 対応): lineOffset は `Buffer.byteLength(line) + 1` の積算では
+  // なく、`chunk` を再エンコードしたバッファ上で "\n" (0x0a) を直接走査して求める。
+  // `codex-sessions.ts:57-68` と同じ機構に揃えることで、行の切り出し方 (split か
+  // indexOf か) が変わっても常に同じ絶対バイト位置を指す。
+  //
+  // 検証メモ: 積算方式と走査方式は、`chunk` が既に (呼び出し側の `.toString("utf8")`
+  // で) 1 回デコード済みの文字列である限り、数学的に同じ値を返す
+  // (`Buffer.byteLength(a) + Buffer.byteLength(b) === Buffer.byteLength(a + b)` が
+  // UTF-8 の加法性として常に成り立つため、chunk の中に不正バイト由来の U+FFFD が
+  // 混入していても両者は一致する)。両者で異なるのは「元のファイルの生バイトに対する
+  // 絶対位置がずれるかどうか」ではなく実装の見通しの良さであり、そのズレ自体は
+  // coordinator 側の `.toString("utf8")` 変換に起因する別レイヤーの問題として
+  // 4 経路 (claude_code / codex rollouts / cursor / codex-history) 共通で残る。
+  const buffer = Buffer.from(params.chunk, "utf8");
+  let byteCursor = 0;
+
   for (let index = 0; index < lines.length - 1; index += 1) {
-    const line = lines[index]?.trim();
+    const rawLine = lines[index] ?? "";
+    const lineOffset = params.baseOffset + byteCursor;
+    const newline = buffer.indexOf(0x0a, byteCursor);
+    byteCursor = newline === -1 ? buffer.length : newline + 1;
+
+    const line = rawLine.trim();
     if (!line) {
       continue;
     }
@@ -57,6 +86,7 @@ export function parseCodexHistoryChunk(params: {
 
     events.push({
       lineIndex: index,
+      lineOffset,
       line,
       parsed,
       role,

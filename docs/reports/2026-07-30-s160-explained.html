@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>§160 — 記憶の保存が遅くなる問題は直ったのか</title>
+<style>
+:root{
+  --bg:#F5F4F1; --surface:#FCFBF9; --surface-2:#F0EFEA;
+  --ink:#1B1B22; --ink-soft:#5A5A64; --ink-faint:#8C8C92;
+  --line:#E4E2DB; --line-strong:#D2CFC6;
+  --primary:#313A7E; --primary-soft:#E9EAF4; --primary-ink:#262E66;
+  --kernel:#191B2C; --kernel-2:#23263c; --kernel-line:#343750; --kernel-ink:#C9CBE0;
+  --done:#2F8F5B; --done-soft:#E4F2EA; --done-line:#B7DCC7;
+  --wip:#B8821C; --wip-soft:#F6EDD8;
+  --risk:#B5462F; --risk-soft:#F6E7E2; --risk-line:#E5C0B4;
+  --info:#2C5A7A; --info-soft:#E3ECF1;
+  --cf:#B5611A; --cf-soft:#F4E7D8; --cf-line:#E0C49E;
+  --plain:#1f7a6d; --plain-soft:#E1F1EE; --plain-line:#BBE0D9;
+  --api:#8B3A62; --api-soft:#F4E6EE; --api-line:#E0B8CC;
+  --sub:#2F6D5A; --sub-soft:#E2F0EB; --sub-line:#B8D9CC;
+  --radius:10px;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.85;
+     word-break:keep-all;overflow-wrap:normal;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+.hero{background:linear-gradient(150deg,var(--kernel) 0%,var(--kernel-2) 100%);color:#fff;padding:56px 0 48px;margin-bottom:44px}
+.badge{display:inline-block;font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+       color:var(--kernel-ink);border:1px solid var(--kernel-line);border-radius:999px;padding:5px 14px;margin-bottom:20px}
+.hero h1{font-size:32px;line-height:1.5;font-weight:700;margin-bottom:16px}
+.hero .tag{color:#B9BCD4;font-size:15px;max-width:760px;margin-bottom:26px}
+.thesis{border-left:4px solid #7C86D8;background:rgba(255,255,255,.06);padding:16px 20px;border-radius:0 var(--radius) var(--radius) 0;
+        font-size:16px;font-weight:600;max-width:820px}
+.hero-meta{margin-top:26px;display:flex;flex-wrap:wrap;gap:10px 26px;font-size:12.5px;color:#9EA2BE}
+section{margin-bottom:52px}
+.kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--primary);font-weight:700;margin-bottom:8px}
+h2{font-size:23px;font-weight:700;margin-bottom:16px;line-height:1.5}
+h3{font-size:17px;font-weight:700;margin:26px 0 10px}
+p{margin-bottom:14px;font-size:15.5px}
+ul,ol{margin:0 0 16px 22px}
+li{margin-bottom:7px;font-size:15.5px}
+strong{font-weight:700}
+code{font-family:var(--mono);font-size:.9em;background:var(--surface-2);padding:2px 6px;border-radius:4px;
+     white-space:nowrap;border:1px solid var(--line)}
+.plainbox{background:var(--plain-soft);border:1px solid var(--plain-line);border-left:4px solid var(--plain);
+          border-radius:var(--radius);padding:22px 24px;margin-bottom:24px}
+.plainbox h3{margin-top:0;color:#155e54}
+.tlgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:8px}
+.tlcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px}
+.tlcard .q{font-weight:700;font-size:14.5px;color:var(--primary-ink);margin-bottom:7px}
+.tlcard .a{font-size:14.5px;color:var(--ink-soft)}
+.figure{background:var(--kernel);border-radius:var(--radius);padding:26px 24px;margin:20px 0;overflow-x:auto}
+.figure .cap{color:#8E93B4;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:16px}
+.chain{display:flex;flex-direction:column;gap:0}
+.step{background:var(--kernel-2);border:1px solid var(--kernel-line);border-radius:8px;padding:13px 17px;
+      color:#E3E5F2;font-size:14px;min-width:0}
+.step .lbl{font-family:var(--mono);font-size:11.5px;color:#8E93B4;display:block;margin-bottom:3px}
+.arrow{color:#5A5F80;text-align:center;font-size:17px;line-height:1.2;padding:5px 0}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.node{background:var(--kernel-2);border:1px solid var(--kernel-line);border-radius:8px;padding:13px 15px;
+      color:#E3E5F2;font-size:13.5px;text-align:center}
+.node.hit{border-color:#3E8F63;background:#1D2E26}
+.node.gap{border-color:#8F4436;background:#2E1F1C}
+.node .t{font-family:var(--mono);font-size:11.5px;color:#8E93B4;display:block;margin-bottom:5px}
+table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14.5px;background:var(--surface);
+      border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+th{background:var(--surface-2);text-align:left;padding:11px 14px;font-weight:700;font-size:13.5px;border-bottom:1px solid var(--line-strong)}
+td{padding:11px 14px;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:none}
+td.num,th.num{text-align:right;font-family:var(--mono);font-size:13.5px}
+tr.hit td{background:var(--done-soft)}
+tr.gap td{background:var(--risk-soft)}
+.tablewrap{overflow-x:auto}
+.verdict{background:var(--done-soft);border:1px solid var(--done-line);border-left:4px solid var(--done);
+         border-radius:var(--radius);padding:22px 24px;margin-bottom:24px}
+.verdict h3{margin-top:0;color:#1E6B41}
+.openbox{background:var(--wip-soft);border:1px solid #E4CE9C;border-left:4px solid var(--wip);
+         border-radius:var(--radius);padding:22px 24px;margin-bottom:24px}
+.openbox h3{margin-top:0;color:#8A6114}
+.decide{background:var(--primary-soft);border:1px solid #C9CDE8;border-left:4px solid var(--primary);
+        border-radius:var(--radius);padding:22px 24px}
+.decide h3{margin-top:0;color:var(--primary-ink)}
+footer{border-top:1px solid var(--line-strong);margin-top:56px;padding:28px 0 56px;font-size:13px;color:var(--ink-faint)}
+footer h4{font-size:13px;color:var(--ink-soft);margin-bottom:7px;font-weight:700}
+footer ul{margin-left:18px}
+footer li{font-size:13px;margin-bottom:4px}
+.nw{white-space:nowrap}
+@media print{
+  body{background:#fff}
+  .hero{background:var(--kernel) !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .figure,.node,.step{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  section{page-break-inside:avoid}
+}
+@media (max-width:620px){
+  .hero h1{font-size:25px}
+  h2{font-size:20px}
+}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="badge">harness-mem &nbsp;/&nbsp; §160 理解用レポート</div>
+    <h1>記憶が増えると保存が遅くなる問題は、直ったのか？</h1>
+    <p class="tag">harness-mem は、あなたが Claude Code や Codex で作業した内容を手元のデータベースに貯めて、次のセッションで思い出させる仕組みです。その「1 件貯める」動作が、データベースが太るほど遅くなっていました。</p>
+    <div class="thesis">1 件あたりのコストは直りました。ただし、本番が数十秒フリーズする本当の原因は別の場所にあり、そちらはまだ直っていません。</div>
+    <div class="hero-meta">
+      <span>2026-07-30</span>
+      <span>対象: PR #167（<span class="nw">§160-001</span> / <span class="nw">160-002</span> / <span class="nw">160-003</span>）</span>
+      <span>この資料は理解用の派生物であり、正本ではありません</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section>
+  <div class="plainbox">
+    <h3>やさしく言うと</h3>
+    <p>harness-mem は、作業の記録を 1 件ずつデータベースに書き込んでいます。書き込むたびに「さっき何の話をしていたか」を探して、記録同士を線でつなぎます。</p>
+    <p>この「さっきの話を探す」動作が、記録が増えるほど遅くなっていました。原因は、探すための目次（＝索引）の並び順が、探し方と噛み合っていなかったことです。目次を 1 本足したら直りました。</p>
+    <p>ところが本番のログを実際に見たら、もっと大きな問題が見つかりました。<strong>別の場所で、1 回の処理が 173 秒も止まっていた</strong>のです。こちらは今回の修正では直りません。原因は特定済みで、次の課題として記録しました。</p>
+  </div>
+
+  <div class="tlgrid">
+    <div class="tlcard">
+      <div class="q">結局、速くなったの？</div>
+      <div class="a">記録 1 件を保存する時間は速くなりました。1GB 規模の実測で <code>5.502ms</code> → <code>0.034ms</code>。ただしこれは「1 件あたり」の話です。</div>
+    </div>
+    <div class="tlcard">
+      <div class="q">じゃあ本番の固まりは直る？</div>
+      <div class="a">直りません。本番が止まる主因は別の場所（取り込み処理の作り）にあり、それは今回の対象外でした。次の課題として起票済みです。</div>
+    </div>
+    <div class="tlcard">
+      <div class="q">今すぐ何か壊れる？</div>
+      <div class="a">いいえ。テストは 3,318 件すべて通っています。ただし本番の固まり自体は今も起きています（今回の変更が原因ではなく、以前から）。</div>
+    </div>
+    <div class="tlcard">
+      <div class="q">私は何を決めればいい？</div>
+      <div class="a">3 つあります。PR を通すか、次の課題に進むか、README の公開数値をどうするか。末尾にまとめました。</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">01 &nbsp;— &nbsp;前提</div>
+  <h2>そもそも何をしている仕組みなのか</h2>
+
+  <p>harness-mem は、あなたのパソコンの中だけで動く「作業記憶の置き場」です。クラウドには送りません。<code>~/.harness-mem/harness-mem.db</code> という 1 つのファイルに、すべてが貯まっていきます。</p>
+
+  <p>貯める単位を「観察（observation）」と呼びます。1 回のやりとり、1 つの判断、1 つの検証結果。そういったものが 1 件ずつ書き込まれます。今この瞬間、そのファイルは <strong>18.9 GB</strong> あります。</p>
+
+  <p>書き込むときに、ただ 1 行足すだけではありません。<strong>直前の観察を探して、関係の線をつなぎます。</strong>「この判断は、さっきのあの検証を受けたものだ」という繋がりを残すためです。あとで思い出すとき、この線をたどれると文脈が復元できます。</p>
+
+  <p>今回問題になったのは、この「直前の観察を探す」動作です。</p>
+</section>
+
+<section>
+  <div class="kicker">02 &nbsp;— &nbsp;原因</div>
+  <h2>目次の並び順が、探し方と噛み合っていなかった</h2>
+
+  <p>データベースには「索引（index）」があります。本の巻末にある索引と同じ役割で、目的の行を全部読まずに見つけるための目次です。</p>
+
+  <p>ここで使われていた索引は、<strong>4 つの項目をこの順で並べた目次</strong>でした。</p>
+
+  <div class="figure">
+    <div class="cap">索引 idx_mem_obs_project_session_created の並び</div>
+    <div class="cols">
+      <div class="node"><span class="t">1 番目</span>project<br />（プロジェクト名）</div>
+      <div class="node hit"><span class="t">2 番目</span>session_id<br />（セッション番号）</div>
+      <div class="node"><span class="t">3 番目</span>created_at<br />（作成時刻）</div>
+      <div class="node"><span class="t">4 番目</span>id</div>
+    </div>
+  </div>
+
+  <p>いっぽう、探すときの条件は <code>session_id</code> だけでした。<code>project</code> は条件に入っていません。</p>
+
+  <p>ここが噛み合いません。電話帳が「都道府県 → 名字」の順に並んでいるとき、都道府県を指定せずに名字だけで引こうとすると、結局全部めくることになります。<strong>実際には</strong>、SQLite（データベースの実体）も同じことをしていました。索引の先頭が条件に無いのでたどれず、索引の全ページを頭から末尾まで走査していたのです。</p>
+
+  <p>これは推測ではありません。<code>EXPLAIN QUERY PLAN</code>（＝データベースに「この検索をどう実行するつもりか」を聞くコマンド）で確認しました。返ってきたのは <code>SCAN</code>、つまり「全部なめる」でした。</p>
+
+  <h3>押さえる本質 / AI に任せてよい詳細</h3>
+  <ul>
+    <li><strong>押さえる本質</strong>: 索引は「先頭の項目から順にたどる」もので、先頭が検索条件に無いと使えない。だから列の順序が設計そのもの。</li>
+    <li><strong>AI に任せてよい詳細</strong>: どの列構成が最適か、カバリング索引にするか、といった具体的な設計。</li>
+  </ul>
+</section>
+
+<section>
+  <div class="kicker">03 &nbsp;— &nbsp;実測</div>
+  <h2>どれくらい遅かったか</h2>
+
+  <p>本番のデータベースは使えません（動いている daemon と衝突するためです）。そこで同じ形のデータベースを 3 種類、作業用の領域に合成して測りました。</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>データベース</th><th class="num">記録の件数</th><th class="num">保存 1 件</th><th class="num">うち「直前を探す」</th><th class="num">占める割合</th></tr></thead>
+    <tbody>
+      <tr><td>空</td><td class="num">55</td><td class="num">4.286ms</td><td class="num">0.057ms</td><td class="num">1.3%</td></tr>
+      <tr><td>1GB</td><td class="num">71,055</td><td class="num">13.392ms</td><td class="num">5.828ms</td><td class="num">43.5%</td></tr>
+      <tr class="gap"><td>4.9GB</td><td class="num">340,055</td><td class="num">39.048ms</td><td class="num">31.459ms</td><td class="num">80.6%</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>記録が 34 万件になると、保存にかかる時間の <strong>8 割がこの 1 つの検索</strong>になります。空の状態と比べて 551.9 倍です。</p>
+
+  <p>大事な補足があります。効いているのは<strong>ファイルの容量ではなく、記録の件数</strong>です。索引を全部なめるコストは、索引のページ数、つまり行数に比例するからです。「4.9GB だから遅い」ではなく「34 万件だから遅い」が正確な言い方になります。</p>
+</section>
+
+<section>
+  <div class="kicker">04 &nbsp;— &nbsp;修正</div>
+  <h2>索引を 1 本足した結果</h2>
+
+  <p><code>session_id</code> を先頭に持つ索引を新しく足しました。これで検索の実行計画が <code>SCAN</code>（全部なめる）から <code>SEARCH</code>（目的地に直行する）に変わります。並べ替えの手間も消えました。</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>1GB 規模での実測</th><th class="num">修正前</th><th class="num">修正後</th><th class="num">変化</th></tr></thead>
+    <tbody>
+      <tr class="hit"><td>直前を探す処理</td><td class="num">5.502ms</td><td class="num">0.034ms</td><td class="num">162 倍速い</td></tr>
+      <tr class="hit"><td>保存 1 件（全体）</td><td class="num">11.894ms</td><td class="num">3.575ms</td><td class="num">3.3 倍速い</td></tr>
+      <tr><td>書き込み側 3 区間</td><td class="num" colspan="3">増加は検出されず</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>索引を足すと、その分だけ書き込みが重くなるのが普通です。そこで書き込み側も測りましたが、7 万件規模では増加を検出できませんでした。ただしこれは「増加しなかった」であって、「増加しないことが保証された」ではありません。ノイズに埋もれた可能性があります。</p>
+
+  <h3>本番の動きが 1 点変わります</h3>
+
+  <p>この修正には副作用が 1 つあります。作成時刻がまったく同じ記録が複数あるとき、<strong>どれが「直前」として選ばれるかが変わります。</strong></p>
+
+  <p>もともと順序を決めていたのは「時刻の新しい順」だけでした。時刻が同じ場合の勝者は、索引をなめる順番に依存して<em>たまたま</em>決まっていたのです。索引を変えると、なめる順番が変わるので勝者も変わります。これは実測で確認しました。</p>
+
+  <p>そこで「時刻の新しい順、同じなら id の大きい順」と明示して固定しました。id は先頭に採番時刻が入っているので、同着なら後から作られた記録が選ばれます。「直前の観察」を探す処理としては、こちらが意味的に正しい方向です。</p>
+</section>
+
+<section>
+  <div class="kicker">05 &nbsp;— &nbsp;ここが本題</div>
+  <h2>それでも本番のフリーズは直らない</h2>
+
+  <p>修正する前に、確認しておくべきことを 2 つ決めていました。そのうちの 1 つが「本番が 11 秒止まったとき、保存処理は何件走ったのか」です。</p>
+
+  <p>本番のログを実際に見にいきました。そこで出てきた数字が、想定よりはるかに悪いものでした。</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>取り込みの種類</th><th class="num">最大のフリーズ時間</th><th class="num">10 秒超の回数</th></tr></thead>
+    <tbody>
+      <tr class="gap"><td>codex</td><td class="num">173,528ms（約 2 分 54 秒）</td><td class="num">7</td></tr>
+      <tr class="gap"><td>cursor</td><td class="num">60,354ms（約 1 分）</td><td class="num">7</td></tr>
+      <tr class="gap"><td>claude_code</td><td class="num">38,718ms（約 39 秒）</td><td class="num">13</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>これは過去の話ではありません。<strong>今 動いているバージョン（0.29.4）での記録</strong>です。しかも以前の作業（§159）で「1 回の処理は 200ms で切り上げる」という上限を入れたはずでした。それが効いていません。</p>
+
+  <p>まず、この数字が本物かを確かめました。計測している関数が本当に「途中で中断できない処理」を挟んでいるのか、実装を読んで確認しています。挟まれている関数はいずれも同期処理（＝途中で他の仕事に譲らない処理）でした。つまり <strong>173 秒は本当に固まっていた時間</strong>です。</p>
+
+  <h3>原因の場所</h3>
+
+  <p>犯人は <code>ingestLegacyCodexHistoryFile()</code> という関数でした。codex の作業履歴ファイルを読み込む処理です。ここに<strong>上限も中断もありません</strong>。</p>
+
+  <div class="figure">
+    <div class="cap">1 回の取り込みで起きていること</div>
+    <div class="chain">
+      <div class="step"><span class="lbl">step 1</span>~/.codex/history.jsonl の未読部分を<strong>全部</strong>メモリに読み込む（読み込み量の上限なし）</div>
+      <div class="arrow">↓</div>
+      <div class="step"><span class="lbl">step 2</span>読み込んだ全件を 1 件ずつ保存する（途中で抜ける仕組みなし）</div>
+      <div class="arrow">↓</div>
+      <div class="step"><span class="lbl">step 3</span>全部終わるまで他の処理は一切動けない</div>
+    </div>
+  </div>
+
+  <p>数字が噛み合います。本番の <code>history.jsonl</code> は <strong>5,950 行</strong>あります。全件を保存すると 232 秒の計算です。観測された 173.5 秒には 4,444 件が必要で、これはファイルの 75% にあたります。1 回の取り込みで大半を処理した数字と一致します。</p>
+
+  <p>比較のために書くと、claude_code 側の同じ処理には 512KB という読み込み上限があります。§159 で codex を犯人と特定して上限を入れたとき、別の経路には入ったのに、この legacy 経路だけ対象から漏れていました。</p>
+
+  <h3>だから今回の修正だけでは足りない</h3>
+
+  <p>保存 1 件が 39ms から 8ms になったとしても、5,950 件を無制限に回す構造は残ります。フリーズ時間は数十秒のままです。<strong>ここを直さないと体感は変わりません。</strong></p>
+
+  <p>これは §160 の課題一覧に無かったものなので、<code>160-005</code> として新しく起票しました。本番の取り込み動作を変える修正なので、独立したレビューが要ります。今回は勝手に実装していません。</p>
+</section>
+
+<section>
+  <div class="kicker">06 &nbsp;— &nbsp;品質の担保</div>
+  <h2>途中で潰した欠陥</h2>
+
+  <p>レビューを 3 巡回しました。そのあいだに見つかって直したものを、正直に並べます。数字が出ている作業ほど、間違いは静かに通りやすいからです。</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>見つかった問題</th><th>何が起きるはずだったか</th></tr></thead>
+    <tbody>
+      <tr><td>ベンチマークが本番データベースを壊しうる</td><td>測定用スクリプトに任意のパスを渡せた。本番を指定すると schema を書き換える</td></tr>
+      <tr><td>合成データベースのベクトル領域が空だった</td><td>「ベクトル書き込みは横ばい」という結論が、空の表への書き込みを測っていた</td></tr>
+      <tr class="gap"><td>表と生データが別々の測定回だった</td><td>報告書のほぼ全数値が、添付した生データと食い違っていた</td></tr>
+      <tr class="gap"><td>回帰テストが一度も実行されていなかった</td><td>「将来 索引が消えたら落ちる」ためのテストが、CI の対象外の場所に置かれていた（2 月から）</td></tr>
+      <tr class="gap"><td>テスト全体が失敗したままだった</td><td>レビューが承認を出したあと、全体実行して初めて発覚した</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>下 3 つは特に危ないものでした。とくに「回帰テストが走っていない」は、<strong>守っているつもりで守れていない</strong>状態です。テストの置き場所を直して、全体は 3,318 件すべて成功するようになりました。</p>
+
+  <p>もう 1 つ。品質指標の 1 つ（多言語の再現率）が 0.90 から 0.82 に動いて見えました。「たぶん既知の値です」で流さず、<strong>今回の修正だけを取り消して測り直しました</strong>。結果は取り消しても 0.82 で、今回の変更が原因ではないと確定しています。</p>
+</section>
+
+<section>
+  <div class="kicker">07 &nbsp;— &nbsp;副次発見</div>
+  <h2>README が公開している数値が、実測と合っていない</h2>
+
+  <p>上の確認をしている過程で、別の問題が見つかりました。</p>
+
+  <p>README（＝GitHub のトップに出る紹介文）は、性能表に <code>Bilingual recall@10 = 0.9000</code> と載せています。多言語が混ざった記録をどれだけ探し出せるかの指標です。</p>
+
+  <p>ところが同じベンチマークを今日走らせると <strong>0.82</strong> が出ます。しかも 2026-07-07 のコミットメッセージ自身が「0.90 は手作りの試験用データによるもので、実際の値は 0.82」と書いていました。判定のしきい値は 0.82 に下げられているのに、<strong>公開している数値だけ 0.90 のまま残っていた</strong>という状態です。</p>
+
+  <p>これは §160 とは無関係で、外部に公開しているクレームにあたります。勝手に書き換えず、<code>160-006</code> として起票しました。</p>
+</section>
+
+<section>
+  <div class="verdict">
+    <h3>判定</h3>
+    <p><strong>§160 の 3 タスクは完了し、PR #167 を出しました。</strong>テストは 3,318 件すべて成功、レビューは承認済みです。</p>
+    <p>ただし <code>160-002</code> の達成条件のうち「本番のフリーズが上限内に収まる」は未達です。これを隠さず記録し、原因（<code>160-005</code>）を特定して起票してあります。達成条件の判定は 160-005 の完了時にやり直します。</p>
+  </div>
+
+  <div class="openbox">
+    <h3>まだ確定していないこと</h3>
+    <ul>
+      <li><strong>本番の 11 秒フリーズとの対応づけ</strong>は未確認です。計算上は約 285 件ですが、その件数になる仕組みは見つかっていません。</li>
+      <li><strong>本番の記録件数は未確認</strong>です。データベースの中身は読んでいません（動いている daemon との衝突を避けるため）。本番は 18.9GB で、測った最大（4.9GB）の 4 倍近くあります。実測値は下限側の見積もりとして読むべきです。</li>
+      <li><strong>線をたどる検索の非回帰は未観測</strong>です。走らせた 3 つのベンチマークは、いずれも線をたどらない設定でした。今回変えた「同着時にどれを選ぶか」は経路として通っていません。</li>
+      <li><strong>測定回ごとのブレが大きい</strong>です。同じ 4.9GB でも 19.082ms と 31.459ms という差が出ました。倍率は桁の精度でしか読めません。</li>
+      <li><strong>冷えた状態の挙動は未測定</strong>です。daemon を再起動した直後など、キャッシュが効かない条件では今回より悪化するはずですが、確かめていません。</li>
+    </ul>
+  </div>
+
+  <div class="decide">
+    <h3>判断してほしいこと</h3>
+    <ol>
+      <li><strong>PR #167 を通すか。</strong>通しても本番の体感は変わりません。変わるのは次の項目を入れたときです。</li>
+      <li><strong>160-005 に進むか。</strong>本番のフリーズを止める本命です。修正は小さく、claude_code 側にすでにある仕組みをそのまま持ってくる形になります。効果がいちばん大きいのはここです。</li>
+      <li><strong>160-006 の公開数値をどうするか。</strong>README を 0.82 に直すか、CI で測り直して正しい値を確定してからにするか。外部に見せている数字なので、判断をお預けします。</li>
+    </ol>
+    <p style="margin-bottom:0"><strong>おすすめの順番</strong>: 1 → 2 → 3。理由は、2 が体感に直結する唯一の項目で、1 はその土台（測定基盤と索引）だからです。3 は緊急性が低く、CI での再測定を待ってから決めるほうが確実です。</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap" style="padding:0">
+    <h4>この資料が参照している一次情報</h4>
+    <ul>
+      <li>Plans.md §160（160-001 / 160-002 / 160-003 / 160-005 / 160-006）</li>
+      <li>docs/benchmarks/s160-001-recordevent-cost-by-db-size.md および同 artifacts の生データ 3 ファイル</li>
+      <li>PR #167（コミット 14 本、22 ファイル、+3,192 / -270）</li>
+      <li>本番ログ ~/.harness-mem/daemon.launchd.log（現在の daemon 起動以降の範囲）</li>
+    </ul>
+    <h4>測定のしかたと制約</h4>
+    <ul>
+      <li>本番データベースへの書き込みおよび内容の読み取りは行っていません。確認したのはファイルサイズだけで、<strong>記録の件数は未確認</strong>です。本文で挙げた 5,950 行は codex の履歴ファイル（テキスト）の行数であり、データベースの記録件数ではありません。</li>
+      <li>本番 daemon の停止・再起動は行っていません。</li>
+      <li>ベンチマークは作業用領域に合成したデータベースに対して実行しました。実行前にパスを検証するガードを入れ、本番配下を指定すると拒否されます。</li>
+      <li>埋め込みモデルはローカルのハッシュ方式です。埋め込み計算のコストは、データベースの大きさに依存しない定数として扱っています。</li>
+      <li>各区間は 21 回から 31 回測定し、中央値を主指標にしています。</li>
+    </ul>
+    <p style="margin-top:16px">本資料は理解を目的とした派生物です。正本は Plans.md と各ベンチマーク文書であり、記述が食い違う場合は正本が優先されます。</p>
+  </div>
+</footer>
+
+</div>
+</body>
+</html>

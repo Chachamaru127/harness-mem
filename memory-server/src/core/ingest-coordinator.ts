@@ -1451,7 +1451,15 @@ export class IngestCoordinator {
     return summary;
   }
 
-  private ingestLegacyCodexHistoryFile(): CodexIngestSummary {
+  /**
+   * §160-005b: 本番実測で 1 tick 173,528ms event loop を塞いだ legacy codex 履歴
+   * (`~/.codex/history.jsonl`) の取り込み。旧実装は `readFileSync` でファイル残り
+   * 全部を一括読みし、entry ループに budget が無かった。§159-003c で
+   * `ingestCodexSessionsRollouts()` が既に解いた「スライス読み → parse → budget 付き
+   * insert ループ」の形にそろえる (context 追跡や複数ファイルの round-robin は
+   * legacy には無いので、その部分だけ削って移植する)。
+   */
+  private ingestLegacyCodexHistoryFile(options?: { budgetMs?: number; maxBytesPerFile?: number }): CodexIngestSummary {
     const summary = emptyCodexIngestSummary();
     const historyPath = join(this.deps.config.codexProjectRoot, ".codex", "history.jsonl");
     if (!existsSync(historyPath)) {
@@ -1459,9 +1467,14 @@ export class IngestCoordinator {
     }
 
     summary.filesScanned += 1;
-    let contentBuffer: Buffer;
+
+    // §160-005b DoD (a): 完了判定は statSync の実ファイルサイズを基準にする。
+    // スライス読みに切り替えた後は途中経過の buffer 長 (= readSliceBytes 相当) を
+    // 「ファイル全体の長さ」として使うと、64KB を超えた時点で毎回 offset > buffer.length
+    // が成立してしまい、64KB 以降が永久に truncate 扱い (offset=0 リセット) になる。
+    let fileSize = 0;
     try {
-      contentBuffer = readFileSync(historyPath);
+      fileSize = statSync(historyPath).size;
     } catch {
       return summary;
     }
@@ -1472,46 +1485,126 @@ export class IngestCoordinator {
       .get(sourceKey) as { offset: number } | null;
 
     let offset = offsetRow?.offset ?? 0;
-    if (offset > contentBuffer.length) {
+    if (offset > fileSize) {
       offset = 0;
     }
-    if (offset === contentBuffer.length) {
+    if (offset === fileSize) {
       return summary;
     }
 
-    const chunk = contentBuffer.subarray(offset).toString("utf8");
-    const parsedChunk = parseCodexHistoryChunk({
-      sourceKey,
-      baseOffset: offset,
-      chunk,
-      fallbackNowIso: nowIso,
-    });
+    const startedAtMs = Date.now();
+    const budgetMs = options?.budgetMs ?? resolveIngestTickBudgetMs();
+    const maxBytesPerFile = options?.maxBytesPerFile ?? resolveIngestMaxBytesPerFile();
+    const readSliceBytes = resolveIngestReadSliceBytes();
     const project = normalizeProjectName(resolve(this.deps.config.codexProjectRoot));
 
+    let currentOffset = offset;
+    let nextReadOffset = offset;
+    let bytesReadThisFile = 0;
+    let pending = Buffer.alloc(0);
     let imported = 0;
-    for (const entry of parsedChunk.events) {
-      const result = this.deps.recordEvent(
-        {
-          platform: "codex",
-          project,
-          session_id: entry.sessionId,
-          event_type: entry.eventType,
-          ts: entry.timestamp,
-          payload: entry.parsed,
-          tags: ["codex_history_ingest"],
-          privacy_tags: [],
-          dedupe_hash: entry.dedupeHash,
-        },
-        { allowQueue: false }
-      );
-      const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
-      if (result.ok && !deduped) {
-        imported += 1;
-      }
-    }
 
-    const consumedBytes = Buffer.byteLength(chunk.slice(0, parsedChunk.consumedLength), "utf8");
-    this.updateIngestOffset(sourceKey, offset + consumedBytes);
+    try {
+      const fd = openSync(historyPath, "r");
+      try {
+        while (
+          nextReadOffset < fileSize &&
+          (!Number.isFinite(maxBytesPerFile) || bytesReadThisFile < maxBytesPerFile)
+        ) {
+          const remainingFileBytes = fileSize - nextReadOffset;
+          const remainingReadBytes = Number.isFinite(maxBytesPerFile)
+            ? maxBytesPerFile - bytesReadThisFile
+            : remainingFileBytes;
+          const readSize = Math.min(
+            remainingFileBytes,
+            remainingReadBytes,
+            Number.isFinite(readSliceBytes) ? readSliceBytes : remainingFileBytes
+          );
+          if (readSize <= 0) break;
+
+          const buffer = Buffer.alloc(readSize);
+          const bytesRead = readSync(fd, buffer, 0, readSize, nextReadOffset);
+          if (bytesRead <= 0) break;
+          pending = Buffer.concat([pending, buffer.subarray(0, bytesRead)]);
+          bytesReadThisFile += bytesRead;
+          nextReadOffset += bytesRead;
+
+          const pendingChunk = pending.toString("utf8");
+          const parsedChunk = parseCodexHistoryChunk({
+            sourceKey,
+            baseOffset: currentOffset,
+            chunk: pendingChunk,
+            fallbackNowIso: nowIso,
+          });
+          const consumedBytes = Buffer.byteLength(pendingChunk.slice(0, parsedChunk.consumedLength), "utf8");
+
+          // 1 行が readSliceBytes (既定 64KB) を超える場合は次スライスと連結する。
+          // 上限または EOF まで改行が来なければ次 tick に回し、同一 while 内で無限に
+          // 待ち続けない (§159-003f と同型)。
+          if (consumedBytes === 0) {
+            if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
+            if (
+              nextReadOffset >= fileSize ||
+              (Number.isFinite(maxBytesPerFile) && bytesReadThisFile >= maxBytesPerFile)
+            ) {
+              break;
+            }
+            continue;
+          }
+
+          let nextOffset = currentOffset + consumedBytes;
+          let sliceDeferred = false;
+          let entryIndex = 0;
+          for (const entry of parsedChunk.events) {
+            // §160-005b DoD (b)/(d): 1 件目は budget 超過済みでも必ず処理する。
+            // さもないと offset が進まず同じ chunk を読み直し続ける。
+            if (entryIndex > 0 && Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) {
+              nextOffset = Math.max(currentOffset, entry.lineOffset);
+              sliceDeferred = true;
+              break;
+            }
+            entryIndex += 1;
+            const result = this.deps.recordEvent(
+              {
+                platform: "codex",
+                project,
+                session_id: entry.sessionId,
+                event_type: entry.eventType,
+                ts: entry.timestamp,
+                payload: entry.parsed,
+                tags: ["codex_history_ingest"],
+                privacy_tags: [],
+                dedupe_hash: entry.dedupeHash,
+              },
+              { allowQueue: false }
+            );
+            if (!result.ok) {
+              nextOffset = Math.max(currentOffset, entry.lineOffset);
+              sliceDeferred = true;
+              break;
+            }
+            const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+            if (!deduped) {
+              imported += 1;
+            }
+          }
+
+          // §160-005b DoD (b): updateIngestOffset は recordEvent が完了した範囲に
+          // 対してのみ呼ぶ。先に楽観的に進めると未処理行が二度と読まれず消える。
+          this.updateIngestOffset(sourceKey, nextOffset);
+
+          if (sliceDeferred) break;
+
+          currentOffset = nextOffset;
+          pending = pending.subarray(consumedBytes);
+          if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
+        }
+      } finally {
+        closeSync(fd);
+      }
+    } catch {
+      // 読み込み失敗時は offset を進めず、次 tick で再試行する。
+    }
 
     summary.eventsImported += imported;
     summary.historyEventsImported += imported;
@@ -1551,12 +1644,15 @@ export class IngestCoordinator {
       );
     }
 
-    // 明示 API は完走させる (§159-003c の budget は定期実行のみに効かせる)
+    // 明示 API は完走させる (§159-003c/§160-005b の budget は定期実行のみに効かせる)
     mergeCodexIngestSummary(
       summary,
       this.ingestCodexSessionsRollouts({ budgetMs: Infinity, maxBytesPerFile: Infinity })
     );
-    mergeCodexIngestSummary(summary, this.ingestLegacyCodexHistoryFile());
+    mergeCodexIngestSummary(
+      summary,
+      this.ingestLegacyCodexHistoryFile({ budgetMs: Infinity, maxBytesPerFile: Infinity })
+    );
 
     return makeResponse(
       startedAt,
