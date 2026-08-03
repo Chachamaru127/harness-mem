@@ -2880,15 +2880,28 @@ export class IngestCoordinator {
     const remaining = (): number =>
       Number.isFinite(budgetMs) ? Math.max(0, budgetMs - (Date.now() - startedAtMs)) : budgetMs;
 
+    // budget を共有する以上、走査は必ず先頭 root から始まる。1 つ目の root が毎回
+    // budget を使い切ると 2 つ目以降が永久に処理されないので、ファイル走査と同じ
+    // round-robin を root の並びにも掛ける (§159-003f と同型)。
     const roots = this.getAntigravityWorkspaceRoots();
+    const rootCursorKey = "antigravity_root_scan";
+    const startIndex = roots.length > 0 ? (this.scanCursors.get(rootCursorKey) ?? 0) % roots.length : 0;
     let rootsVisited = 0;
-    for (const root of roots) {
+    for (let step = 0; step < roots.length; step += 1) {
       // 進捗保証: 1 root 目は budget を使い切っていても必ず見る。さもないと
       // root が 1 つも進まない tick が続きうる。
       if (rootsVisited > 0 && remaining() <= 0) break;
       rootsVisited += 1;
-      this.ingestAntigravityWorkspace(root, { budgetMs: remaining() });
+      this.ingestAntigravityWorkspace(roots[(startIndex + step) % roots.length] as string, {
+        budgetMs: remaining(),
+      });
     }
+    if (roots.length > 0) {
+      this.scanCursors.set(rootCursorKey, (startIndex + rootsVisited) % roots.length);
+    }
+    // log 経路は budget を使い切った状態で呼ばれうるが、内部に「1 ファイル目は
+    // 必ず見る」進捗保証と round-robin cursor があるため、tick あたり最低 1 件は
+    // 進む。遅くはなるが飢餓にはならない。
     this.ingestAntigravityLogEvents({ budgetMs: remaining() });
   }
 

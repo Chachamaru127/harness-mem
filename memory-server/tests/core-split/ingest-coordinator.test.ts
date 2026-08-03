@@ -1036,6 +1036,70 @@ describe("ingest-coordinator: 明示 API は tick budget で打ち切られな�
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  /**
+   * §160-007 (review 指摘): timer 経路は workspace root 全体で budget を共有する。
+   * 共有すると走査は必ず先頭 root から始まるので、1 つ目が毎 tick budget を
+   * 使い切ると 2 つ目以降が永久に処理されない。root の並びにも round-robin を
+   * 掛けてあることを固定する。
+   */
+  test("timer 経路は budget を root 間で共有しつつ round-robin で全 root に到達する", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-roots-"));
+    try {
+      // root-a は「常に未処理分が残る」よう多数のファイルを持たせる。1 root あたり
+      // 1 ファイルだと、offset が進んだ root は次 tick に即 no-op になるため、
+      // round-robin が無くても全 root に到達してしまい検査が空振りする
+      // (この空振りは実測で確認したうえでこの形にした)。
+      const fileCounts: Record<string, number> = { "root-a": 20, "root-b": 1, "root-c": 1 };
+      const roots = ["root-a", "root-b", "root-c"].map((name) => {
+        const root = join(dir, name);
+        const checkpointDir = join(root, "docs", "checkpoints");
+        mkdirSync(checkpointDir, { recursive: true });
+        for (let i = 0; i < (fileCounts[name] ?? 1); i += 1) {
+          writeFileSync(join(checkpointDir, `cp-${i}.md`), `# ${name} ${i}\n\nnote ${i} for ${name}\n`, "utf8");
+        }
+        return root;
+      });
+
+      // budget を必ず使い切らせる: 1 件の recordEvent で 30ms 消費する。
+      process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = "1";
+
+      const visitedRoots: string[] = [];
+      const deps = makeDeps({
+        db: createTestDb(),
+        config: createTestConfig({
+          antigravityIngestEnabled: true,
+          antigravityWorkspaceRoots: roots,
+          // log 経路は使わないので存在しないディレクトリを指す
+          antigravityLogsRoot: join(dir, "no-logs"),
+        }),
+        recordEvent: mock((event: Record<string, unknown>) => {
+          const payload = (event.payload ?? {}) as Record<string, unknown>;
+          const source = String(payload.source_path ?? payload.file_path ?? event.project ?? "");
+          const hit = roots.find((root) => source.includes(root));
+          if (hit) visitedRoots.push(hit);
+          const until = Date.now() + 30;
+          while (Date.now() < until) {
+            /* budget を確実に超過させる */
+          }
+          return makeOkResponse();
+        }),
+      });
+
+      const coordinator = new IngestCoordinator(deps) as unknown as {
+        ingestAntigravityHistoryTick: () => void;
+      };
+
+      // 3 tick 回せば、飢餓が無い限り 3 root すべてに到達する。
+      coordinator.ingestAntigravityHistoryTick();
+      coordinator.ingestAntigravityHistoryTick();
+      coordinator.ingestAntigravityHistoryTick();
+
+      expect(new Set(visitedRoots).size).toBe(3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
