@@ -7,6 +7,31 @@
 
 ## [Unreleased]
 
+## [0.29.5] - 2026-08-03
+
+### 修正
+
+- **`recordEvent` 1 件のコストが DB サイズに比例して悪化する問題を解消した**。auto-linker の検索は `session_id` で絞るが、その列を含む唯一のインデックスは先頭列が `project` だったため、SQLite がインデックス全体を走査していた。この 1 クエリは空 DB で 0.057ms、4.9GB DB で 31.459ms (recordEvent 全体の 80.6%、比 551.9 倍)。`idx_mem_obs_session_created` を追加して走査を探索に変えた結果、1GB tier で 5.502ms → 0.034ms (162 倍)、E2E も 11.894ms → 3.575ms。`ORDER BY created_at DESC` に `id DESC` の tie-break を足し、同時刻の 2 件が走査順に依存しないようにした。
+- **定期 ingest が event loop を数分間占有しなくなった**。0.29.4 で tick ごとの時間 budget を入れたが、6 経路は入力全体をメモリに読み込んでから処理するため、最初の budget チェックが走る時点でコストを払い終えていた。稼働中の 0.29.4 で codex 173,528ms / cursor 60,354ms / claude_code 38,718ms、10 秒超 27 件を実測。legacy Codex 履歴 / OpenCode 2 経路 / Antigravity 2 経路 / Gemini のすべてを、budget 内のスライス読み込みと経路ごとの読み込み上限に変えた。OpenCode DB 経路は `LIMIT` でクエリ自体を有界にした。Antigravity workspace は parser が全文を要求するため、サイズ上限を超えるファイルは読まずにスキップし、警告はファイルごとに初回 1 回だけ出す。Antigravity log 経路が 1 ファイル訪問ごとに読む二次入力 (`exthost.log`) も無制限だったので上限を入れた。
+- **明示的に要求した ingest が再び完走する**。`POST /v1/ingest/cursor-history` は 50 件、または 200ms のどちらか早い方で打ち切って返っていた。scheduler と HTTP endpoint が同じ関数を呼んでいたため、0.29.4 で入れた tick budget が手動呼び出しにも効いていた。全件取り込みを求めた呼び出し側は、打ち切られたことを知る手段がないまま部分的な結果を受け取っていた。同じ融合が Antigravity と Gemini でも出荷される寸前だった。3 経路とも scheduler 用の経路を分離し、endpoint 側は時間でも件数でも打ち切らない (Spec.md が当初から定めていた契約)。
+- **途中で打ち切られた ingest が記録を落とさなくなった**。OpenCode storage / Antigravity logs / Gemini の 3 経路が、`recordEvent` 未完了の entry より先へ offset を進めていた。書き込み失敗や budget 打ち切りで中断すると、未処理分が二度と読まれず静かに消えていた。offset は書き込みが成功した範囲に対してのみ進め、消費 0 バイトのときは offset 行自体を作らない (作ると backfill window の判定が恒久的に無効化される)。
+
+### 変更
+
+- **repository behavior gate (`npm test`) を全 PR で実行するようにした**。この gate は release workflow の publish job にしか配線されておらず、tag push まで一度も走らなかった。レビュー時点で誰も検証できず、失敗はリリース直前に初めて表面化していた (v0.29.2 の publish 失敗と同型)。`Test Suite` workflow を追加し、すべての `pull_request` (path filter なし。gate はリポジトリ全体の契約を見るため) と `main` への push で同じ gate を走らせる。初回実行で実際の失敗を検出し、今回のリリースのレビュー中にもさらに 1 件検出した。
+- **`Spec.md` の定期 ingest 契約が、入力ごとだけでなく fan-out 自体も有界にすることを求めるようにした**。timer が引く入力数が可変 (operator 設定または実行時発見) の場合、各入力に満額の budget を与えると最悪ブロックがその数に比例するため、budget を共有しなければならない。
+
+### 検証
+
+- マージ後の状態に対する repository behavior gate (`npm test`): 3333 件、失敗 0。
+- budget 網羅検査を、名指しの 3 経路ではなく `runTick` から到達する全経路に広げた。加えて独立した 2 つ目の lock が「HTTP が明示 ingest として公開している関数を scheduler が tick に登録していないこと」を固定する (上記の融合はこれで落ちる)。どちらも対応する修正を戻すと落ちることを実測で確認した。
+
+### 既知の限界
+
+- 本番での効果は未確認。修正前の 173,528ms は稼働中の 0.29.4 の実測で、修正後の比較にはこのリリースの反映が要る。
+- 本番の 18.9GB DB での `recordEvent` 単価は未計測 (上記 tier は 4.9GB まで)。
+- budget 網羅検査はソース文字列上の budget 参照を見るため、実行時に budget が効くことは保証しない。2 つある参照の片方だけを潰しても検出できない。この限界はテスト本体に明記してある。
+
 ## [0.29.4] - 2026-07-29
 
 ### 修正
