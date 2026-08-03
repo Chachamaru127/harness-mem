@@ -7,6 +7,31 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.29.5] - 2026-08-03
+
+### Fixed
+
+- **A single `recordEvent` no longer gets slower as the database grows**: the auto-linker's lookup filtered on `session_id`, but the only index covering that column led with `project`, so SQLite fell back to a full index scan whose cost rose with row count. Measured across three database tiers, that one query went from 0.057ms on an empty database to 31.459ms on a 4.9GB one — 80.6% of the whole `recordEvent` call, a 551.9x spread. Adding `idx_mem_obs_session_created ON mem_observations(session_id, created_at, id)` turns the scan into a seek: at the 1GB tier the segment went 5.502ms → 0.034ms (162x) and end-to-end `recordEvent` went 11.894ms → 3.575ms. The auto-linker's `ORDER BY created_at DESC` also gained an `id DESC` tie-break, so two observations sharing a timestamp resolve deterministically instead of by scan order.
+- **Periodic ingest can no longer block the event loop for minutes**: 0.29.4 added a per-tick time budget, but six ingest paths loaded an entire input into memory before the first budget check could fire, so the cost was already paid by the time the budget was consulted. On the shipped 0.29.4 the production daemon was observed blocking a single synchronous call for 173,528ms (codex), 60,354ms (cursor) and 38,718ms (claude_code), with 27 ticks over 10 seconds. All six paths — the legacy Codex history file, both OpenCode paths (database and storage), both Antigravity paths (workspace and logs), and Gemini — now read in slices under the tick budget with an independent per-run read cap. The OpenCode database path bounds its query with `LIMIT` rather than reading every row in the backfill window. The Antigravity workspace parser needs whole files, so that path enforces a size cap and skips oversized files instead of reading them, warning once per file rather than on every tick. A secondary input read on the Antigravity log path (`exthost.log`, consulted once per file visit to resolve the workspace) was also unbounded and is now capped.
+- **Explicitly requested ingest runs to completion again**: `POST /v1/ingest/cursor-history` returned after 50 events, or after 200ms, whichever came first. The scheduler and the HTTP endpoint called the same function, so the per-tick budget added in 0.29.4 applied to the manual call as well — a caller asking for a full catch-up got a partial one with no indication it had been cut short. The same fusion was about to ship for Antigravity and Gemini. All three now separate the scheduled path from the endpoint, and the endpoint is bounded by neither time nor count, which is what `Spec.md` has always specified for explicit ingest.
+- **A cut-short ingest run no longer loses records**: three paths (OpenCode storage, Antigravity logs, Gemini) advanced the persisted ingest offset past entries whose `recordEvent` had not completed. Any run that stopped early — on a write failure or a budget cut — moved the offset over unprocessed entries, which were then never read again. Each path now advances the offset only over the byte range whose writes actually succeeded, and does not create an offset row at all when nothing was consumed, so a file that fails on its first entry keeps its backfill-window eligibility instead of being re-read on every tick forever.
+
+### Changed
+
+- **The repository behavior gate now runs on every pull request**: `npm test` was wired only into the release workflow's publish job, which is gated on a tag push. Nothing verified the suite at review time, so failures surfaced during a release instead of during the change that caused them — the same shape as the v0.29.2 publish failure. A `Test Suite` workflow now runs the same gate on every `pull_request` (deliberately without a path filter, because the gate checks repository-wide contracts) and on pushes to `main`. It found a real failure on its first run, and another during this release's own review cycle.
+- **`Spec.md`'s periodic ingest contract now bounds the fan-out, not just each input**: a timer that pulls a variable number of inputs — operator-configured or discovered at runtime — must share one budget across them rather than give each a full one, since otherwise the worst-case block scales with that count.
+
+### Verification
+
+- Repository behavior gate (`npm test`) on the merged state: 3333 tests, 0 failed.
+- The budget coverage check is now a regression lock over every `runTick`-reachable ingest path rather than three named ones. A second, independent lock asserts that no function the HTTP routes expose as explicit ingest is also registered as a scheduled tick — the fusion described above would fail it. Both locks were verified to fail when the corresponding fix is reverted.
+
+### Known limits
+
+- The production effect of the ingest bounding is not yet confirmed. The pre-change measurement (173,528ms peak) came from the running 0.29.4 daemon; the post-change comparison requires this release to be deployed.
+- `recordEvent`'s per-call cost on the actual 18.9GB production database has not been measured. The tiers above top out at 4.9GB.
+- The budget coverage lock matches budget references in source text, so it does not prove the budget takes effect at runtime, and breaking only one of two references is not detected. Its limits are recorded in the test itself.
+
 ## [0.29.4] - 2026-07-29
 
 ### Fixed
