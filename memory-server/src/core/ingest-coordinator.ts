@@ -660,7 +660,7 @@ export class IngestCoordinator {
     if (config.cursorIngestEnabled !== false) {
       this.cursorIngestTimer = setInterval(() => {
         if (this.deps.isShuttingDown()) return;
-        this.runTick("cursor", () => this.ingestCursorHistory());
+        this.runTick("cursor", () => this.ingestCursorHistoryTick());
       }, clampLimit(Number(config.cursorIngestIntervalMs || DEFAULT_CURSOR_INGEST_INTERVAL_MS), DEFAULT_CURSOR_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
@@ -1193,10 +1193,18 @@ export class IngestCoordinator {
       const maxBytes = resolveIngestMaxBytesPerFile();
       const fileSize = statSync(exthostLog).size;
       if (Number.isFinite(maxBytes) && fileSize > maxBytes) {
+        // 切り口 (fileSize - maxBytes) は任意のバイト位置なので、真に最後の一致が
+        // ちょうどそこを跨ぐと窓の中では不完全になり、取り逃す (レビューで実際に
+        // 再現された)。一致 1 個分より広く手前へ広げて読めば、元の切り口を跨ぐ
+        // 一致は必ず窓の中に収まる。新しい切り口を跨ぐ一致はそれより古いので、
+        // 「最後の一致」を採る限り取り逃しても結果は変わらない。
+        const overlapBytes = 256;
+        const start = Math.max(0, fileSize - maxBytes - overlapBytes);
+        const length = fileSize - start;
         const fd = openSync(exthostLog, "r");
         try {
-          const buffer = Buffer.alloc(maxBytes);
-          const bytesRead = readSync(fd, buffer, 0, maxBytes, fileSize - maxBytes);
+          const buffer = Buffer.alloc(length);
+          const bytesRead = readSync(fd, buffer, 0, length, start);
           text = buffer.subarray(0, Math.max(0, bytesRead)).toString("utf8");
         } finally {
           closeSync(fd);
@@ -2239,7 +2247,7 @@ export class IngestCoordinator {
   // Cursor ingest メソッド（core から移動）
   // ---------------------------------------------------------------------------
 
-  private ingestCursorHooksEvents(): CursorIngestSummary {
+  private ingestCursorHooksEvents(options?: { budgetMs?: number; maxBytesPerFile?: number }): CursorIngestSummary {
     const summary = emptyCursorIngestSummary();
     const eventsPath = this.getCursorEventsPath();
     if (!existsSync(eventsPath)) {
@@ -2283,8 +2291,8 @@ export class IngestCoordinator {
     // (MAX_CURSOR_HOOK_EVENTS_PER_INGEST) は insert しか縛らず、read + utf8 変換 +
     // parse は残り全体を対象にしていたため。1 回に読む量を絞る。
     const startedAtMs = Date.now();
-    const budgetMs = resolveIngestTickBudgetMs();
-    const maxBytesPerFile = resolveIngestMaxBytesPerFile();
+    const budgetMs = options?.budgetMs ?? resolveIngestTickBudgetMs();
+    const maxBytesPerFile = options?.maxBytesPerFile ?? resolveIngestMaxBytesPerFile();
     const readSliceBytes = resolveIngestReadSliceBytes();
     let currentOffset = offset;
     let nextReadOffset = offset;
@@ -2415,6 +2423,18 @@ export class IngestCoordinator {
     return summary;
   }
 
+  /**
+   * §160-007 (review 指摘): 定期 tick 用の cursor 取り込み。`ingestCursorHistory()` は
+   * `/v1/ingest/cursor-history` の明示 API なので budget で打ち切ってはならない。
+   *
+   * この経路は §159 で budget を入れた時点から明示 API と融合したままだった
+   * (0.29.4 で出荷済み)。antigravity / gemini と同じ欠陥で、同じ形で直す。
+   */
+  private ingestCursorHistoryTick(): void {
+    if (!this.isCursorIngestEnabled()) return;
+    this.ingestCursorHooksEvents();
+  }
+
   ingestCursorHistory(): ApiResponse {
     const startedAt = performance.now();
     if (!this.isCursorIngestEnabled()) {
@@ -2436,7 +2456,11 @@ export class IngestCoordinator {
     }
 
     const summary = emptyCursorIngestSummary();
-    mergeCursorIngestSummary(summary, this.ingestCursorHooksEvents());
+    // 明示 API は完走させる (Spec.md の explicit ingest exemption)。
+    mergeCursorIngestSummary(
+      summary,
+      this.ingestCursorHooksEvents({ budgetMs: Infinity, maxBytesPerFile: Infinity })
+    );
     return makeResponse(
       startedAt,
       [

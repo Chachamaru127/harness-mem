@@ -1010,6 +1010,41 @@ describe("ingest-coordinator: 明示 API は tick budget で打ち切られな�
     }
   });
 
+  /**
+   * cursor は §159 で budget を入れた時点から明示 API と timer が同じ関数のままで、
+   * 0.29.4 として出荷されていた。antigravity / gemini と同じ欠陥。
+   */
+  test("ingestCursorHistory は budget=1ms でも全イベントを取り込む", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-cursor-explicit-"));
+    try {
+      const lines = Array.from({ length: 12 }, (_, i) =>
+        JSON.stringify({
+          hook_event_name: "beforeSubmitPrompt",
+          conversation_id: "cursor-conv-explicit",
+          workspace_roots: [dir],
+          prompt: `p${i}`,
+          timestamp: `2026-07-31T00:00:${String(i).padStart(2, "0")}.000Z`,
+        })
+      );
+      const eventsPath = join(dir, "cursor-events.jsonl");
+      writeFileSync(eventsPath, lines.join("\n") + "\n", "utf8");
+
+      process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = "1";
+
+      const deps = makeDeps({
+        db: createTestDb(),
+        config: createTestConfig({ cursorIngestEnabled: true, cursorEventsPath: eventsPath }),
+        recordEvent: slowRecordEvent(),
+      });
+
+      const res = new IngestCoordinator(deps).ingestCursorHistory();
+      expect(res.ok).toBe(true);
+      expect(res.items[0]?.hooks_events_imported).toBe(12);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("ingestAntigravityHistory は budget=1ms でも全イベントを取り込む", () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-explicit-"));
     try {

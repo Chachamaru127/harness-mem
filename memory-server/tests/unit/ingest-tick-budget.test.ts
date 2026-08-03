@@ -11,6 +11,7 @@ import {
 } from "../../src/core/ingest-coordinator";
 
 const COORDINATOR = resolve(import.meta.dir, "../../src/core/ingest-coordinator.ts");
+const SERVER = resolve(import.meta.dir, "../../src/server.ts");
 
 /**
  * メソッド本体を切り出す。**両端のマーカーが見つかることを必ず assert する。**
@@ -549,6 +550,47 @@ export class FakeCoordinator {
     expect(results.length).toBeGreaterThan(0);
     const broken = results.filter((r) => r.status !== "ok");
     expect(broken).toEqual([]);
+  });
+
+  /**
+   * §160-007 (review 指摘): 上の lock は「呼ばれた先の本体に budget の文字列が
+   * あるか」しか見ないので、**scheduler がどの関数を呼んでいるか**は検査できない。
+   * 実際、`startTimers()` が明示 API (`ingestAntigravityHistory` 等) を直接呼ぶ
+   * 状態に戻しても上の lock は通ってしまうことを実測で確認した。それこそが
+   * この PR が直した回帰そのものである。
+   *
+   * ここでは別の角度から固定する: **HTTP route が明示 ingest API として公開して
+   * いる関数を、scheduler が runTick の対象にしていないこと**。両者が同じ関数を
+   * 指した瞬間、Spec.md「## Periodic Ingest Budget」の explicit ingest exemption
+   * (明示呼び出しは完走させる) が破れる。
+   *
+   * この検査で分かること: timer 経路と明示経路が同じ関数に融合していないか。
+   * 分からないこと: 分離した先の tick 関数が実際に budget を効かせるか
+   * (それは上の lock と各経路の振る舞いテストの責務)。
+   */
+  test("regression lock: scheduler は HTTP が公開する明示 ingest API を直接呼ばない", () => {
+    const coordinatorSource = readFileSync(COORDINATOR, "utf8");
+    const serverSource = readFileSync(SERVER, "utf8");
+
+    // route handler が `core.<fn>()` の形で呼ぶ ingest 系関数 = 明示 API
+    const explicitApiNames = new Set(
+      [...serverSource.matchAll(/\bcore\.(ingest\w*(?:History|Sessions))\s*\(/g)].map(
+        (m) => m[1] as string
+      )
+    );
+    // 取り逃していたら以下の assert が空振りする
+    expect(explicitApiNames.size).toBeGreaterThan(0);
+
+    const scheduled = extractRunTickCalls(coordinatorSource);
+    expect(scheduled.length).toBeGreaterThan(0);
+
+    const fused = scheduled.filter((call) => explicitApiNames.has(call.fnName));
+    expect(
+      fused,
+      `scheduler が明示 API をそのまま呼んでいる: ${JSON.stringify(fused)}\n` +
+        `HTTP 公開関数: ${JSON.stringify([...explicitApiNames])}\n` +
+        "この状態では明示呼び出しが tick budget で打ち切られる (Spec.md の explicit ingest exemption 違反)。"
+    ).toEqual([]);
   });
 
 });
