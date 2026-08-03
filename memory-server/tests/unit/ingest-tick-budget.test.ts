@@ -11,6 +11,7 @@ import {
 } from "../../src/core/ingest-coordinator";
 
 const COORDINATOR = resolve(import.meta.dir, "../../src/core/ingest-coordinator.ts");
+const SERVER = resolve(import.meta.dir, "../../src/server.ts");
 
 /**
  * メソッド本体を切り出す。**両端のマーカーが見つかることを必ず assert する。**
@@ -20,12 +21,24 @@ const COORDINATOR = resolve(import.meta.dir, "../../src/core/ingest-coordinator.
  * 「末尾の 1 文字を除く全体」を返す。結果 body にコーディネータ全体が入り、
  * `toContain` 系の assert が対象と無関係に全部通る。`body.length > 0` では検出できない。
  * (2026-07-30 レビュー指摘。§160-005c で塞いだ「テストが静かに通る」問題と同型。)
+ *
+ * マーカーは **クラスメンバ宣言としてのみ** 一致させる (行頭 + インデント 2)。
+ * 素の `indexOf` は JSDoc の散文にも一致してしまう: `ingestCursorHistoryTick` の
+ * コメントが `ingestCursorHistory()` に言及した結果、終端が本来より 342 バイト
+ * 手前のコメント位置に決まっていた (2026-07-31 レビューで実測)。その時点では
+ * assert 対象が偶然すべて内側にあり無害だったが、境界が「宣言」ではなく
+ * 「散文の偶然」で決まる状態は、後の編集で静かに検査対象から外れる罠になる。
  */
 function sliceMethodBody(source: string, startMarker: string, endMarker: string): string {
-  const start = source.indexOf(startMarker);
-  expect(start, `開始マーカーが見つからない: ${startMarker}`).toBeGreaterThan(-1);
-  const end = source.indexOf(endMarker, start);
-  expect(end, `終端マーカーが見つからない: ${endMarker} (開始: ${startMarker})`).toBeGreaterThan(start);
+  // クラスメンバはインデント 2。コメント行 (` * ...`) や本文中の言及とは一致しない。
+  const asDeclaration = (marker: string) => `\n  ${marker}`;
+  const start = source.indexOf(asDeclaration(startMarker));
+  expect(start, `開始マーカーが宣言として見つからない: ${startMarker}`).toBeGreaterThan(-1);
+  const end = source.indexOf(asDeclaration(endMarker), start);
+  expect(
+    end,
+    `終端マーカーが宣言として見つからない: ${endMarker} (開始: ${startMarker})`
+  ).toBeGreaterThan(start);
   return source.slice(start, end);
 }
 
@@ -250,15 +263,16 @@ describe("§159-003c codex ingest tick budget", () => {
 
   test("cursor 経路も読み込みを切り出し、時間でも打ち切る", () => {
     const source = readFileSync(COORDINATOR, "utf8");
-    const start = source.indexOf("private ingestCursorHooksEvents");
-    expect(start).toBeGreaterThan(-1);
-    const body = source.slice(start, start + 5000);
+    // 固定幅 (start + 5000) で切ると、本体が伸びた時に静かに検査範囲から外れる。
+    // 次の宣言までを境界にする (sliceMethodBody は両端を assert する)。
+    const body = sliceMethodBody(source, "private ingestCursorHooksEvents", "private ingestCursorHistoryTick");
 
     expect(body).toContain("resolveIngestMaxBytesPerFile()");
     expect(body).toContain("resolveIngestReadSliceBytes()");
     expect(body).toContain("bytesReadThisFile < maxBytesPerFile");
-    // 件数上限だけでなく時間でも抜ける
-    expect(body).toContain("processed >= MAX_CURSOR_HOOK_EVENTS_PER_INGEST || overBudget");
+    // 件数上限だけでなく時間でも抜ける。上限は §160-007 で override 可能になった
+    // (明示 API は Infinity を渡して完走する) ので、定数名ではなく変数名で見る。
+    expect(body).toContain("processed >= maxEvents || overBudget");
     expect(body).toContain("nextOffset = Math.max(currentOffset, entry.lineOffset)");
   });
 
@@ -526,35 +540,74 @@ export class FakeCoordinator {
     expect(results.some((r) => r.label === "retry_queue")).toBe(false);
   });
 
-  test("regression lock: budget 対応済みの codex / cursor / claude_code 経路は missing_budget に戻らない", () => {
+  test("regression lock: runTick から到達する全 ingest 経路が budget-aware である", () => {
     const source = readFileSync(COORDINATOR, "utf8");
     const results = traceIngestBudgetCoverage(source);
-    const guarded = results.filter((r) => ["codex", "cursor", "claude_code"].includes(r.label));
+    // §160-007 で opencode / antigravity / gemini も対応済みになったため、
+    // 「一部の経路だけ」ではなく **runTick から到達する全経路** を対象にする。
+    // 新しい ingest 経路を runTick に足して budget を入れ忘れたら、ここで落ちる。
+    //
+    // この検査の限界 (2026-07-31 に実測で確認):
+    // budget 参照の有無を **ソース文字列** で見ているだけなので、実行時に budget が
+    // 正しく効くことは保証しない。判定は `resolveIngestTickBudgetMs(` または
+    // `Date.now() - startedAtMs > budgetMs` の **いずれか**が本体に現れるかで、
+    // 片方だけ残して他方を潰しても検出できない (両方消せば落ちることは実測済み)。
+    // 「break が正しい位置にあるか」「1 件目を通す guard になっているか」も見ない。
+    // それらは各経路の振る舞いテスト (ingest-coordinator.test.ts) の責務。
+    //
+    // 除外ラベルは 1 つも置かない。`already_safe` は直前のテストの合成ソース専用の
+    // ラベルであって実ソースには存在しないため、ここで除外すると「同名のラベルで
+    // 新経路を足せば lock をすり抜けられる」抜け道を作るだけになる。
 
-    // guarded が空だと以下の assert が意味を持たなくなる (対象を取り逃していないか)
-    expect(guarded.length).toBeGreaterThan(0);
-    const broken = guarded.filter((r) => r.status !== "ok");
+    // results が空だと以下の assert が意味を持たなくなる (対象を取り逃していないか)
+    expect(results.length).toBeGreaterThan(0);
+    const broken = results.filter((r) => r.status !== "ok");
     expect(broken).toEqual([]);
   });
 
-  // §160-005c の独立レビューで発見: opencode / antigravity / gemini の定期 ingest は
-  // legacy codex history と同型 (無制限の read + insert ループ) だが、budget
-  // チェックが一切無い (ingestOpencodeDbMessages / ingestOpencodeStorageMessages /
-  // ingestAntigravityWorkspace / ingestAntigravityLogEvents / ingestGeminiEvents)。
-  // §160-005 のスコープは legacy codex history のみだったため未対応のまま残っている。
-  // runTick からの到達性ベースで機械的に検査すると必ず引っかかるが、このタスクは
-  // テストのみ担当でソースを直せないため、`test.failing` で現状の欠落を記録する
-  // (bun:test の test.failing は「想定どおり失敗すれば全体としては pass 扱い、
-  // 想定に反して成功したら fail 扱い」になる)。opencode/antigravity/gemini の
-  // いずれかで budget 対応が入ったらこのテストが赤くなるので、そのとき通常の
-  // test() に昇格させ、上の regression lock テストへ対象を移すこと。
-  test.failing(
-    "既知の未解決ギャップ: opencode / antigravity / gemini の ingest 経路には budget が無い (対応したら .failing を外す)",
-    () => {
-      const source = readFileSync(COORDINATOR, "utf8");
-      const results = traceIngestBudgetCoverage(source);
-      const missing = results.filter((r) => r.status !== "ok");
-      expect(missing).toEqual([]);
-    }
-  );
+  /**
+   * §160-007 (review 指摘): 上の lock は「呼ばれた先の本体に budget の文字列が
+   * あるか」しか見ないので、**scheduler がどの関数を呼んでいるか**は検査できない。
+   * 実際、`startTimers()` が明示 API (`ingestAntigravityHistory` 等) を直接呼ぶ
+   * 状態に戻しても上の lock は通ってしまうことを実測で確認した。それこそが
+   * この PR が直した回帰そのものである。
+   *
+   * ここでは別の角度から固定する: **HTTP route が明示 ingest API として公開して
+   * いる関数を、scheduler が runTick の対象にしていないこと**。両者が同じ関数を
+   * 指した瞬間、Spec.md「## Periodic Ingest Budget」の explicit ingest exemption
+   * (明示呼び出しは完走させる) が破れる。
+   *
+   * この検査で分かること: timer 経路と明示経路が同じ関数に融合していないか。
+   * 分からないこと: 分離した先の tick 関数が実際に budget を効かせるか
+   * (それは上の lock と各経路の振る舞いテストの責務)。
+   */
+  test("regression lock: scheduler は HTTP が公開する明示 ingest API を直接呼ばない", () => {
+    const coordinatorSource = readFileSync(COORDINATOR, "utf8");
+    const serverSource = readFileSync(SERVER, "utf8");
+
+    // route handler が `core.<fn>()` の形で呼ぶ ingest 系関数 = 明示 API。
+    // 抽出は 2 つの規約に依存する: (1) route が `core.<fn>()` と直接書くこと
+    // (変数経由・分割代入・bracket 記法は拾えない)、(2) 明示 API 名が
+    // History / Sessions で終わること。現行の server.ts は全 call site が
+    // この形だが、規約を外れた endpoint を足すとこの lock の対象から漏れる。
+    const explicitApiNames = new Set(
+      [...serverSource.matchAll(/\bcore\.(ingest\w*(?:History|Sessions))\s*\(/g)].map(
+        (m) => m[1] as string
+      )
+    );
+    // 取り逃していたら以下の assert が空振りする
+    expect(explicitApiNames.size).toBeGreaterThan(0);
+
+    const scheduled = extractRunTickCalls(coordinatorSource);
+    expect(scheduled.length).toBeGreaterThan(0);
+
+    const fused = scheduled.filter((call) => explicitApiNames.has(call.fnName));
+    expect(
+      fused,
+      `scheduler が明示 API をそのまま呼んでいる: ${JSON.stringify(fused)}\n` +
+        `HTTP 公開関数: ${JSON.stringify([...explicitApiNames])}\n` +
+        "この状態では明示呼び出しが tick budget で打ち切られる (Spec.md の explicit ingest exemption 違反)。"
+    ).toEqual([]);
+  });
+
 });
