@@ -196,7 +196,20 @@ describe("cursor hooks ingest integration", () => {
     }
   });
 
-  test("bounds cursor hook ingest work per run and resumes from deferred offset", () => {
+  /**
+   * §160-007: この検査は **timer 経路** の契約 (1 run を 50 件で区切り、次 run が
+   * deferred offset から続きを拾う) を固定する。以前は `ingestCursorHistory()` を
+   * 呼んでいたが、それは `/v1/ingest/cursor-history` が呼ぶ明示 API であり、
+   * Spec.md「## Periodic Ingest Budget」の explicit ingest exemption により
+   * **完走させる**のが契約。両者が同じ関数だった間はこの検査が明示 API に
+   * 「50 件で打ち切れ」と要求してしまっていた。
+   *
+   * 経路を分けたので、ここでは timer が実際に呼ぶ `ingestCursorHooksEvents()` を
+   * 引数なしで呼ぶ (= `ingestCursorHistoryTick()` と同じ呼び方)。明示 API が
+   * 完走する側の契約は core-split の「明示 API は tick budget で打ち切られない」
+   * が持つ。scheduler がどちらを呼ぶかは ingest-tick-budget の構造 lock が持つ。
+   */
+  test("bounds cursor hook ingest work per timer run and resumes from deferred offset", () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-cursor-hooks-bounded-"));
     const cursorEventsPath = join(dir, "cursor", "events.jsonl");
     mkdirSync(join(dir, "cursor"), { recursive: true });
@@ -269,16 +282,27 @@ describe("cursor hooks ingest integration", () => {
       runConsolidation: async () => {},
     });
 
+    // timer が呼ぶのと同じ形 (override なし) で leaf を直接叩く。
+    const timerRun = () =>
+      (coordinator as unknown as {
+        ingestCursorHooksEvents: () => {
+          eventsImported: number;
+          eventsFailed: number;
+          eventsDeferred: number;
+          hooksEventsImported: number;
+          retryOffset?: number;
+        };
+      }).ingestCursorHooksEvents();
+
     try {
       const deferredOffset = Buffer.byteLength(`${lines.slice(0, 50).join("\n")}\n`, "utf8");
-      const firstIngest = coordinator.ingestCursorHistory();
-      expect(firstIngest.ok).toBe(true);
-      expect(firstIngest.items[0]).toMatchObject({
-        events_imported: 50,
-        hooks_events_imported: 50,
-        hooks_events_failed: 0,
-        hooks_events_deferred: 5,
-        retry_offset: deferredOffset,
+      const firstIngest = timerRun();
+      expect(firstIngest).toMatchObject({
+        eventsImported: 50,
+        hooksEventsImported: 50,
+        eventsFailed: 0,
+        eventsDeferred: 5,
+        retryOffset: deferredOffset,
       });
       expect(recorded).toHaveLength(50);
 
@@ -288,13 +312,12 @@ describe("cursor hooks ingest integration", () => {
       expect(offsetAfterFirst?.offset).toBe(deferredOffset);
 
       recorded.length = 0;
-      const secondIngest = coordinator.ingestCursorHistory();
-      expect(secondIngest.ok).toBe(true);
-      expect(secondIngest.items[0]).toMatchObject({
-        events_imported: 5,
-        hooks_events_imported: 5,
-        hooks_events_failed: 0,
-        hooks_events_deferred: 0,
+      const secondIngest = timerRun();
+      expect(secondIngest).toMatchObject({
+        eventsImported: 5,
+        hooksEventsImported: 5,
+        eventsFailed: 0,
+        eventsDeferred: 0,
       });
       expect(recorded).toHaveLength(5);
 
