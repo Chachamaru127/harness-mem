@@ -427,6 +427,7 @@ interface OpencodeIngestSummary {
   eventsImported: number;
   filesScanned: number;
   filesSkippedBackfill: number;
+  filesSkippedTooLarge: number;
   dbEventsImported: number;
   storageEventsImported: number;
 }
@@ -436,6 +437,7 @@ function emptyOpencodeIngestSummary(): OpencodeIngestSummary {
     eventsImported: 0,
     filesScanned: 0,
     filesSkippedBackfill: 0,
+    filesSkippedTooLarge: 0,
     dbEventsImported: 0,
     storageEventsImported: 0,
   };
@@ -445,6 +447,7 @@ function mergeOpencodeIngestSummary(target: OpencodeIngestSummary, partial: Open
   target.eventsImported += partial.eventsImported;
   target.filesScanned += partial.filesScanned;
   target.filesSkippedBackfill += partial.filesSkippedBackfill;
+  target.filesSkippedTooLarge += partial.filesSkippedTooLarge;
   target.dbEventsImported += partial.dbEventsImported;
   target.storageEventsImported += partial.storageEventsImported;
 }
@@ -664,14 +667,14 @@ export class IngestCoordinator {
     if (config.antigravityIngestEnabled !== false) {
       this.antigravityIngestTimer = setInterval(() => {
         if (this.deps.isShuttingDown()) return;
-        this.runTick("antigravity", () => this.ingestAntigravityHistory());
+        this.runTick("antigravity", () => this.ingestAntigravityHistoryTick());
       }, clampLimit(Number(config.antigravityIngestIntervalMs || DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS), DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
     if (config.geminiIngestEnabled !== false) {
       this.geminiIngestTimer = setInterval(() => {
         if (this.deps.isShuttingDown()) return;
-        this.runTick("gemini", () => this.ingestGeminiHistory());
+        this.runTick("gemini", () => this.ingestGeminiHistoryTick());
       }, clampLimit(Number(config.geminiIngestIntervalMs || DEFAULT_GEMINI_INGEST_INTERVAL_MS), DEFAULT_GEMINI_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
@@ -1177,9 +1180,30 @@ export class IngestCoordinator {
     const exthostLog = join(exthostDir, "exthost.log");
     if (!existsSync(exthostLog)) return "";
 
+    // §160-007 (review 指摘): これは ingestAntigravityLogEvents が 1 ファイル訪問ごとに
+    // 呼ぶ、つまり timer 経路の一部である。Spec.md「## Periodic Ingest Budget」は
+    // 「同じ source の一部として読む二次的・レガシーな入力」も上限化を要求し、
+    // 一部でも無制限なら source 全体が非準拠だと定めている。exthost.log は長時間
+    // セッションで際限なく育つので、全文 readFileSync は上限を持たなければならない。
+    //
+    // 先頭ではなく末尾から読む: この関数は「最後に出現した」storage id を採るため、
+    // 打ち切るなら古い側を捨てるのが正しい。
     let text = "";
     try {
-      text = readFileSync(exthostLog, "utf8");
+      const maxBytes = resolveIngestMaxBytesPerFile();
+      const fileSize = statSync(exthostLog).size;
+      if (Number.isFinite(maxBytes) && fileSize > maxBytes) {
+        const fd = openSync(exthostLog, "r");
+        try {
+          const buffer = Buffer.alloc(maxBytes);
+          const bytesRead = readSync(fd, buffer, 0, maxBytes, fileSize - maxBytes);
+          text = buffer.subarray(0, Math.max(0, bytesRead)).toString("utf8");
+        } finally {
+          closeSync(fd);
+        }
+      } else {
+        text = readFileSync(exthostLog, "utf8");
+      }
     } catch {
       return "";
     }
@@ -1961,6 +1985,23 @@ export class IngestCoordinator {
         continue;
       }
 
+      // §160-007 (review 指摘): parseOpencodeMessageChunk はファイル 1 件 = JSON 1 個を
+      // 前提とし、途中まで読んだスライスでは JSON.parse が失敗して consumedBytes 0 を
+      // 返す。つまり maxBytesPerFile を超えるファイルは、上限まで読んでも決して
+      // 完成せず、毎巡 512KB を読み捨てるだけで永久に取り込まれない。antigravity
+      // workspace と同じ構造 (全文が要る parser) なので、同じ扱いに揃える:
+      // 読む前にサイズで弾き、件数を数え、warn は source_key ごとに初回 1 回。
+      if (Number.isFinite(maxBytesPerFile) && fileSize > maxBytesPerFile) {
+        summary.filesSkippedTooLarge += 1;
+        if (!this.warnedTooLargeSourceKeys.has(sourceKey)) {
+          this.warnedTooLargeSourceKeys.add(sourceKey);
+          console.warn(
+            `[ingest] opencode message file too large, skipping until it shrinks or the cap is raised: ${messagePath} (${fileSize} bytes > maxBytesPerFile=${maxBytesPerFile})`
+          );
+        }
+        continue;
+      }
+
       if (offset > fileSize) {
         offset = 0;
       }
@@ -2124,6 +2165,7 @@ export class IngestCoordinator {
             events_imported: 0,
             files_scanned: 0,
             files_skipped_backfill: 0,
+            files_skipped_too_large: 0,
             db_events_imported: 0,
             storage_events_imported: 0,
           },
@@ -2151,6 +2193,7 @@ export class IngestCoordinator {
           events_imported: summary.eventsImported,
           files_scanned: summary.filesScanned,
           files_skipped_backfill: summary.filesSkippedBackfill,
+          files_skipped_too_large: summary.filesSkippedTooLarge,
           db_events_imported: summary.dbEventsImported,
           storage_events_imported: summary.storageEventsImported,
         },
@@ -2817,6 +2860,48 @@ export class IngestCoordinator {
     return summary;
   }
 
+  /**
+   * §160-007 (review 指摘): 定期 tick 用の antigravity 取り込み。
+   * `ingestAntigravityHistory()` は `/v1/ingest/antigravity-history` が呼ぶ明示 API
+   * であり、Spec.md「## Periodic Ingest Budget」の explicit ingest exemption により
+   * 完走させる契約。scheduler がその公開 API をそのまま呼ぶと、明示呼び出しの側が
+   * tick budget で打ち切られてしまう (ingestOpencodeHistoryTick / ingestCodexHistoryTick
+   * と同じ理由で経路を分ける)。
+   *
+   * さらに workspace root は operator が設定する可変長リストなので、root ごとに
+   * 独立した budget を与えると 1 tick の最悪ブロックが root 数に比例して伸びる。
+   * ここでは tick 全体で 1 つの budget を共有し、各 root には残り時間だけを渡す。
+   */
+  private ingestAntigravityHistoryTick(): void {
+    if (!this.isAntigravityIngestEnabled()) return;
+
+    const startedAtMs = Date.now();
+    const budgetMs = resolveIngestTickBudgetMs();
+    const remaining = (): number =>
+      Number.isFinite(budgetMs) ? Math.max(0, budgetMs - (Date.now() - startedAtMs)) : budgetMs;
+
+    const roots = this.getAntigravityWorkspaceRoots();
+    let rootsVisited = 0;
+    for (const root of roots) {
+      // 進捗保証: 1 root 目は budget を使い切っていても必ず見る。さもないと
+      // root が 1 つも進まない tick が続きうる。
+      if (rootsVisited > 0 && remaining() <= 0) break;
+      rootsVisited += 1;
+      this.ingestAntigravityWorkspace(root, { budgetMs: remaining() });
+    }
+    this.ingestAntigravityLogEvents({ budgetMs: remaining() });
+  }
+
+  /**
+   * §160-007 (review 指摘): 定期 tick 用の gemini 取り込み。理由は
+   * `ingestAntigravityHistoryTick` と同じ — `ingestGeminiHistory()` は
+   * `/v1/ingest/gemini-history` の明示 API なので budget で打ち切ってはならない。
+   */
+  private ingestGeminiHistoryTick(): void {
+    if (!this.isGeminiIngestEnabled()) return;
+    this.ingestGeminiEvents();
+  }
+
   ingestAntigravityHistory(): ApiResponse {
     const startedAt = performance.now();
     if (!this.isAntigravityIngestEnabled()) {
@@ -2840,12 +2925,15 @@ export class IngestCoordinator {
       );
     }
 
+    // 明示 API は完走させる (Spec.md「## Periodic Ingest Budget」の explicit ingest
+    // exemption)。timer 経路は ingestAntigravityHistoryTick が担当する。
+    const unbounded = { budgetMs: Infinity, maxBytesPerFile: Infinity };
     const roots = this.getAntigravityWorkspaceRoots();
     const summary = emptyAntigravityIngestSummary();
     for (const root of roots) {
-      mergeAntigravityIngestSummary(summary, this.ingestAntigravityWorkspace(root));
+      mergeAntigravityIngestSummary(summary, this.ingestAntigravityWorkspace(root, unbounded));
     }
-    mergeAntigravityIngestSummary(summary, this.ingestAntigravityLogEvents());
+    mergeAntigravityIngestSummary(summary, this.ingestAntigravityLogEvents(unbounded));
 
     return makeResponse(
       startedAt,
@@ -3066,7 +3154,9 @@ export class IngestCoordinator {
       );
     }
 
-    const summary = this.ingestGeminiEvents();
+    // 明示 API は完走させる (Spec.md の explicit ingest exemption)。
+    // timer 経路は ingestGeminiHistoryTick が担当する。
+    const summary = this.ingestGeminiEvents({ budgetMs: Infinity, maxBytesPerFile: Infinity });
     return makeResponse(
       startedAt,
       [

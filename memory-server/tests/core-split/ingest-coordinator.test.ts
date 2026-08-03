@@ -951,6 +951,93 @@ describe("ingest-coordinator: ingestOpencodeHistory は明示 API として budg
   });
 });
 
+/**
+ * §160-007 (review 指摘): antigravity / gemini の明示 API は、scheduler が同じ関数を
+ * 呼んでいたせいで tick budget の影響下にあった。`/v1/ingest/antigravity-history` と
+ * `/v1/ingest/gemini-history` は「呼び出し側が確定した結果を待っている」経路なので、
+ * Spec.md「## Periodic Ingest Budget」の explicit ingest exemption により完走が契約。
+ *
+ * この 2 つの describe が無いと、timer 経路と明示経路が再び同じ関数に融合しても
+ * 何も落ちない (opencode 側には既に同型のテストがあり、そこだけ守られていた)。
+ */
+describe("ingest-coordinator: 明示 API は tick budget で打ち切られない (§160-007)", () => {
+  const ORIGINAL_BUDGET = process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
+
+  afterEach(() => {
+    if (ORIGINAL_BUDGET === undefined) delete process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
+    else process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = ORIGINAL_BUDGET;
+  });
+
+  /** 1 件あたり 5ms 消費させ、極小 budget を必ず超過させる recordEvent。 */
+  function slowRecordEvent() {
+    return mock(() => {
+      const until = Date.now() + 5;
+      while (Date.now() < until) {
+        /* busy-wait */
+      }
+      return makeOkResponse();
+    });
+  }
+
+  test("ingestGeminiHistory は budget=1ms でも全イベントを取り込む", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-gemini-explicit-"));
+    try {
+      const lines = Array.from({ length: 12 }, (_, i) =>
+        JSON.stringify({
+          event_type: "user_prompt",
+          session_id: "s1",
+          project: "p1",
+          ts: `2026-07-31T00:00:${String(i).padStart(2, "0")}.000Z`,
+          payload: { content: `c${i}` },
+        })
+      );
+      const eventsPath = join(dir, "gemini-events.jsonl");
+      writeFileSync(eventsPath, lines.join("\n") + "\n", "utf8");
+
+      process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = "1";
+
+      const deps = makeDeps({
+        db: createTestDb(),
+        config: createTestConfig({ geminiIngestEnabled: true, geminiEventsPath: eventsPath }),
+        recordEvent: slowRecordEvent(),
+      });
+
+      const res = new IngestCoordinator(deps).ingestGeminiHistory();
+      expect(res.ok).toBe(true);
+      expect(res.items[0]?.events_imported).toBe(12);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("ingestAntigravityHistory は budget=1ms でも全イベントを取り込む", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-explicit-"));
+    try {
+      const logDir = join(dir, "ws-explicit", "google.antigravity", "1", "exthost1", "output_logging_x");
+      mkdirSync(logDir, { recursive: true });
+      const lines = Array.from(
+        { length: 12 },
+        (_, i) => `2026-07-31 00:00:${String(i).padStart(2, "0")}.000 [info] Requesting planner with ${i + 1} chat messages`
+      );
+      writeFileSync(join(logDir, "Antigravity.log"), lines.join("\n") + "\n", "utf8");
+
+      process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = "1";
+
+      const deps = makeDeps({
+        db: createTestDb(),
+        config: createTestConfig({ antigravityIngestEnabled: true, antigravityLogsRoot: dir }),
+        recordEvent: slowRecordEvent(),
+      });
+
+      const res = new IngestCoordinator(deps).ingestAntigravityHistory();
+      expect(res.ok).toBe(true);
+      expect(res.items[0]?.log_events_imported).toBe(12);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // ingestCursorHistory
 // ---------------------------------------------------------------------------

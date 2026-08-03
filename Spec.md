@@ -402,6 +402,12 @@ of it is budgeted.
   block for that timer is the sum of its inputs' budgets rather than a single
   budget. What counts against an individual budget is implementation detail,
   not part of this contract.
+- That sum must itself be bounded. Where the number of inputs a timer pulls is
+  fixed by the code, per-input budgets are enough. Where it is variable —
+  configured by the operator, or discovered at runtime — giving each input its
+  own full budget makes the worst-case block scale with that count, which is
+  the unbounded blocking this contract exists to prevent. Such a timer must
+  share one budget across its inputs, passing the remaining time to each.
 - Each periodic ingest run also has a bounded amount of input it may read from
   any single source in that run. A time budget alone does not satisfy this: a
   run that loads an entire input into memory before processing it has already
