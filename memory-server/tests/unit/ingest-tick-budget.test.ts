@@ -21,12 +21,24 @@ const SERVER = resolve(import.meta.dir, "../../src/server.ts");
  * 「末尾の 1 文字を除く全体」を返す。結果 body にコーディネータ全体が入り、
  * `toContain` 系の assert が対象と無関係に全部通る。`body.length > 0` では検出できない。
  * (2026-07-30 レビュー指摘。§160-005c で塞いだ「テストが静かに通る」問題と同型。)
+ *
+ * マーカーは **クラスメンバ宣言としてのみ** 一致させる (行頭 + インデント 2)。
+ * 素の `indexOf` は JSDoc の散文にも一致してしまう: `ingestCursorHistoryTick` の
+ * コメントが `ingestCursorHistory()` に言及した結果、終端が本来より 342 バイト
+ * 手前のコメント位置に決まっていた (2026-07-31 レビューで実測)。その時点では
+ * assert 対象が偶然すべて内側にあり無害だったが、境界が「宣言」ではなく
+ * 「散文の偶然」で決まる状態は、後の編集で静かに検査対象から外れる罠になる。
  */
 function sliceMethodBody(source: string, startMarker: string, endMarker: string): string {
-  const start = source.indexOf(startMarker);
-  expect(start, `開始マーカーが見つからない: ${startMarker}`).toBeGreaterThan(-1);
-  const end = source.indexOf(endMarker, start);
-  expect(end, `終端マーカーが見つからない: ${endMarker} (開始: ${startMarker})`).toBeGreaterThan(start);
+  // クラスメンバはインデント 2。コメント行 (` * ...`) や本文中の言及とは一致しない。
+  const asDeclaration = (marker: string) => `\n  ${marker}`;
+  const start = source.indexOf(asDeclaration(startMarker));
+  expect(start, `開始マーカーが宣言として見つからない: ${startMarker}`).toBeGreaterThan(-1);
+  const end = source.indexOf(asDeclaration(endMarker), start);
+  expect(
+    end,
+    `終端マーカーが宣言として見つからない: ${endMarker} (開始: ${startMarker})`
+  ).toBeGreaterThan(start);
   return source.slice(start, end);
 }
 
@@ -251,15 +263,16 @@ describe("§159-003c codex ingest tick budget", () => {
 
   test("cursor 経路も読み込みを切り出し、時間でも打ち切る", () => {
     const source = readFileSync(COORDINATOR, "utf8");
-    const start = source.indexOf("private ingestCursorHooksEvents");
-    expect(start).toBeGreaterThan(-1);
-    const body = source.slice(start, start + 5000);
+    // 固定幅 (start + 5000) で切ると、本体が伸びた時に静かに検査範囲から外れる。
+    // 次の宣言までを境界にする (sliceMethodBody は両端を assert する)。
+    const body = sliceMethodBody(source, "private ingestCursorHooksEvents", "private ingestCursorHistoryTick");
 
     expect(body).toContain("resolveIngestMaxBytesPerFile()");
     expect(body).toContain("resolveIngestReadSliceBytes()");
     expect(body).toContain("bytesReadThisFile < maxBytesPerFile");
-    // 件数上限だけでなく時間でも抜ける
-    expect(body).toContain("processed >= MAX_CURSOR_HOOK_EVENTS_PER_INGEST || overBudget");
+    // 件数上限だけでなく時間でも抜ける。上限は §160-007 で override 可能になった
+    // (明示 API は Infinity を渡して完走する) ので、定数名ではなく変数名で見る。
+    expect(body).toContain("processed >= maxEvents || overBudget");
     expect(body).toContain("nextOffset = Math.max(currentOffset, entry.lineOffset)");
   });
 
@@ -572,7 +585,11 @@ export class FakeCoordinator {
     const coordinatorSource = readFileSync(COORDINATOR, "utf8");
     const serverSource = readFileSync(SERVER, "utf8");
 
-    // route handler が `core.<fn>()` の形で呼ぶ ingest 系関数 = 明示 API
+    // route handler が `core.<fn>()` の形で呼ぶ ingest 系関数 = 明示 API。
+    // 抽出は 2 つの規約に依存する: (1) route が `core.<fn>()` と直接書くこと
+    // (変数経由・分割代入・bracket 記法は拾えない)、(2) 明示 API 名が
+    // History / Sessions で終わること。現行の server.ts は全 call site が
+    // この形だが、規約を外れた endpoint を足すとこの lock の対象から漏れる。
     const explicitApiNames = new Set(
       [...serverSource.matchAll(/\bcore\.(ingest\w*(?:History|Sessions))\s*\(/g)].map(
         (m) => m[1] as string

@@ -1198,6 +1198,10 @@ export class IngestCoordinator {
         // 再現された)。一致 1 個分より広く手前へ広げて読めば、元の切り口を跨ぐ
         // 一致は必ず窓の中に収まる。新しい切り口を跨ぐ一致はそれより古いので、
         // 「最後の一致」を採る限り取り逃しても結果は変わらない。
+        //
+        // 十分な幅であることは正規表現側で構造的に保証する: 一致の最大長は
+        // "workspaceStorage/" (17) + id 上限 (64) = 81 バイトなので、256 で足りる
+        // (id の上限が無いままだと「256 で足りるか」が実データ次第の仮定になる)。
         const overlapBytes = 256;
         const start = Math.max(0, fileSize - maxBytes - overlapBytes);
         const length = fileSize - start;
@@ -1217,7 +1221,10 @@ export class IngestCoordinator {
     }
     if (!text) return "";
 
-    const matches = [...text.matchAll(/workspaceStorage\/([0-9a-z]{8,})/gi)];
+    // 上限 64: workspaceStorage の id は決定的ハッシュ (32〜40 hex) なので実データは
+    // 十分収まる。上限を明示することで、上の overlapBytes が足りるかどうかが
+    // 実データ依存の仮定ではなく計算で決まる。
+    const matches = [...text.matchAll(/workspaceStorage\/([0-9a-z]{8,64})/gi)];
     if (matches.length === 0) return "";
     const latest = matches[matches.length - 1];
     return (latest?.[1] || "").trim();
@@ -2247,7 +2254,11 @@ export class IngestCoordinator {
   // Cursor ingest メソッド（core から移動）
   // ---------------------------------------------------------------------------
 
-  private ingestCursorHooksEvents(options?: { budgetMs?: number; maxBytesPerFile?: number }): CursorIngestSummary {
+  private ingestCursorHooksEvents(options?: {
+    budgetMs?: number;
+    maxBytesPerFile?: number;
+    maxEvents?: number;
+  }): CursorIngestSummary {
     const summary = emptyCursorIngestSummary();
     const eventsPath = this.getCursorEventsPath();
     if (!existsSync(eventsPath)) {
@@ -2293,6 +2304,10 @@ export class IngestCoordinator {
     const startedAtMs = Date.now();
     const budgetMs = options?.budgetMs ?? resolveIngestTickBudgetMs();
     const maxBytesPerFile = options?.maxBytesPerFile ?? resolveIngestMaxBytesPerFile();
+    // §160-007 (review 指摘): 件数上限も override 可能にする。budget だけ Infinity に
+    // しても、この定数が 50 件で打ち切るため明示 API が完走しなかった
+    // (実測: 遅延ゼロでも 120 件中 50 件)。MAX_OPENCODE_DB_ROWS_PER_INGEST と同じ扱い。
+    const maxEvents = options?.maxEvents ?? MAX_CURSOR_HOOK_EVENTS_PER_INGEST;
     const readSliceBytes = resolveIngestReadSliceBytes();
     let currentOffset = offset;
     let nextReadOffset = offset;
@@ -2358,7 +2373,7 @@ export class IngestCoordinator {
             // 中断位置を保存するので、次 tick が続きから再開する。
             const overBudget =
               processed > 0 && Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs;
-            if (processed >= MAX_CURSOR_HOOK_EVENTS_PER_INGEST || overBudget) {
+            if (processed >= maxEvents || overBudget) {
               nextOffset = Math.max(currentOffset, entry.lineOffset);
               summary.eventsDeferred = parsedChunk.events.length - sliceProcessed;
               summary.retryOffset = nextOffset;
@@ -2405,7 +2420,7 @@ export class IngestCoordinator {
           currentOffset = nextOffset;
           pending = pending.subarray(parsedChunk.consumedBytes);
           if (
-            processed >= MAX_CURSOR_HOOK_EVENTS_PER_INGEST ||
+            processed >= maxEvents ||
             (slicesProcessed > 0 &&
               Number.isFinite(budgetMs) &&
               Date.now() - startedAtMs > budgetMs)
@@ -2459,7 +2474,7 @@ export class IngestCoordinator {
     // 明示 API は完走させる (Spec.md の explicit ingest exemption)。
     mergeCursorIngestSummary(
       summary,
-      this.ingestCursorHooksEvents({ budgetMs: Infinity, maxBytesPerFile: Infinity })
+      this.ingestCursorHooksEvents({ budgetMs: Infinity, maxBytesPerFile: Infinity, maxEvents: Infinity })
     );
     return makeResponse(
       startedAt,

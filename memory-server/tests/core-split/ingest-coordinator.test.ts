@@ -1045,6 +1045,42 @@ describe("ingest-coordinator: 明示 API は tick budget で打ち切られな�
     }
   });
 
+  /**
+   * §160-007 (review 指摘): budget を Infinity にしても、cursor は件数上限
+   * `MAX_CURSOR_HOOK_EVENTS_PER_INGEST = 50` が別途打ち切っていた。**遅延ゼロでも
+   * 120 件中 50 件しか入らない**ので、時間 budget の検査だけでは検出できない。
+   * 上限を超える件数で「完走する」ことを別途固定する。
+   */
+  test("ingestCursorHistory は件数上限 (50) を超える backlog も完走する", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-cursor-maxevents-"));
+    try {
+      const lines = Array.from({ length: 120 }, (_, i) =>
+        JSON.stringify({
+          hook_event_name: "beforeSubmitPrompt",
+          conversation_id: "cursor-conv-cap",
+          workspace_roots: [dir],
+          prompt: `p${i}`,
+          timestamp: `2026-07-31T01:${String(Math.floor(i / 60)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}.000Z`,
+        })
+      );
+      const eventsPath = join(dir, "cursor-events.jsonl");
+      writeFileSync(eventsPath, lines.join("\n") + "\n", "utf8");
+
+      const deps = makeDeps({
+        db: createTestDb(),
+        config: createTestConfig({ cursorIngestEnabled: true, cursorEventsPath: eventsPath }),
+        // 遅延なし: ここで効くのは時間ではなく件数上限であることを明確にする
+        recordEvent: mock(() => makeOkResponse()),
+      });
+
+      const res = new IngestCoordinator(deps).ingestCursorHistory();
+      expect(res.ok).toBe(true);
+      expect(res.items[0]?.hooks_events_imported).toBe(120);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("ingestAntigravityHistory は budget=1ms でも全イベントを取り込む", () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-explicit-"));
     try {
