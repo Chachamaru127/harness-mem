@@ -540,11 +540,14 @@ export class FakeCoordinator {
     // 片方だけ残して他方を潰しても検出できない (両方消せば落ちることは実測済み)。
     // 「break が正しい位置にあるか」「1 件目を通す guard になっているか」も見ない。
     // それらは各経路の振る舞いテスト (ingest-coordinator.test.ts) の責務。
-    const guarded = results.filter((r) => r.label !== "already_safe");
+    //
+    // 除外ラベルは 1 つも置かない。`already_safe` は直前のテストの合成ソース専用の
+    // ラベルであって実ソースには存在しないため、ここで除外すると「同名のラベルで
+    // 新経路を足せば lock をすり抜けられる」抜け道を作るだけになる。
 
-    // guarded が空だと以下の assert が意味を持たなくなる (対象を取り逃していないか)
-    expect(guarded.length).toBeGreaterThan(0);
-    const broken = guarded.filter((r) => r.status !== "ok");
+    // results が空だと以下の assert が意味を持たなくなる (対象を取り逃していないか)
+    expect(results.length).toBeGreaterThan(0);
+    const broken = results.filter((r) => r.status !== "ok");
     expect(broken).toEqual([]);
   });
 

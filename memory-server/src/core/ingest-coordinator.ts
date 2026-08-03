@@ -574,6 +574,12 @@ const SQLITE_HEADER = "SQLite format 3\u0000";
 export class IngestCoordinator {
   private readonly codexRolloutContextCache = new Map<string, CodexSessionsContext>();
 
+  // §160-007 (review 指摘): サイズ上限超過ファイルは offset を進めない設計なので、
+  // round-robin で再訪問するたびに同じ警告を出しログを埋める。source_key ごとに
+  // 初回 1 回だけ warn する。件数の観測は summary.filesSkippedTooLarge が担うので、
+  // warn を減らしても観測性は落ちない。
+  private readonly warnedTooLargeSourceKeys = new Set<string>();
+
   // タイマーハンドル（startTimers / stopTimers で管理）
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private ingestTimer: ReturnType<typeof setInterval> | null = null;
@@ -2059,7 +2065,14 @@ export class IngestCoordinator {
 
             summary.eventsImported += imported;
             summary.storageEventsImported += imported;
-            this.updateIngestOffset(sourceKey, nextOffset);
+            // §160-007 レビュー: 1 件目で recordEvent が失敗すると nextOffset は
+            // currentOffset と等値になる。無条件に書くと初回 tick で offset 0 の行が
+            // でき、以後 hasOffset が恒久的に true になって backfill window 判定
+            // (`!hasOffset && mtimeMs < cutoffMs`) が二度と効かない。cursor 経路と
+            // 同じく、実際に消費した範囲があるときだけ永続化する。
+            if (nextOffset > currentOffset) {
+              this.updateIngestOffset(sourceKey, nextOffset);
+            }
 
             if (sliceDeferred) {
               break;
@@ -2510,9 +2523,13 @@ export class IngestCoordinator {
       // ので、この軽いスキップを繰り返しても他ファイルの走査を飢餓させない。
       if (Number.isFinite(maxBytesPerFile) && fileSize > maxBytesPerFile) {
         summary.filesSkippedTooLarge += 1;
-        console.warn(
-          `[ingest] antigravity file too large, skipping this tick: ${filePath} (${fileSize} bytes > maxBytesPerFile=${maxBytesPerFile})`
-        );
+        // 同一ファイルは毎 tick ここを通るので、warn は source_key ごとに初回のみ。
+        if (!this.warnedTooLargeSourceKeys.has(sourceKey)) {
+          this.warnedTooLargeSourceKeys.add(sourceKey);
+          console.warn(
+            `[ingest] antigravity file too large, skipping until it shrinks or the cap is raised: ${filePath} (${fileSize} bytes > maxBytesPerFile=${maxBytesPerFile})`
+          );
+        }
         continue;
       }
 
@@ -2766,7 +2783,11 @@ export class IngestCoordinator {
             summary.logEventsImported += imported;
             // §160-007: updateIngestOffset は recordEvent が完了した範囲に対してのみ
             // 呼ぶ。先に楽観的に進めると未処理行が二度と読まれず消える。
-            this.updateIngestOffset(sourceKey, nextOffset);
+            // さらに、消費 0 バイトのときは offset 行自体を作らない。作ると初回 tick で
+            // hasOffset が true になり、backfill window 判定が恒久的に無効化される。
+            if (nextOffset > currentOffset) {
+              this.updateIngestOffset(sourceKey, nextOffset);
+            }
 
             if (sliceDeferred) {
               if (budgetExhausted) stopTick = true;
@@ -3004,7 +3025,11 @@ export class IngestCoordinator {
 
           // §160-005b DoD (b) と同型: updateIngestOffset は recordEvent が完了した範囲
           // に対してのみ呼ぶ。先に楽観的に進めると未処理行が二度と読まれず消える。
-          this.updateIngestOffset(sourceKey, nextOffset);
+          // さらに、消費 0 バイトのときは offset 行自体を作らない。作ると初回 tick で
+          // hasOffset が true になり、backfill window 判定が恒久的に無効化される。
+          if (nextOffset > currentOffset) {
+            this.updateIngestOffset(sourceKey, nextOffset);
+          }
 
           if (sliceDeferred) break;
 

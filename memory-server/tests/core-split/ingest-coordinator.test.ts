@@ -807,7 +807,10 @@ describe("ingest-coordinator: ingestOpencodeStorageMessages (§160-007)", () => 
       const offsetMsg1 = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKeyMsg1) as {
         offset: number;
       } | null;
-      expect(offsetMsg1?.offset ?? -1).toBe(0);
+      // 1 件目で失敗したので消費バイトは 0。offset 行は「作らない」のが正しい。
+      // 0 で作ると hasOffset が恒久的に true になり、このファイルが backfill window
+      // の外へ出ても `!hasOffset && mtimeMs < cutoffMs` の skip が二度と効かなくなる。
+      expect(offsetMsg1).toBeNull();
 
       const sourceKeyMsg2 = `opencode_rollout:${msg2Path}`;
       const fileSize2 = statSync(msg2Path).size;
@@ -1132,8 +1135,10 @@ describe("ingest-coordinator: ingestGeminiEvents (§160-007)", () => {
       const offsetAfterFailure = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
         offset: number;
       } | null;
-      expect(offsetAfterFailure).not.toBeNull();
-      expect(offsetAfterFailure?.offset ?? -1).toBeLessThan(fileSize);
+      // 1 行目で失敗 = 消費 0 バイトなので offset 行は作られない。0 で作ると
+      // hasOffset が恒久的に true になり backfill window 判定が無効化される。
+      expect(offsetAfterFailure).toBeNull();
+      expect(offsetAfterFailure?.offset ?? 0).toBeLessThan(fileSize);
 
       const second = coordinator.ingestGeminiEvents({ budgetMs: Infinity });
       expect(second.eventsImported).toBe(3);
@@ -1274,8 +1279,10 @@ describe("ingest-coordinator: ingestAntigravityLogEvents (§160-007)", () => {
       const offsetAfterFailure = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
         offset: number;
       } | null;
-      expect(offsetAfterFailure).not.toBeNull();
-      expect(offsetAfterFailure?.offset ?? -1).toBeLessThan(fileSize);
+      // 1 行目で失敗 = 消費 0 バイトなので offset 行は作られない。0 で作ると
+      // hasOffset が恒久的に true になり backfill window 判定が無効化される。
+      expect(offsetAfterFailure).toBeNull();
+      expect(offsetAfterFailure?.offset ?? 0).toBeLessThan(fileSize);
 
       const second = coordinator.ingestAntigravityLogEvents({ budgetMs: Infinity });
       expect(second.logEventsImported).toBe(3);
