@@ -113,7 +113,7 @@ All numbers below come from committed artifacts you can rerun yourself — no ma
 | **Memory (RSS)** | ~13MB after `initialize` + `tools/list` | bench JSON, measured on Apple M1 |
 | **LoCoMo F1** | 0.6138 (120 QA · 3-run PASS) | [run-ci manifest](memory-server/src/benchmark/results/ci-run-manifest-latest.json) |
 | **Search p95** | 38.35ms | same manifest |
-| **Bilingual recall@10** | 0.9000 | same manifest |
+| **Bilingual recall@10** | 0.8200 | same manifest |
 
 The MCP frontend is the layer Claude Code and Codex actually talk to. The Go binary is the fast preferred path; if it is missing, a wrapper script transparently falls back to the Node.js build — you still get every feature, just at Node.js cold start.
 
@@ -141,8 +141,8 @@ Our release gate lives in `ci-run-manifest-latest.json` on the developer-workflo
 |---|---:|---:|---|
 | `knowledge-update` freshness@K — flagship: Bilingual Coding-Memory Freshness@k | **0.99** | ≥ 0.95 ✓ | Supersede stale facts when content is updated |
 | `dev-workflow` recall@10 | 0.77 | ≥ 0.70 ✓ | Developer-style file/decision jump queries |
-| `bilingual` recall@10 | **0.90** | ≥ 0.90 ✓ | Mixed JA/EN/code retrieval |
-| `temporal` ordering score | 0.82 | ≥ 0.70 ✓ | "When did X happen relative to Y?" on project history |
+| `bilingual` recall@10 | **0.82** | ≥ 0.82 ✓ | Mixed JA/EN/code retrieval |
+| `temporal` ordering score | 0.86 | ≥ 0.70 ✓ | "When did X happen relative to Y?" on project history |
 
 These are self-seeded measurements reproduced with the same runner — they confirm implementation health, not superiority over competitors.
 
@@ -516,9 +516,9 @@ Current latest run:
 | Metric | Value |
 |---|---:|
 | LoCoMo F1 | 0.6138 |
-| Bilingual recall@10 | 0.9000 |
+| Bilingual recall@10 | 0.8200 |
 | Freshness | 0.9900 |
-| Temporal | 0.8213 |
+| Temporal | 0.8575 |
 | Search p95 | 38.35ms |
 | Token avg | 462.98 |
 

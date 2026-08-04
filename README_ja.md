@@ -113,7 +113,7 @@ Cursor も使う場合は `--platform codex,claude,cursor` にするか、別途
 | **メモリ使用量（RSS）** | ~13MB（`initialize` + `tools/list` 後） | bench JSON、Apple M1 実測 |
 | **LoCoMo F1** | 0.6138（120 QA · 3-run PASS） | [run-ci manifest](memory-server/src/benchmark/results/ci-run-manifest-latest.json) |
 | **Search p95** | 38.35ms | 同 manifest |
-| **Bilingual recall@10** | 0.9000 | 同 manifest |
+| **Bilingual recall@10** | 0.8200 | 同 manifest |
 
 MCP frontend は Claude Code / Codex が実際に通信する層です。Go バイナリが高速な優先経路で、無ければ wrapper script が透過的に Node.js 版にフォールバックします。機能は全部使えて、コールドスタートだけ Node.js 相当になります。
 
@@ -139,8 +139,8 @@ harness-mem のリリースゲートは `ci-run-manifest-latest.json` の develo
 |---|---:|---:|---|
 | `knowledge-update` freshness@K — flagship: Bilingual Coding-Memory Freshness@k | **0.99** | ≥ 0.95 ✓ | 情報が更新された時に古い事実を外せるか |
 | `dev-workflow` recall@10 | 0.77 | ≥ 0.70 ✓ | 開発者的なファイル / 判断ジャンプのクエリ |
-| `bilingual` recall@10 | **0.90** | ≥ 0.90 ✓ | 日本語 / 英語 / コード混在の検索 |
-| `temporal` ordering score | 0.82 | ≥ 0.70 ✓ | 「X の後に Y があったか？」的な時系列推論 |
+| `bilingual` recall@10 | **0.82** | ≥ 0.82 ✓ | 日本語 / 英語 / コード混在の検索 |
+| `temporal` ordering score | 0.86 | ≥ 0.70 ✓ | 「X の後に Y があったか？」的な時系列推論 |
 
 数値は自己シードのデータセットを同一ランナーで再現測定したもので、外部競合に対する優位を示すものではありません。
 
@@ -499,9 +499,9 @@ main の release gate、現行の日本語 companion、歴史 baseline を明確
 | 指標 | 値 |
 |---|---:|
 | LoCoMo F1 | 0.6138 |
-| bilingual recall@10 | 0.9000 |
+| bilingual recall@10 | 0.8200 |
 | freshness | 0.9900 |
-| temporal | 0.8213 |
+| temporal | 0.8575 |
 | search p95 | 38.35ms |
 | token avg | 462.98 |
 

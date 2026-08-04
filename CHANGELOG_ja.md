@@ -7,6 +7,16 @@
 
 ## [Unreleased]
 
+## [0.29.6] - 2026-08-04
+
+### 修正
+
+- **公開している bilingual recall の値を、コードが実際に出す値に合わせた**。README は `Bilingual recall@10 = 0.9000` を掲げていたが、この数値は hand-crafted な probe fixture から出たもので、0.28.x で日本語 FTS の分かち書きが変わった時点で再現しなくなっていた。実際の developer-domain 実測はそれ以降ずっと 0.82 で、release gate も当時 0.82 へ下げられている。**しかし公開値だけが 0.90 のまま取り残され、どの実行も出さない数値を README が主張し続けていた**。0.8200 に更新した。temporal も同様に古く、0.8213 → 0.8575 に更新した (こちらは改善方向)。
+
+  値の確定は開発機ではなく CI に基づく。0.29.5 の release run の `benchmark:developer-domain` ステップが、クリーンな Linux runner 上で `bilingual recall@10 0.8200` を報告しており、ローカル再現でも同じ値になった。README の claim 検査が正本として参照する `ci-run-manifest-latest.json` は、**2026-05-27 にローカルマシンで生成されたまま一度も更新されていなかった** (fixture パスが開発機の絶対パスだった)。release workflow 自身が出す値で置き換えた。
+
+  これは公開クレームの訂正であり、このリリースでの品質低下ではない。bilingual の検索品質は 0.29.5 から変わっていない。
+
 ## [0.29.5] - 2026-08-03
 
 ### 修正

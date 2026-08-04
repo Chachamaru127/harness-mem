@@ -31,8 +31,8 @@
         "freshness_lag": {
           "status": "measured",
           "n": 7,
-          "p50_ms": 16167.916,
-          "p95_ms": 16916.489
+          "p50_ms": 18151.464,
+          "p95_ms": 19089.59
         },
         "measured_by": "scripts/s154-deep-freshness-bench.ts",
         "gate_verdict": "green",
@@ -48,7 +48,7 @@
   },
   "schema_version": "s108-developer-domain-manifest.v1",
   "task_id": "S108-005b",
-  "generated_at": "2026-07-29T17:52:48.609Z",
+  "generated_at": "2026-08-04T09:13:09.941Z",
   "manifest_path": "memory-server/src/benchmark/results/ci-run-manifest-latest.json",
   "inputs": {
     "code_token_runs": 3,
@@ -63,7 +63,7 @@
     "temporal_answer_hit_at_10": 1,
     "japanese_temporal_slice": 1,
     "current_stale_answer_regressions": 0,
-    "temporal_p95_latency_ms": 5.1513,
+    "temporal_p95_latency_ms": 5.732,
     "cjk_nfkc_fixable_top1": 1,
     "cjk_non_nfkc_orthographic_top1": 1,
     "cjk_mixed_en_ja_top1": 1,
@@ -93,7 +93,7 @@
       "non_nfkc_orthographic": 1,
       "mixed_en_ja": 1
     },
-    "recorded_at": "2026-07-29T17:30:51.197Z"
+    "recorded_at": "2026-08-04T09:13:09.941Z"
   },
   "cjk_discrimination_current": {
     "per_slice_top1": {
