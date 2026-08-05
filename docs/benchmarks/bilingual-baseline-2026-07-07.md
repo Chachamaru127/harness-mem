@@ -3,6 +3,15 @@
 Status: accepted for release gate rebaseline (supersedes
 `bilingual-baseline-2026-06-05.md`)
 
+> **Correction (2026-08-05, S156-FU13):** the rationale below cites a
+> "developer-domain reconciliation bilingual recall@10 = `0.90`" as an
+> independent guard, and states that the developer-domain floor is evaluated
+> against that metric rather than the run-ci bilingual-50 fixture. Both are
+> incorrect — the two are the same measurement, and the `0.90` was a stale
+> manifest value that had not been regenerated since 2026-05-27. The gate value
+> of `0.82` still stands, supported by gates that genuinely are independent.
+> See `bilingual-baseline-2026-08-05.md`.
+
 ## Summary
 
 The `s108-code-token-tuning` bilingual-50 gate is rebaselined from `0.86` to
