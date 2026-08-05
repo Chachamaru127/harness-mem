@@ -25,9 +25,9 @@ Current latest run (`onnx`, `git_sha=eb88c96`):
 | Metric | Value | Meaning |
 |---|---:|---|
 | LoCoMo F1 | 0.6138 | Main retrieval + answer quality gate |
-| Bilingual recall@10 | 0.9000 | EN<->JA retrieval companion metric |
+| Bilingual recall@10 | 0.8200 | EN<->JA retrieval companion metric |
 | Freshness | 0.9900 | Current-state questions stay correct |
-| Temporal | 0.8213 | Ordering / time reasoning gate |
+| Temporal | 0.8575 | Ordering / time reasoning gate |
 | Search p95 | 38.35ms | Latency envelope |
 | Token avg | 462.98 | Cost / verbosity envelope |
 

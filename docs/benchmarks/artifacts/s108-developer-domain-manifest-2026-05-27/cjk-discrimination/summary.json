@@ -1,6 +1,6 @@
 {
   "schema_version": "s154-cjk-discrimination.v1",
-  "generated_at": "2026-07-29T17:52:48.609Z",
+  "generated_at": "2026-08-04T09:13:09.941Z",
   "task_id": "S154-152",
   "fixture": {
     "path": "tests/benchmarks/fixtures/cjk-discrimination.json",
@@ -25,7 +25,7 @@
           "recall": false,
           "top1": false,
           "mrr": 0,
-          "latency_ms": 1.2358
+          "latency_ms": 1.1412
         },
         {
           "case_id": "cjk-nfkc-002",
@@ -35,7 +35,7 @@
           "recall": false,
           "top1": false,
           "mrr": 0,
-          "latency_ms": 0.3936
+          "latency_ms": 0.3842
         },
         {
           "case_id": "cjk-nfkc-003",
@@ -45,7 +45,7 @@
           "recall": false,
           "top1": false,
           "mrr": 0,
-          "latency_ms": 0.3103
+          "latency_ms": 0.3033
         },
         {
           "case_id": "cjk-nfkc-004",
@@ -55,7 +55,7 @@
           "recall": false,
           "top1": false,
           "mrr": 0,
-          "latency_ms": 0.2823
+          "latency_ms": 0.2543
         },
         {
           "case_id": "cjk-ortho-001",
@@ -65,7 +65,7 @@
           "recall": false,
           "top1": false,
           "mrr": 0,
-          "latency_ms": 0.8506
+          "latency_ms": 0.7577
         },
         {
           "case_id": "cjk-ortho-002",
@@ -75,7 +75,7 @@
           "recall": false,
           "top1": false,
           "mrr": 0,
-          "latency_ms": 1.0495
+          "latency_ms": 0.8323
         },
         {
           "case_id": "cjk-ortho-003",
@@ -85,7 +85,7 @@
           "recall": false,
           "top1": false,
           "mrr": 0,
-          "latency_ms": 0.7813
+          "latency_ms": 0.6615
         },
         {
           "case_id": "cjk-ortho-004",
@@ -95,7 +95,7 @@
           "recall": false,
           "top1": false,
           "mrr": 0,
-          "latency_ms": 0.7663
+          "latency_ms": 0.672
         },
         {
           "case_id": "cjk-mixed-001",
@@ -105,7 +105,7 @@
           "recall": false,
           "top1": false,
           "mrr": 0,
-          "latency_ms": 0.6393
+          "latency_ms": 0.5523
         },
         {
           "case_id": "cjk-mixed-002",
@@ -115,7 +115,7 @@
           "recall": false,
           "top1": false,
           "mrr": 0,
-          "latency_ms": 0.6004
+          "latency_ms": 0.5405
         },
         {
           "case_id": "cjk-mixed-003",
@@ -125,7 +125,7 @@
           "recall": false,
           "top1": false,
           "mrr": 0,
-          "latency_ms": 0.5365
+          "latency_ms": 0.4865
         }
       ],
       "per_slice": {
@@ -173,7 +173,7 @@
           "recall": true,
           "top1": true,
           "mrr": 1,
-          "latency_ms": 1.8239
+          "latency_ms": 2.7678
         },
         {
           "case_id": "cjk-nfkc-002",
@@ -185,7 +185,7 @@
           "recall": true,
           "top1": true,
           "mrr": 1,
-          "latency_ms": 0.9849
+          "latency_ms": 0.7259
         },
         {
           "case_id": "cjk-nfkc-003",
@@ -197,7 +197,7 @@
           "recall": true,
           "top1": true,
           "mrr": 1,
-          "latency_ms": 2.0273
+          "latency_ms": 1.8237
         },
         {
           "case_id": "cjk-nfkc-004",
@@ -209,7 +209,7 @@
           "recall": true,
           "top1": true,
           "mrr": 1,
-          "latency_ms": 0.7185
+          "latency_ms": 0.5851
         },
         {
           "case_id": "cjk-ortho-001",
@@ -224,7 +224,7 @@
           "recall": true,
           "top1": true,
           "mrr": 1,
-          "latency_ms": 1.2299
+          "latency_ms": 1.2976
         },
         {
           "case_id": "cjk-ortho-002",
@@ -239,7 +239,7 @@
           "recall": true,
           "top1": true,
           "mrr": 1,
-          "latency_ms": 1.5242
+          "latency_ms": 1.6775
         },
         {
           "case_id": "cjk-ortho-003",
@@ -251,7 +251,7 @@
           "recall": true,
           "top1": true,
           "mrr": 1,
-          "latency_ms": 1.8662
+          "latency_ms": 1.2807
         },
         {
           "case_id": "cjk-ortho-004",
@@ -266,7 +266,7 @@
           "recall": true,
           "top1": true,
           "mrr": 1,
-          "latency_ms": 1.6238
+          "latency_ms": 1.6228
         },
         {
           "case_id": "cjk-mixed-001",
@@ -279,7 +279,7 @@
           "recall": true,
           "top1": true,
           "mrr": 1,
-          "latency_ms": 1.5037
+          "latency_ms": 1.6617
         },
         {
           "case_id": "cjk-mixed-002",
@@ -292,7 +292,7 @@
           "recall": true,
           "top1": true,
           "mrr": 1,
-          "latency_ms": 1.9441
+          "latency_ms": 1.6702
         },
         {
           "case_id": "cjk-mixed-003",
@@ -307,7 +307,7 @@
           "recall": true,
           "top1": true,
           "mrr": 1,
-          "latency_ms": 1.8118
+          "latency_ms": 1.7023
         }
       ],
       "per_slice": {
@@ -347,7 +347,7 @@
       "recall": false,
       "top1": false,
       "mrr": 0,
-      "latency_ms": 1.2358,
+      "latency_ms": 1.1412,
       "variant": "baseline"
     },
     {
@@ -358,7 +358,7 @@
       "recall": false,
       "top1": false,
       "mrr": 0,
-      "latency_ms": 0.3936,
+      "latency_ms": 0.3842,
       "variant": "baseline"
     },
     {
@@ -369,7 +369,7 @@
       "recall": false,
       "top1": false,
       "mrr": 0,
-      "latency_ms": 0.3103,
+      "latency_ms": 0.3033,
       "variant": "baseline"
     },
     {
@@ -380,7 +380,7 @@
       "recall": false,
       "top1": false,
       "mrr": 0,
-      "latency_ms": 0.2823,
+      "latency_ms": 0.2543,
       "variant": "baseline"
     },
     {
@@ -391,7 +391,7 @@
       "recall": false,
       "top1": false,
       "mrr": 0,
-      "latency_ms": 0.8506,
+      "latency_ms": 0.7577,
       "variant": "baseline"
     },
     {
@@ -402,7 +402,7 @@
       "recall": false,
       "top1": false,
       "mrr": 0,
-      "latency_ms": 1.0495,
+      "latency_ms": 0.8323,
       "variant": "baseline"
     },
     {
@@ -413,7 +413,7 @@
       "recall": false,
       "top1": false,
       "mrr": 0,
-      "latency_ms": 0.7813,
+      "latency_ms": 0.6615,
       "variant": "baseline"
     },
     {
@@ -424,7 +424,7 @@
       "recall": false,
       "top1": false,
       "mrr": 0,
-      "latency_ms": 0.7663,
+      "latency_ms": 0.672,
       "variant": "baseline"
     },
     {
@@ -435,7 +435,7 @@
       "recall": false,
       "top1": false,
       "mrr": 0,
-      "latency_ms": 0.6393,
+      "latency_ms": 0.5523,
       "variant": "baseline"
     },
     {
@@ -446,7 +446,7 @@
       "recall": false,
       "top1": false,
       "mrr": 0,
-      "latency_ms": 0.6004,
+      "latency_ms": 0.5405,
       "variant": "baseline"
     },
     {
@@ -457,7 +457,7 @@
       "recall": false,
       "top1": false,
       "mrr": 0,
-      "latency_ms": 0.5365,
+      "latency_ms": 0.4865,
       "variant": "baseline"
     },
     {
@@ -470,7 +470,7 @@
       "recall": true,
       "top1": true,
       "mrr": 1,
-      "latency_ms": 1.8239,
+      "latency_ms": 2.7678,
       "variant": "candidate"
     },
     {
@@ -483,7 +483,7 @@
       "recall": true,
       "top1": true,
       "mrr": 1,
-      "latency_ms": 0.9849,
+      "latency_ms": 0.7259,
       "variant": "candidate"
     },
     {
@@ -496,7 +496,7 @@
       "recall": true,
       "top1": true,
       "mrr": 1,
-      "latency_ms": 2.0273,
+      "latency_ms": 1.8237,
       "variant": "candidate"
     },
     {
@@ -509,7 +509,7 @@
       "recall": true,
       "top1": true,
       "mrr": 1,
-      "latency_ms": 0.7185,
+      "latency_ms": 0.5851,
       "variant": "candidate"
     },
     {
@@ -525,7 +525,7 @@
       "recall": true,
       "top1": true,
       "mrr": 1,
-      "latency_ms": 1.2299,
+      "latency_ms": 1.2976,
       "variant": "candidate"
     },
     {
@@ -541,7 +541,7 @@
       "recall": true,
       "top1": true,
       "mrr": 1,
-      "latency_ms": 1.5242,
+      "latency_ms": 1.6775,
       "variant": "candidate"
     },
     {
@@ -554,7 +554,7 @@
       "recall": true,
       "top1": true,
       "mrr": 1,
-      "latency_ms": 1.8662,
+      "latency_ms": 1.2807,
       "variant": "candidate"
     },
     {
@@ -570,7 +570,7 @@
       "recall": true,
       "top1": true,
       "mrr": 1,
-      "latency_ms": 1.6238,
+      "latency_ms": 1.6228,
       "variant": "candidate"
     },
     {
@@ -584,7 +584,7 @@
       "recall": true,
       "top1": true,
       "mrr": 1,
-      "latency_ms": 1.5037,
+      "latency_ms": 1.6617,
       "variant": "candidate"
     },
     {
@@ -598,7 +598,7 @@
       "recall": true,
       "top1": true,
       "mrr": 1,
-      "latency_ms": 1.9441,
+      "latency_ms": 1.6702,
       "variant": "candidate"
     },
     {
@@ -614,7 +614,7 @@
       "recall": true,
       "top1": true,
       "mrr": 1,
-      "latency_ms": 1.8118,
+      "latency_ms": 1.7023,
       "variant": "candidate"
     }
   ],

@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.29.6] - 2026-08-04
+
+### Fixed
+
+- **The published bilingual recall figure now matches what the code actually measures**: the README advertised `Bilingual recall@10 = 0.9000`, but that number came from a hand-crafted probe fixture and stopped being reproducible when Japanese FTS segmentation changed in 0.28.x. The real developer-domain measurement has been 0.82 since then, and the release gate was lowered to 0.82 at that time — but the published figure was never updated, so the README kept claiming a number no run produced. It now reads 0.8200. The temporal ordering figure was stale in the same way and moves from 0.8213 to 0.8575, which is an improvement rather than a correction downward.
+
+  The value was determined from CI, not from a developer's machine: the `benchmark:developer-domain` step of the 0.29.5 release run reported `bilingual recall@10 0.8200` on a clean Linux runner, and a local reproduction produced the identical figure. The committed `ci-run-manifest-latest.json` — which the README claim test treats as the source of truth — turned out to have been generated on a laptop on 2026-05-27 and never refreshed; it now carries the values the release workflow itself produces.
+
+  This is a correction to a published claim, not a regression in this release. Bilingual retrieval quality is unchanged from 0.29.5.
+
 ## [0.29.5] - 2026-08-03
 
 ### Fixed
