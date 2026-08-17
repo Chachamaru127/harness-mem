@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>直近作業のメタレビュー — 何が誤りを捕まえたか</title>
+<style>
+:root{
+  --bg:#F5F4F1; --surface:#FCFBF9; --surface-2:#F0EFEA;
+  --ink:#1B1B22; --ink-soft:#5A5A64; --ink-faint:#8C8C92;
+  --line:#E4E2DB; --line-strong:#D2CFC6;
+  --primary:#313A7E; --primary-soft:#E9EAF4; --primary-ink:#262E66;
+  --kernel:#191B2C; --kernel-2:#23263c; --kernel-line:#343750; --kernel-ink:#C9CBE0;
+  --done:#2F8F5B; --done-soft:#E4F2EA; --done-line:#B7DCC7;
+  --wip:#B8821C; --wip-soft:#F6EDD8;
+  --risk:#B5462F; --risk-soft:#F6E7E2; --risk-line:#E5C0B4;
+  --info:#2C5A7A; --info-soft:#E3ECF1;
+  --cf:#B5611A; --cf-soft:#F4E7D8; --cf-line:#E0C49E;
+  --plain:#1f7a6d; --plain-soft:#E1F1EE; --plain-line:#BBE0D9;
+  --api:#8B3A62; --api-soft:#F4E6EE; --api-line:#E0B8CC;
+  --sub:#2F6D5A; --sub-soft:#E2F0EB; --sub-line:#B8D9CC;
+  --radius:10px;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.85;
+     word-break:keep-all;overflow-wrap:normal;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+.hero{background:linear-gradient(150deg,var(--kernel) 0%,var(--kernel-2) 100%);color:#fff;padding:56px 0 48px;margin-bottom:44px}
+.badge{display:inline-block;font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+       color:var(--kernel-ink);border:1px solid var(--kernel-line);border-radius:999px;padding:5px 14px;margin-bottom:20px}
+.hero h1{font-size:32px;line-height:1.5;font-weight:700;margin-bottom:16px}
+.hero .tag{color:#B9BCD4;font-size:15px;max-width:760px;margin-bottom:26px}
+.thesis{border-left:4px solid #7C86D8;background:rgba(255,255,255,.06);padding:16px 20px;border-radius:0 var(--radius) var(--radius) 0;
+        font-size:16px;font-weight:600;max-width:820px}
+.hero-meta{margin-top:26px;display:flex;flex-wrap:wrap;gap:10px 26px;font-size:12.5px;color:#9EA2BE}
+section{margin-bottom:52px}
+.kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--primary);font-weight:700;margin-bottom:8px}
+h2{font-size:23px;font-weight:700;margin-bottom:16px;line-height:1.5}
+h3{font-size:17px;font-weight:700;margin:26px 0 10px}
+p{margin-bottom:14px;font-size:15.5px}
+ul,ol{margin:0 0 16px 22px}
+li{margin-bottom:7px;font-size:15.5px}
+strong{font-weight:700}
+code{font-family:var(--mono);font-size:.9em;background:var(--surface-2);padding:2px 6px;border-radius:4px;
+     white-space:nowrap;border:1px solid var(--line)}
+.plainbox{background:var(--plain-soft);border:1px solid var(--plain-line);border-left:4px solid var(--plain);
+          border-radius:var(--radius);padding:22px 24px;margin-bottom:24px}
+.plainbox h3{margin-top:0;color:#155e54}
+.tlgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:8px}
+.tlcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px}
+.tlcard .q{font-weight:700;font-size:14.5px;color:var(--primary-ink);margin-bottom:7px}
+.tlcard .a{font-size:14.5px;color:var(--ink-soft)}
+.figure{background:var(--kernel);border-radius:var(--radius);padding:26px 24px;margin:20px 0;overflow-x:auto}
+.figure .cap{color:#8E93B4;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:16px}
+.chain{display:flex;flex-direction:column;gap:0}
+.step{background:var(--kernel-2);border:1px solid var(--kernel-line);border-radius:8px;padding:13px 17px;
+      color:#E3E5F2;font-size:14px;min-width:0}
+.step .lbl{font-family:var(--mono);font-size:11.5px;color:#8E93B4;display:block;margin-bottom:3px}
+.arrow{color:#5A5F80;text-align:center;font-size:17px;line-height:1.2;padding:5px 0}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.node{background:var(--kernel-2);border:1px solid var(--kernel-line);border-radius:8px;padding:13px 15px;
+      color:#E3E5F2;font-size:13.5px;text-align:center}
+.node.hit{border-color:#3E8F63;background:#1D2E26}
+.node.gap{border-color:#8F4436;background:#2E1F1C}
+.node .t{font-family:var(--mono);font-size:11.5px;color:#8E93B4;display:block;margin-bottom:5px}
+table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14.5px;background:var(--surface);
+      border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+th{background:var(--surface-2);text-align:left;padding:11px 14px;font-weight:700;font-size:13.5px;border-bottom:1px solid var(--line-strong)}
+td{padding:11px 14px;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:none}
+td.num,th.num{text-align:right;font-family:var(--mono);font-size:13.5px}
+tr.hit td{background:var(--done-soft)}
+tr.gap td{background:var(--risk-soft)}
+.tablewrap{overflow-x:auto}
+.verdict{background:var(--done-soft);border:1px solid var(--done-line);border-left:4px solid var(--done);
+         border-radius:var(--radius);padding:22px 24px;margin-bottom:24px}
+.verdict h3{margin-top:0;color:#1E6B41}
+.openbox{background:var(--wip-soft);border:1px solid #E4CE9C;border-left:4px solid var(--wip);
+         border-radius:var(--radius);padding:22px 24px;margin-bottom:24px}
+.openbox h3{margin-top:0;color:#8A6114}
+.decide{background:var(--primary-soft);border:1px solid #C9CDE8;border-left:4px solid var(--primary);
+        border-radius:var(--radius);padding:22px 24px}
+.decide h3{margin-top:0;color:var(--primary-ink)}
+footer{border-top:1px solid var(--line-strong);margin-top:56px;padding:28px 0 56px;font-size:13px;color:var(--ink-faint)}
+footer h4{font-size:13px;color:var(--ink-soft);margin-bottom:7px;font-weight:700}
+footer ul{margin-left:18px}
+footer li{font-size:13px;margin-bottom:4px}
+.nw{white-space:nowrap}
+@media print{
+  body{background:#fff}
+  .hero{background:var(--kernel) !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .figure,.node,.step{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  section{page-break-inside:avoid}
+}
+details{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+        padding:0 18px;margin:10px 0}
+details[open]{padding-bottom:14px}
+summary{cursor:pointer;padding:13px 0;font-size:14.5px;font-weight:700;color:var(--primary-ink);
+        list-style:none;display:flex;gap:10px;align-items:baseline}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"▸";color:var(--primary);font-size:12px;flex:none}
+details[open] summary::before{content:"▾"}
+summary:focus-visible{outline:2px solid var(--primary);outline-offset:3px;border-radius:4px}
+details p:last-child{margin-bottom:0}
+details .meta{font-family:var(--mono);font-size:12px;color:var(--ink-faint);margin-bottom:8px}
+.prog{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin:18px 0}
+.bar{height:12px;background:var(--surface-2);border:1px solid var(--line-strong);border-radius:999px;
+     overflow:hidden;margin:10px 0 8px}
+.bar span{display:block;height:100%;background:var(--done);border-radius:999px}
+.prog .pct{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--done)}
+.mech{list-style:none;margin-left:0}
+.mech li{border-left:3px solid var(--line-strong);padding-left:14px;margin-bottom:14px}
+.mech li.caught{border-left-color:var(--done)}
+.mech .who{font-weight:700}
+@media print{
+  details{page-break-inside:avoid}
+  details:not([open]) > *:not(summary){display:revert}
+  details:not([open])::after{content:""}
+}
+@media (max-width:620px){
+  .hero h1{font-size:25px}
+  h2{font-size:20px}
+}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="badge">harness-mem &nbsp;/&nbsp; 直近作業のメタレビュー</div>
+    <h1>直近の作業は、結局なにをしていたのか？</h1>
+    <p class="tag">harness-mem は、あなたが Claude Code や Codex で作業した内容を手元のデータベースに貯めて、次のセッションで思い出させる仕組みです。直近はその「貯める処理が固まる」不具合を追っていました。</p>
+    <div class="thesis">新機能はひとつも作っていません。やっていたのは <strong>自分が出した主張の検証</strong> です。自分の測定報告を 2 回訂正し、同じ形の欠陥の残りを探し、「環境のせい」と曖昧に書いていた不調の正体を突き止めました。</div>
+    <div class="hero-meta">
+      <span>2026-08-17</span>
+      <span>対象: <span class="nw">2026-08-05</span> 〜 <span class="nw">08-07</span> の作業（<span class="nw">§160-005d</span> / <span class="nw">160-006</span> / <span class="nw">160-007</span> / <span class="nw">S156-FU13</span> と v0.29.5・v0.29.6）</span>
+      <span>この資料は理解用の派生物であり、正本ではありません</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section>
+  <div class="plainbox">
+    <h3>やさしく言うと</h3>
+    <p>harness-mem の常駐プログラム（= パソコンの裏でずっと動いている見張り役。以後「見張り役」）が、履歴を取り込むたびに数十秒フリーズしていました。原因を 5 か所直して公開し、実機で測り直しました。</p>
+    <p>結果は「大きく改善したが、目標には届いていない」。<strong>最悪 173 秒 → 17 秒</strong>まで縮みましたが、目標は 0.2 秒なので、まだ 87 倍です。</p>
+    <p>メタな話として面白いのはここです。この 3 日間で見つかった誤りは 6 件あり、<strong>そのすべてを人力の気づきではなく、あらかじめ仕込んでおいた仕組みが捕まえました</strong>。仕組みが元を取った 3 日間、というのが直近の実像です。</p>
+  </div>
+
+  <div class="tlgrid">
+    <div class="tlcard">
+      <div class="q">結局、遅さは直ったの？</div>
+      <div class="a">日常利用では困りません。応答確認 90 回すべて成功、最大 1.07 秒。ただし見張り役を<strong>再起動した直後の 20〜60 分だけ</strong>、最大 17 秒固まる区間が残ります。</div>
+    </div>
+    <div class="tlcard">
+      <div class="q">なんで訂正が 2 回もあるの？</div>
+      <div class="a">1 回目は測る時間帯を 20 分しか取らず、たまたま静かな時間を拾ったから。2 回目は「いつでも起きる」と書いたが、実際は起動直後に偏っていたから。どちらも追加観測で自分の記述を否定しました。</div>
+    </div>
+    <div class="tlcard">
+      <div class="q">同じ欠陥が 3 回ってどういうこと？</div>
+      <div class="a">「定期実行と手動実行が同じ関数を共有していて、手動実行まで打ち切られる」という同型の欠陥が、取り込み経路 3 つに独立して存在しました。1 か所直して終わりにしていたら残り 2 つは生き残っていました。</div>
+    </div>
+    <div class="tlcard">
+      <div class="q">立花が判断すべきことは？</div>
+      <div class="a">2 つです。(1) 残り 2 タスクのどちらを先にやるか。(2) 今回得た教訓 3 件を SSOT（= 正本の判断記録）へ昇格させるか。詳細は最後の節にあります。</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">Progress &nbsp;/&nbsp; 01</div>
+  <h2>いまどこにいるか</h2>
+
+  <h3>プロジェクトの目的</h3>
+  <p>harness-mem は「Claude Code、Codex、Cursor など複数のツールをまたいで、作業の記憶を 1 か所に貯めて思い出させる」道具です。その中の <strong>§160</strong> という区画だけが、いまの作業対象です。目的は 1 つに絞れます。<strong>記憶を貯める処理が、見張り役の応答を止めないようにする</strong>こと。</p>
+
+  <div class="prog">
+    <div class="pct">87%</div>
+    <div class="bar"><span style="width:87%"></span></div>
+    <p style="margin-bottom:0;font-size:14px;color:var(--ink-soft)">§160 の全 15 タスクのうち 13 件が完了、残り 2 件（<code>160-009</code> / <code>160-010</code>）。<strong>100% の定義</strong>: 取り込み処理 1 回あたりの停止時間が 0.2 秒＋記録 1 件分に収まり、それが本番の見張り役で実測されていること。</p>
+  </div>
+
+  <h3>いまやっている作業</h3>
+  <p>直近 3 日は測定と記録でした。コードは 1 行も足していません。git の履歴でも、この期間の 4 コミットはすべて <code>docs:</code>（文書のみ）です。</p>
+
+  <h3>何のためにやるのか</h3>
+  <p>「速くなった」と書いてしまうと、次に触る人（未来の自分を含む）がそこを疑わなくなります。実測が目標に届いていないなら、<strong>届いていないと数字付きで書き残す</strong>ほうが、次の作業が早く終わります。これは <code>160-005d</code> の完了条件 (b) に最初から書いてあった条項です。</p>
+
+  <h3>次に進めるべきタスク</h3>
+  <ul>
+    <li><strong>160-009</strong>: 見張り役を止めたとき、検索用の子プロセスが残って CPU を食い続ける漏れを止める。</li>
+    <li><strong>160-010</strong>: まだ残る 17 秒の停止が、どこの処理で使われているかを突き止める。</li>
+  </ul>
+</section>
+
+<section>
+  <div class="kicker">Timeline &nbsp;/&nbsp; 02</div>
+  <h2>3 日間に実際に起きたこと</h2>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>できごと</th><th>中身</th><th>記録</th></tr></thead>
+    <tbody>
+      <tr class="hit"><td>取り込み 5 経路に上限を入れた</td><td>読み込むバイト数の上限と、1 回の処理時間の予算（0.2 秒）を 5 か所に入れた</td><td>PR #170</td></tr>
+      <tr class="hit"><td>v0.29.5 を公開</td><td>上記を含むリリース。公開は OIDC 方式（合言葉を保存しない仕組み）で成功</td><td>0535380</td></tr>
+      <tr class="gap"><td>公開文書の数値が実測とずれていた</td><td>README に載せていた日英混在検索の値 0.9000 が、実測 0.82 と食い違っていた</td><td>160-006</td></tr>
+      <tr class="hit"><td>v0.29.6 を公開</td><td>公開クレームを実測値に合わせた</td><td>ef63c9f</td></tr>
+      <tr class="gap"><td>見張り役が古い版で動いていた</td><td>公開しても更新されない。パッケージではなく作業ディレクトリから起動していたため</td><td>160-005d</td></tr>
+      <tr class="hit"><td>見張り役を 0.29.6 に更新して実測</td><td>10 秒超の停止が 382 件 → 7 件。ただし最大 17.4 秒で目標未達</td><td>cd3e059 → 35ab9b2</td></tr>
+      <tr class="gap"><td>CPU を食う迷子プロセス 5 個を発見</td><td>合計 628 時間ぶんの CPU。18 コアのうち約 3 コアが常時埋まっていた</td><td>160-009</td></tr>
+      <tr class="hit"><td>日英混在ベンチの判定を確定</td><td>50 問では 0.04 の差を見分けられないと結論。過去の受け入れ根拠の循環も訂正</td><td>S156-FU13</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>緑が前進、赤が「見つかった問題」です。<strong>前進 5 件に対して発見 3 件</strong>。この比率が、直近を「実装期間」ではなく「検証期間」と呼ぶ根拠です。</p>
+</section>
+
+<section>
+  <div class="kicker">Meta &nbsp;/&nbsp; 03</div>
+  <h2>どの仕組みが、どの誤りを捕まえたか</h2>
+  <p>ここが本題です。誤り 6 件を並べても反省文にしかなりません。大事なのは <strong>それぞれを何が捕まえたか</strong> です。捕まえた側は、すべて事前に用意してあった仕組みでした。</p>
+
+  <ul class="mech">
+    <li class="caught">
+      <span class="who">タスクの完了条件 (b)「未達を達成扱いにしない」</span> が、<strong>92.5 倍という過大報告</strong>を捕まえた。
+      <details>
+        <summary>何が起きたか</summary>
+        <p class="meta">cd3e059 → 35ab9b2</p>
+        <p>更新直後の 20 分だけログを見て「17 万ミリ秒 → 1,875 ミリ秒、92.5 倍」と報告しました。その窓は偶然静かな時間帯で、代表性がありませんでした。再起動以降の全区間で取り直すと最大 17,384 ミリ秒。完了条件に「収まらない場合は収まらなかったと数値付きで記録する」と<strong>先に書いてあった</strong>ので、都合の良い数字で閉じられませんでした。</p>
+      </details>
+    </li>
+    <li class="caught">
+      <span class="who">追加の時間分布観測</span> が、<strong>「停止はいつでも起きる」という自分の記述</strong>を捕まえた。
+      <details>
+        <summary>何が起きたか</summary>
+        <p class="meta">7c715bd</p>
+        <p>「停止はログ全域に散在し、起動直後固有ではない」と書きました。稼働 19 時間目に 40 分の窓で測り直すと、codex 経路 0 件 / cursor 経路 0 件。バーストは再起動後 20〜60 分に偏っていました。区間の内部では散在していたが、区間そのものは時間的に有界だった、が正しい記述です。</p>
+        <p>この訂正には副産物がありました。「再起動直後だけ重い」という形は、走査位置がメモリ上にしか無く（<code>new Map()</code>）再起動で 0 に戻る、という仮説をよく説明します。誤りを直したら、次の一手の見当がついた例です。</p>
+      </details>
+    </li>
+    <li class="caught">
+      <span class="who">レビュー</span> が、<strong>自分が新しく入れた不具合</strong>を捕まえた。
+      <details>
+        <summary>何が起きたか</summary>
+        <p>予算の仕組みを入れるとき、定期実行の登録先を間違えて、<strong>利用者が明示的に呼ぶ取り込み API</strong> を登録してしまいました。結果、手動で「全部取り込め」と命じても 0.2 秒で打ち切られる状態になりました。仕様書には「明示的な取り込みは予算の対象外、完走してよい」と書いてあり、それに反していました。レビューが重大として指摘し、定期実行用と手動用を分離しました。</p>
+      </details>
+    </li>
+    <li class="caught">
+      <span class="who">CI（全テストの自動実行）</span> が、<strong>手元で見落とした壊れたテスト</strong>を捕まえた。
+      <details>
+        <summary>何が起きたか</summary>
+        <p>手元では関係しそうな 2 ファイルだけ実行して先に進めました。CI が全体を回して失敗を出しました。以降は送る前に全テストを回すようにしました。<strong>部分実行は「通った」の根拠にならない</strong>、という当たり前の話が実際に効いた場面です。</p>
+      </details>
+    </li>
+    <li class="caught">
+      <span class="who">曖昧語で止めなかったこと</span> が、<strong>「環境負荷」と書いていた不調の正体</strong>を捕まえた。
+      <details>
+        <summary>何が起きたか</summary>
+        <p class="meta">f3ec8dd（160-009 として起票）</p>
+        <p>「全テストを回すと毎回違うテストが時間切れになるが、単独では通る」という現象が続いていました。作業中は「環境負荷」と曖昧に記録していました。実体は、見張り役を止めるたびに検索用の子プロセスが 1 個ずつ残り、親を失った状態で CPU を 1 コア占め続けていたことでした。実測で 5 個、合計 628 時間ぶんの CPU。4 個止めた時点で負荷指標が 8.02 → 4.93 に落ちました。</p>
+        <p>これは「曖昧に書いたこと自体」が問題だった例です。<strong>「環境のせい」は原因ではなく、調べていないという状態の名前</strong>でした。</p>
+      </details>
+    </li>
+    <li class="caught">
+      <span class="who">S156-FU13 の再検証</span> が、<strong>1 か月前の受け入れ根拠の循環</strong>を捕まえた。
+      <details>
+        <summary>何が起きたか</summary>
+        <p class="meta">docs/benchmarks/bilingual-baseline-2026-08-05.md</p>
+        <p>2026-07-07 に日英混在ベンチの合格ラインを 0.86 → 0.82 に下げました。その根拠として「別の独立した指標が 0.90 で緑だから問題ない」と書いてありました。調べると、その 0.90 は<strong>同じ測定</strong>であり、しかも 2026-05-27 から更新されていない古い値でした。独立した裏付けではなく、自分自身でした。</p>
+        <p>0.82 という値そのものは、本当に独立した別の合格ラインで支えられているので変わりません。訂正したのは根拠の書き方です。</p>
+      </details>
+    </li>
+  </ul>
+
+  <div class="figure">
+    <div class="cap">捕まえた側 / 捕まえられた側</div>
+    <div class="cols">
+      <div class="node hit"><span class="t">事前の完了条件</span>過大報告 1 件</div>
+      <div class="node hit"><span class="t">追加観測</span>誤った一般化 1 件</div>
+      <div class="node hit"><span class="t">レビュー</span>自作の不具合 1 件</div>
+      <div class="node hit"><span class="t">CI</span>見落とし 1 件</div>
+      <div class="node hit"><span class="t">曖昧語の追跡</span>未起票のバグ 1 件</div>
+      <div class="node hit"><span class="t">再検証</span>循環した根拠 1 件</div>
+    </div>
+  </div>
+  <p>6 件すべてが仕組みで捕まっており、<strong>「気づいたから直せた」ものは 1 件もありません</strong>。逆に言うと、仕組みが無い領域の誤りは今も残っている可能性があります。</p>
+</section>
+
+<section>
+  <div class="kicker">Numbers &nbsp;/&nbsp; 04</div>
+  <h2>実機の数字</h2>
+
+  <h3>取り込み処理の停止時間（本番の見張り役、修正前後）</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>取り込み経路</th><th class="num">修正前 (0.29.4)</th><th class="num">修正後 (0.29.6)</th><th class="num">比</th></tr></thead>
+    <tbody>
+      <tr><td>codex</td><td class="num">173,528ms</td><td class="num">17,384ms</td><td class="num">10.0x</td></tr>
+      <tr><td>cursor</td><td class="num">90,259ms</td><td class="num">13,998ms</td><td class="num">6.4x</td></tr>
+      <tr><td>claude_code</td><td class="num">359,130ms</td><td class="num">2,292ms</td><td class="num">157x</td></tr>
+      <tr class="gap"><td>10 秒超の件数</td><td class="num">382 件</td><td class="num">7 件</td><td class="num">55x</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>時間帯によって違う</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>取り込み経路</th><th class="num">再起動後 20〜60 分</th><th class="num">定常（稼働 19 時間目の 40 分窓）</th></tr></thead>
+    <tbody>
+      <tr class="gap"><td>codex</td><td class="num">17,384ms（22 件）</td><td class="num">0 件</td></tr>
+      <tr class="gap"><td>cursor</td><td class="num">13,998ms（91 件）</td><td class="num">0 件</td></tr>
+      <tr><td>claude_code</td><td class="num">2,292ms（1 件）</td><td class="num">9,912ms（9 件）</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>定常状態の停止率は 0.93%、稼働 18.6 時間の全体では 0.53%。<strong>日常の使用感には出ません</strong>。応答確認を 3 分間 2 秒おきに 90 回投げて、失敗 0 件・最大 1,066 ミリ秒でした。</p>
+  <p>ただし目標は 0.2 秒です。定常でも最大 9.9 秒なので <strong>50 倍</strong>。改善は本物ですが、完了条件 (a) は未達です。</p>
+</section>
+
+<section>
+  <div class="kicker">Verdict &nbsp;/&nbsp; 05</div>
+  <div class="verdict">
+    <h3>判定</h3>
+    <p>直近 3 日は、実装を進めた期間ではなく <strong>自分の主張を検証して精度を上げた期間</strong> でした。成果物は文書 4 コミットとリリース 2 本、そして起票 2 件です。誤り 6 件はすべて事前の仕組みが捕まえており、プロセス側に想定どおりの投資回収がありました。</p>
+      <p style="margin-bottom:0">§160 は 15 タスク中 13 完了（87%）。残り 2 件はどちらも「まだ分かっていないことを分かるようにする」タスクで、機能追加ではありません。</p>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">Caveats &nbsp;/&nbsp; 06</div>
+  <div class="openbox">
+    <h3>正直な但し書き</h3>
+    <ul>
+      <li><strong>今回の測定はすべて、迷子プロセスの負荷下で取られています。</strong>合計 628 時間ぶんの CPU を食う迷子が 5 個並走していました。この漏れが §159 / §160 の測定をどれだけ歪めたかは、事後には切り分け不能です。<strong>未観測（not_observed）</strong>として扱ってください。</li>
+      <li><strong>記録 1 件あたりの本当のコストは、まだ測っていません。</strong>本番の 18.9GB の状態で「記録 1 件」に何ミリ秒かかるかが未測定です。これが分からないと、目標値そのもの（0.2 秒＋記録 1 件分）を数字で定義できません。<code>160-010</code> に移管しました。</li>
+      <li><strong>残る 17 秒の原因は特定できていません。</strong>有力な仮説は 2 つ（走査位置がメモリ上だけ／ファイルの一覧取得が予算チェックの外）ですが、どちらも未検証です。</li>
+      <li><strong>日英混在ベンチは 0.04 の差を見分けられません。</strong>50 問しかないため、統計的な幅が 0.71〜0.92 に広がります。合格ラインの 0.82 は、別の独立した指標で支えています。</li>
+      <li>本番データベースの中身は読んでいません。読んだのはログとファイルサイズだけです。</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">Decide &nbsp;/&nbsp; 07</div>
+  <div class="decide">
+    <h3>立花が判断すべきこと</h3>
+    <ol>
+      <li><strong>残り 2 件の順番。</strong>おすすめは <code>160-009</code>（迷子プロセスの漏れ）を先にやることです。理由は、これを止めないと <code>160-010</code> の測定が再び負荷下の数字になり、同じ「代表性のない窓」を踏むからです。副産物として、手元のテストが安定します。</li>
+      <li><strong>今回の教訓 3 件を SSOT へ昇格させるか。</strong>既存の <code>patterns.md</code> は P1〜P9 まであり、下の 3 件はどれにも該当しません。追記は Risk Gate ではありませんが、正本を触るので判断をお預けします。
+        <ul>
+          <li><strong>P10 候補</strong>: 測定は「窓の代表性」を先に示してから数値を報告する。静かな時間帯を拾っただけの窓で倍率を出さない。</li>
+          <li><strong>P11 候補</strong>: 欠陥を 1 件直したら、同型が他の経路にないか横断で探す。今回は 3 経路に独立して存在した。</li>
+          <li><strong>P12 候補</strong>: 「環境負荷」「たまたま」で症状を記録して終わらせない。曖昧語は起票可能なバグを隠す。</li>
+        </ul>
+      </li>
+    </ol>
+    <p style="margin-bottom:0">なお <code>160-005d</code> と <code>160-005</code> の進捗印が実態とずれていた（作業は終わっているのに <code>blocked</code> のまま）ので、本レポート作成時に完了へ更新しました。§160 の進捗率はその反映後の値です。</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap" style="padding:0">
+    <h4>この資料が参照している一次情報</h4>
+    <ul>
+      <li>Plans.md §160（160-005 / 160-005d / 160-006 / 160-007 / 160-009 / 160-010）および S156-FU13 の行</li>
+      <li>docs/benchmarks/bilingual-baseline-2026-08-05.md（S156-FU13 の判定）と bilingual-baseline-2026-07-07.md 冒頭の訂正</li>
+      <li>コミット 35ab9b2 / 7c715bd / f3ec8dd / 2e415db / ef63c9f / cd3e059、PR #170 / #171 / #172</li>
+      <li>本番ログ ~/.harness-mem/daemon.launchd.log（0.29.6 の見張り役の起動以降）</li>
+      <li>.claude/memory/patterns.md（P1〜P9）および decisions.md D48（§159 の教訓）</li>
+    </ul>
+    <h4>測定のしかたと制約</h4>
+    <ul>
+      <li>停止時間はログの <code>slow tick</code> 行から集計しました。取り込み処理が同期的に止めた時間の実測です。</li>
+      <li>時間分布は 2 つの窓（更新直後の全区間、稼働 19 時間目の 40 分）を比較して求めました。単一の窓では代表性を主張しません。</li>
+      <li>応答確認は 3 分間・2 秒間隔・90 回。本番データベースへの書き込みは行っていません。</li>
+      <li>迷子プロセスの CPU 時間は <code>ps</code> の累積値です。負荷指標の 8.02 → 4.93 は 4 個停止の前後の値です。</li>
+      <li>記録 1 件あたりのコストは本番の大きさでは未測定です（not_observed）。</li>
+    </ul>
+    <p style="margin-top:16px">本資料は理解を目的とした派生物です。正本は Plans.md と各ベンチマーク文書であり、記述が食い違う場合は正本が優先されます。</p>
+  </div>
+</footer>
+
+</div>
+<script>
+window.addEventListener("beforeprint",function(){
+  document.querySelectorAll("details").forEach(function(d){
+    if(!d.open){d.open=true;d.dataset.autoOpened="1";}
+  });
+});
+window.addEventListener("afterprint",function(){
+  document.querySelectorAll("details[data-auto-opened]").forEach(function(d){
+    d.open=false;delete d.dataset.autoOpened;
+  });
+});
+</script>
+</body>
+</html>
