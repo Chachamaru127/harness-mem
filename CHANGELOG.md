@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **Daemon shutdown now owns the complete lifetime of its persistent search worker**: shutdown waits for `SIGTERM`, escalates to `SIGKILL` after at most one second, and confirms disappearance before closing SQLite or exiting. On POSIX, a following startup recovers a marked orphan only after revalidating its command identity, parent state, process start time, canonical database, and worker token. A legacy unmarked orphan additionally requires `lsof` proof of the same database handle; Windows orphan discovery fails open rather than guessing. Another checkout, a live child, or a reused PID is not killed.
+- **Periodic history ingest no longer runs synchronous SQLite work on the daemon event loop**: all six scheduled sources now share one persistent, serialized ingest child. A long SQLite or storage stall can finish in that child and advance its durable offset while the parent keeps serving readiness and search. The same change removes the redundant content-dedupe pre-read, limits session upkeep to once per session per tick with change-only writes, and adds aggregate SQLite/WAL/transaction/I/O telemetry without logging content, project, session, correlation identifiers, or filesystem paths.
+- **Expired content-dedupe replacement remains recoverable**: the replaced observation is written through the normal full archive format, and restore swaps any active successor into its own recoverable archive before reactivating the requested generation. Protected observations (`private`, `secret`, `sensitive`, or `legal_hold`) fail closed and roll back the whole swap.
+
 ## [0.29.6] - 2026-08-04
 
 ### Fixed

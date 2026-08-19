@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+### 修正
+
+- **daemon 停止が persistent search worker の消滅まで責任を持つようにした**。`SIGTERM` 後は最大1秒だけ待ち、残っていれば `SIGKILL`、消滅確認後にだけ SQLite close と daemon exit へ進む。POSIX の次回起動では、marked orphan の command、親、process start、canonical DB、worker token を signal 直前に再検証する。旧 unmarked orphan は同一 DB handle の `lsof` 証明も必須。Windows の孤児探索は推測で kill せず fail-open にする。
+- **6種類の定期 ingest を daemon event loop から単一 persistent child へ隔離した**。SQLite / storage が長時間停止しても親は readiness と search を返し、子は処理完了後に offset を進める。content dedupe の冗長 pre-read、同一 tick 内の重複 `ensure_session` も削減し、content / project / session / correlation ID / path を出さない SQLite・WAL・transaction・I/O 集計を追加した。
+- **期限切れ content dedupe の置き換えを復元可能にした**。旧 observation は標準 full archive へ退避する。復元時は active successor を別世代の復元可能 archive へ入れ替えてから対象を有効化する。`private` / `secret` / `sensitive` / `legal_hold` は自動退避せず、swap 全体を rollback する。
+
 ## [0.29.6] - 2026-08-04
 
 ### 修正
