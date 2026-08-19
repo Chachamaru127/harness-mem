@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -24,7 +24,13 @@ import {
   beginIngestTickTelemetry,
   endIngestTickTelemetry,
 } from "../../src/core/sqlite-performance-telemetry";
-import { configureDatabase, initFtsIndex, initSchema, migrateSchema } from "../../src/db/schema";
+import {
+  configureDatabase,
+  initFtsIndex,
+  initSchema,
+  migrateSchema,
+  rebuildContentDedupeClaimsProjection,
+} from "../../src/db/schema";
 
 // ---------------------------------------------------------------------------
 // ヘルパー: EventRecorder インスタンスの生成
@@ -115,10 +121,182 @@ describe("event-recorder: recordEvent", () => {
     expect(rows[1]?.archived_at).toBeNull();
   });
 
-  test("same session is ensured once per tick, but an earlier start refreshes it", () => {
+  test("claim expiry is evaluated after waiting for the immediate transaction lock", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-claim-expiry-lock-"));
+    const dbPath = join(dir, "memory.db");
+    const db = new Database(dbPath);
+    configureDatabase(db);
+    initSchema(db);
+    migrateSchema(db);
+    initFtsIndex(db);
+    const recorder = makeRecorder({}, { db });
+    let expiresAtMs = 0;
+    const initialExpiresAt = new Date(Date.now() + 60_000).toISOString();
+    const unprotectedPayload = { content: "expire while waiting unprotected claim" };
+    const protectedPayload = { content: "expire while waiting protected claim" };
+    expect(recorder.recordEvent(makeEvent({
+      event_id: "expiry-lock-old-open",
+      dedupe_hash: "expiry-lock-event-old-open",
+      event_type: "session_end",
+      expires_at: initialExpiresAt,
+      payload: unprotectedPayload,
+    })).ok).toBe(true);
+    expect(recorder.recordEvent(makeEvent({
+      event_id: "expiry-lock-old-protected",
+      dedupe_hash: "expiry-lock-event-old-protected",
+      event_type: "session_end",
+      expires_at: initialExpiresAt,
+      privacy_tags: ["secret"],
+      payload: protectedPayload,
+    })).ok).toBe(true);
+
+    const coreUrl = new URL("../../src/core/harness-mem-core.ts", import.meta.url).href;
+    const helpersUrl = new URL("./test-helpers.ts", import.meta.url).href;
+    const spawnContender = (name: string, event: EventEnvelope) => {
+      const readyPath = join(dir, `${name}.ready`);
+      const goPath = join(dir, `${name}.go`);
+      const enteredPath = join(dir, `${name}.entered`);
+      const child = Bun.spawn([
+        process.execPath,
+        "-e",
+        `import { writeFileSync, existsSync } from "node:fs";
+         import { HarnessMemCore } from ${JSON.stringify(coreUrl)};
+         import { createTestConfig } from ${JSON.stringify(helpersUrl)};
+         const core = new HarnessMemCore(createTestConfig({
+           dbPath: process.argv[1], backgroundWorkersEnabled: false
+         }));
+         writeFileSync(process.argv[2], "ready");
+         while (!existsSync(process.argv[3])) await Bun.sleep(5);
+         writeFileSync(process.argv[4], "entered");
+         const result = core.recordEvent(JSON.parse(process.argv[5]), { allowQueue: false });
+         console.log(JSON.stringify(result));
+         await core.shutdown("test");`,
+        dbPath,
+        readyPath,
+        goPath,
+        enteredPath,
+        JSON.stringify(event),
+      ], {
+        env: { ...process.env, HARNESS_MEM_EVENT_CHILD_PROCESS: "1" },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      return { child, readyPath, goPath, enteredPath };
+    };
+    const open = spawnContender("open", makeEvent({
+      event_id: "expiry-lock-new-open",
+      dedupe_hash: "expiry-lock-event-new-open",
+      event_type: "session_end",
+      payload: unprotectedPayload,
+    }));
+    const protectedClaim = spawnContender("protected", makeEvent({
+      event_id: "expiry-lock-new-protected",
+      dedupe_hash: "expiry-lock-event-new-protected",
+      event_type: "session_end",
+      payload: protectedPayload,
+    }));
+    const waitForFile = async (path: string): Promise<void> => {
+      const deadline = Date.now() + 5_000;
+      while (!existsSync(path)) {
+        if (Date.now() >= deadline) throw new Error("child marker timeout");
+        await Bun.sleep(5);
+      }
+    };
+    let transactionOpen = false;
+    try {
+      await Promise.all([waitForFile(open.readyPath), waitForFile(protectedClaim.readyPath)]);
+      expiresAtMs = Date.now() + 500;
+      db.query(`
+        UPDATE mem_observations SET expires_at = ?
+        WHERE event_id IN ('expiry-lock-old-open', 'expiry-lock-old-protected')
+      `).run(new Date(expiresAtMs).toISOString());
+      db.exec("BEGIN IMMEDIATE");
+      transactionOpen = true;
+      writeFileSync(open.goPath, "go");
+      writeFileSync(protectedClaim.goPath, "go");
+      await Promise.all([waitForFile(open.enteredPath), waitForFile(protectedClaim.enteredPath)]);
+      await Bun.sleep(Math.max(0, expiresAtMs - Date.now() + 100));
+      db.exec("COMMIT");
+      transactionOpen = false;
+
+      const readResult = async (child: ReturnType<typeof Bun.spawn>) => {
+        const [exitCode, stdout, stderr] = await Promise.all([
+          child.exited,
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+        ]);
+        expect(stderr).toBe("");
+        expect(exitCode).toBe(0);
+        return JSON.parse(stdout) as { ok: boolean; error_code?: string; meta?: Record<string, unknown> };
+      };
+      const [openResult, protectedResult] = await Promise.all([
+        readResult(open.child),
+        readResult(protectedClaim.child),
+      ]);
+      expect(openResult.ok).toBe(true);
+      expect(openResult.meta?.deduped).toBeFalsy();
+      expect(protectedResult).toMatchObject({
+        ok: false,
+        error_code: "dedupe_protected_policy_required",
+      });
+      expect(db.query<{ count: number }, []>(`
+        SELECT COUNT(*) AS count FROM mem_observations
+        WHERE content = 'expire while waiting unprotected claim' AND archived_at IS NULL
+      `).get()?.count).toBe(1);
+      expect(db.query<{ count: number }, []>(`
+        SELECT COUNT(*) AS count FROM mem_observations
+        WHERE content = 'expire while waiting protected claim' AND archived_at IS NULL
+      `).get()?.count).toBe(1);
+    } finally {
+      if (transactionOpen) db.exec("ROLLBACK");
+      for (const child of [open.child, protectedClaim.child]) {
+        if (child.exitCode === null) child.kill();
+        await child.exited;
+      }
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  test("replacement archive fault rolls claim, event, and canonical observation back together", () => {
+    let failArchive = false;
+    let db!: Database;
+    const recorder = makeRecorder({}, {
+      archiveExpiredObservation: (observationId) => {
+        if (failArchive) throw new Error("synthetic archive fault");
+        db.query("UPDATE mem_observations SET archived_at = ? WHERE id = ?")
+          .run("2026-08-19T00:00:00.000Z", observationId);
+      },
+    });
+    db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+    const payload = { content: "rollback replacement claim and archive" };
+    const first = recorder.recordEvent(makeEvent({
+      event_id: "replacement-fault-old", dedupe_hash: "replacement-fault-event-old",
+      event_type: "session_end", expires_at: "2020-01-01T00:00:00.000Z", payload,
+    }));
+    const oldId = String(first.items[0]?.id);
+    failArchive = true;
+    const failed = recorder.recordEvent(makeEvent({
+      event_id: "replacement-fault-new", dedupe_hash: "replacement-fault-event-new",
+      event_type: "session_end", ts: "2026-08-19T00:00:00.000Z", payload,
+    }), { allowQueue: false });
+    expect(failed.ok).toBe(false);
+    expect(db.query<{ canonical_observation_id: string }, []>(
+      "SELECT canonical_observation_id FROM mem_content_dedupe_claims",
+    ).get()?.canonical_observation_id).toBe(oldId);
+    expect(db.query<{ archived_at: string | null }, [string]>(
+      "SELECT archived_at FROM mem_observations WHERE id = ?",
+    ).get(oldId)?.archived_at).toBeNull();
+    expect(db.query<{ count: number }, []>(
+      "SELECT COUNT(*) AS count FROM mem_events WHERE event_id = 'replacement-fault-new'",
+    ).get()?.count).toBe(0);
+  });
+
+  test("same session is ensured once while later metadata is durable inside its event transaction", () => {
     const recorder = makeRecorder();
     const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
     const labels: string[] = [];
+    let updatedAtDuringTick: string | undefined;
     setEventRecorderSegmentSink((label) => labels.push(label));
     const tick = beginIngestTickTelemetry("test");
     try {
@@ -132,17 +310,53 @@ describe("event-recorder: recordEvent", () => {
       }));
       recorder.recordEvent(makeEvent({
         event_id: "tick-session-3", dedupe_hash: "tick-hash-3",
-        ts: "2026-02-20T00:00:00.000Z", payload: { prompt: "three" },
+        ts: "2026-02-20T00:00:00.000Z", correlation_id: "late-correlation",
+        payload: { prompt: "three" },
       }));
+      const duringTick = db.query<{ started_at: string; correlation_id: string | null; updated_at: string }, [string]>(
+        "SELECT started_at, correlation_id, updated_at FROM mem_sessions WHERE session_id = ?",
+      ).get("test-session-001");
+      expect(duringTick?.started_at).toBe("2026-02-20T00:00:00.000Z");
+      expect(duringTick?.correlation_id).toBe("late-correlation");
+      updatedAtDuringTick = duringTick?.updated_at;
     } finally {
       endIngestTickTelemetry(tick, db, 0, Infinity);
       setEventRecorderSegmentSink(null);
     }
-    expect(labels.filter((label) => label === "ensure_session")).toHaveLength(2);
-    const session = db.query<{ started_at: string }, [string]>(
-      "SELECT started_at FROM mem_sessions WHERE session_id = ?",
+    expect(labels.filter((label) => label === "ensure_session")).toHaveLength(1);
+    expect(labels.filter((label) => label === "session_metadata_update")).toHaveLength(1);
+    const session = db.query<{ started_at: string; correlation_id: string | null; updated_at: string }, [string]>(
+      "SELECT started_at, correlation_id, updated_at FROM mem_sessions WHERE session_id = ?",
     ).get("test-session-001");
     expect(session?.started_at).toBe("2026-02-20T00:00:00.000Z");
+    expect(session?.correlation_id).toBe("late-correlation");
+    expect(session?.updated_at).toBe(updatedAtDuringTick);
+  });
+
+  test("a later tick can refresh session metadata after the prior durable update", () => {
+    const recorder = makeRecorder();
+    const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+    for (const [source, event] of [
+      ["tick-one", makeEvent({
+        event_id: "tick-boundary-1", dedupe_hash: "tick-boundary-hash-1",
+        ts: "2026-02-20T02:00:00.000Z", payload: { prompt: "first tick" },
+      })],
+      ["tick-two", makeEvent({
+        event_id: "tick-boundary-2", dedupe_hash: "tick-boundary-hash-2",
+        ts: "2026-02-19T02:00:00.000Z", correlation_id: "second-tick-correlation",
+        payload: { prompt: "second tick" },
+      })],
+    ] as const) {
+      const tick = beginIngestTickTelemetry(source);
+      recorder.recordEvent(event);
+      endIngestTickTelemetry(tick, db, 0, Infinity);
+    }
+    expect(db.query<{ started_at: string; correlation_id: string | null }, [string]>(
+      "SELECT started_at, correlation_id FROM mem_sessions WHERE session_id = ?",
+    ).get("test-session-001")).toEqual({
+      started_at: "2026-02-19T02:00:00.000Z",
+      correlation_id: "second-tick-correlation",
+    });
   });
 
   test("rolled-back recordEvent does not poison the per-tick session ensure cache", () => {
@@ -244,8 +458,10 @@ describe("event-recorder: recordEvent", () => {
       })).ok).toBe(true);
       const second = recorder.recordEvent(makeEvent({
         event_id: `protected-${tag}-second`, dedupe_hash: `protected-${tag}-hash-2`, event_type: "session_end", payload,
-      }), { allowQueue: false });
+      }));
       expect(second.ok).toBe(false);
+      expect(second.error_code).toBe("dedupe_protected_policy_required");
+      expect(second.retryable).toBe(false);
       const row = db.query<{ archived_at: string | null }, [string]>(
         "SELECT archived_at FROM mem_observations WHERE event_id = ?",
       ).get(`protected-${tag}-first`);
@@ -264,6 +480,9 @@ describe("event-recorder: recordEvent", () => {
     expect(db.query<{ archived_at: string | null }, []>(
       "SELECT archived_at FROM mem_observations WHERE event_id = 'protected-tag-first'",
     ).get()?.archived_at).toBeNull();
+    expect(db.query<{ count: number }, []>(
+      "SELECT COUNT(*) AS count FROM mem_retry_queue",
+    ).get()?.count).toBe(0);
   });
 
   test("two SQLite connections converge content duplicates on one canonical observation", () => {
@@ -307,6 +526,211 @@ describe("event-recorder: recordEvent", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test("claim routing fails closed without leaking a canonical ID across projects", () => {
+    const recorder = makeRecorder();
+    const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+    const payload = { content: "project strict canonical routing" };
+    const first = recorder.recordEvent(makeEvent({
+      event_id: "project-strict-first", dedupe_hash: "project-strict-event-1",
+      project: "project-a", event_type: "session_end", payload,
+    }));
+    expect(first.ok).toBe(true);
+    const second = recorder.recordEvent(makeEvent({
+      event_id: "project-strict-second", dedupe_hash: "project-strict-event-2",
+      project: "project-b", event_type: "session_end",
+      ts: "2026-02-21T00:00:00.000Z", payload,
+    }));
+    expect(second.ok).toBe(false);
+    expect(second.error_code).toBe("dedupe_project_mismatch");
+    expect(second.retryable).toBe(false);
+    expect(second.items).toEqual([]);
+    expect(JSON.stringify(second)).not.toContain(String(first.items[0]?.id));
+    expect(db.query<{ count: number }, []>(
+      "SELECT COUNT(*) AS count FROM mem_events WHERE event_id = 'project-strict-second'",
+    ).get()?.count).toBe(0);
+    expect(db.query<{ count: number }, []>(
+      "SELECT COUNT(*) AS count FROM mem_retry_queue",
+    ).get()?.count).toBe(0);
+  });
+
+  test("a ready recorder revalidates each transaction and resumes only after an authoritative repair", () => {
+    const db = createTestDb();
+    const recorder = makeRecorder({}, { db });
+    try {
+      db.exec("DELETE FROM mem_content_dedupe_claims");
+      db.exec("UPDATE mem_meta SET value = 'not_ready' WHERE key = 'dedupe_claims.readiness'");
+      const result = recorder.recordEvent(makeEvent({
+        event_id: "claims-not-ready", dedupe_hash: "claims-not-ready-event",
+      }));
+      expect(result.ok).toBe(false);
+      expect(result.error_code).toBe("dedupe_claims_rebuild_required");
+      expect(result.retryable).toBe(true);
+      expect(JSON.stringify(result)).toContain("require rebuild");
+      expect(db.query<{ value: string }, []>("SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'").get()?.value)
+        .toBe("not_ready");
+      expect(db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM mem_sessions").get()?.count).toBe(0);
+      rebuildContentDedupeClaimsProjection(db);
+      const repaired = recorder.recordEvent(makeEvent({
+        event_id: "claims-repaired", dedupe_hash: "claims-repaired-event",
+      }));
+      expect(repaired.ok).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("embedding prime-required and SQLite busy failures expose retryable fixed codes", () => {
+    for (const code of ["prime_required", "warming"] as const) {
+      const embeddingRecorder = makeRecorder(
+        { vectorDimension: 4 },
+        {
+          getVectorEngine: () => "js-fallback",
+          buildPassageEmbeddings: () => {
+            const error = new Error("embedding provider temporary readiness") as Error & {
+              code?: string;
+              readiness?: { retryable: boolean };
+            };
+            error.code = code;
+            error.readiness = { retryable: true };
+            throw error;
+          },
+        },
+      );
+      const embedding = embeddingRecorder.recordEvent(makeEvent({
+        event_id: `embedding-${code}-retry`,
+        dedupe_hash: `embedding-${code}-retry-hash`,
+      }));
+      expect(embedding.ok).toBe(false);
+      expect(embedding.error_code).toBe("embedding_temporarily_unavailable");
+      expect(embedding.retryable).toBe(true);
+      const embeddingDb = (embeddingRecorder as unknown as { deps: EventRecorderDeps }).deps.db;
+      const queued = embeddingDb.query<{ event_json: string }, []>(
+        "SELECT event_json FROM mem_retry_queue",
+      ).get();
+      expect(queued?.event_json).toContain(`embedding-${code}-retry`);
+    }
+
+    for (const [code, errno] of [["SQLITE_BUSY", 5], ["SQLITE_LOCKED", 6]] as const) {
+      const busyRecorder = makeRecorder(
+        { vectorDimension: 4 },
+        {
+          getVectorEngine: () => "js-fallback",
+          buildPassageEmbeddings: () => {
+            const error = new Error("database write contention") as Error & { code?: string; errno?: number };
+            error.code = code;
+            error.errno = errno;
+            throw error;
+          },
+        },
+      );
+      const busy = busyRecorder.recordEvent(makeEvent({
+        event_id: `sqlite-contention-retry-${errno}`,
+        dedupe_hash: `sqlite-contention-retry-hash-${errno}`,
+      }), { allowQueue: false });
+      expect(busy.ok).toBe(false);
+      expect(busy.error_code).toBe("sqlite_busy");
+      expect(busy.retryable).toBe(true);
+    }
+
+    const queueFaultRecorder = makeRecorder(
+      { vectorDimension: 4 },
+      {
+        getVectorEngine: () => "js-fallback",
+        buildPassageEmbeddings: () => {
+          const error = new Error("provider warming") as Error & { code?: string };
+          error.code = "warming";
+          throw error;
+        },
+      },
+    );
+    (queueFaultRecorder as unknown as { enqueueRetry: () => void }).enqueueRetry = () => {
+      const error = new Error("retry queue busy") as Error & { code?: string; errno?: number };
+      error.code = "SQLITE_BUSY";
+      error.errno = 5;
+      throw error;
+    };
+    const queueFault = queueFaultRecorder.recordEvent(makeEvent({
+      event_id: "embedding-queue-fault",
+      dedupe_hash: "embedding-queue-fault-hash",
+    }));
+    expect(queueFault.error_code).toBe("embedding_temporarily_unavailable");
+    expect(queueFault.retryable).toBe(true);
+  });
+
+  test("large-DB duplicate collisions return the canonical ID without a follow-up SELECT", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-collision-runtime-"));
+    const dbPath = join(dir, "memory.db");
+    const db = new Database(dbPath);
+    configureDatabase(db);
+    initSchema(db);
+    migrateSchema(db);
+    initFtsIndex(db);
+    const recorder = makeRecorder({}, { db });
+    const now = "2026-08-19T00:00:00.000Z";
+    db.query(`
+      INSERT INTO mem_sessions(session_id, platform, project, started_at, created_at, updated_at)
+      VALUES ('collision-scale-session', 'test', 'collision-scale', ?, ?, ?)
+    `).run(now, now, now);
+    const seed = db.query(`
+      INSERT INTO mem_observations(
+        id, platform, project, session_id, content, content_redacted,
+        content_dedupe_hash, tags_json, privacy_tags_json, created_at, updated_at
+      ) VALUES (?, 'test', 'collision-scale', 'collision-scale-session', ?, ?, ?, '[]', '[]', ?, ?)
+    `);
+    const seedMany = db.transaction(() => {
+      for (let index = 0; index < 20_000; index += 1) {
+        const content = `collision-scale-${index}-${"x".repeat(640)}`;
+        seed.run(`collision-scale-${index}`, content, content, `collision-scale-hash-${index}`, now, now);
+      }
+    });
+    seedMany();
+    expect(statSync(dbPath).size).toBeGreaterThan(10 * 1024 * 1024);
+    const labels: string[] = [];
+    setEventRecorderSegmentSink((label) => labels.push(label));
+    try {
+      const payload = { content: "measured duplicate collision path" };
+      const canonical = recorder.recordEvent(makeEvent({
+        event_id: "collision-runtime-canonical", dedupe_hash: "collision-runtime-event-0",
+        event_type: "session_end", payload,
+      }));
+      expect(canonical.ok).toBe(true);
+      db.exec(`
+        CREATE TABLE observation_update_probe(count INTEGER NOT NULL);
+        INSERT INTO observation_update_probe(count) VALUES (0);
+        CREATE TRIGGER observation_update_probe_trigger AFTER UPDATE ON mem_observations BEGIN
+          UPDATE observation_update_probe SET count = count + 1;
+        END;
+      `);
+      const changesBefore = db.query<{ total: number }, []>("SELECT total_changes() AS total").get()?.total ?? 0;
+      const startedAt = performance.now();
+      for (let index = 1; index <= 100; index += 1) {
+        const duplicate = recorder.recordEvent(makeEvent({
+          event_id: `collision-runtime-${index}`,
+          dedupe_hash: `collision-runtime-event-${index}`,
+          event_type: "session_end",
+          ts: new Date(Date.parse(now) + index * 1_000).toISOString(),
+          payload,
+        }));
+        expect(duplicate.items[0]?.id).toBe(canonical.items[0]?.id);
+      }
+      expect(performance.now() - startedAt).toBeLessThan(2_000);
+      expect(labels.filter((label) => label === "dedupe_claim_arbitration")).toHaveLength(101);
+      expect(labels).not.toContain("dedupe_conflict_lookup");
+      expect(labels).not.toContain("dedupe_conflict_probe");
+      expect(labels).not.toContain("dedupe_race_lookup");
+      expect(db.query<{ count: number }, []>("SELECT count FROM observation_update_probe").get()?.count).toBe(0);
+      const changesAfter = db.query<{ total: number }, []>("SELECT total_changes() AS total").get()?.total ?? 0;
+      // Event insert + pointer update + narrow claim update are expected. The
+      // rejected observation no-op UPSERT also rewrote FTS and exceeded this
+      // measured bound by several changes per collision.
+      expect(changesAfter - changesBefore).toBeLessThan(600);
+    } finally {
+      setEventRecorderSegmentSink(null);
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
 
   test("正常なイベントが ok=true で記録される", () => {
     const recorder = makeRecorder();

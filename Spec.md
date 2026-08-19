@@ -419,6 +419,22 @@ of it is budgeted.
 - Progress is tracked through a durable per-source offset. When a run stops
   early, the next run resumes from that offset; it must not restart from the
   beginning or silently skip the unprocessed remainder.
+- A source record is complete only when `recordEvent` returns `ok:true`. On the
+  first `ok:false`, every periodic source preserves its durable offset and any
+  parser context at the start of that record and stops further writes for the
+  run. Projection readiness/version
+  failures are reported as retryable `dedupe_claims_rebuild_required`.
+  Temporary embedding readiness and SQLite busy/locked failures retain their
+  fixed error code and remain retryable. Project mismatch and protected-policy
+  failures retain their fixed code and are blocked from timer rescheduling
+  until the persistent worker exits/restarts after operator repair.
+  Neither failure may be reported as a successful tick.
+- The claims readiness gate applies to the six ingest source ticks only.
+  Retry-queue processing and WAL checkpoint maintenance remain available while
+  the projection is not-ready. Thrown busy/locked failures are retryable
+  `sqlite_busy`; every other thrown tick failure is retryable fixed
+  `record_write_failed`. Only fixed source-policy rejections such as project
+  mismatch or protected-policy failures enter the restart-scoped timer block.
 - Because a run may stop early, periodic ingest is eventually complete, not
   immediately complete: a backlog larger than one run's budget is guaranteed
   to be absorbed over a bounded number of future runs, not necessarily the
@@ -427,6 +443,50 @@ of it is budgeted.
 Explicit ingest — an API or command a user or agent invokes directly to force
 a full catch-up — is exempt from this budget and may run to completion
 unbounded, since the caller is intentionally waiting for a definitive result.
+
+### Content dedupe ownership projection
+
+`mem_content_dedupe_claims` is a rebuildable, derived ownership projection of
+active `mem_observations`. Observation content, privacy, temporal state, and
+archive payloads remain authoritative in `mem_observations`; when the claims
+projection is ready, the claim is authoritative only for dedupe admission and
+canonical-ID routing.
+
+- A collision is arbitrated by one primary-key UPSERT on the claim and returns
+  the canonical observation ID from that statement. It performs no collision
+  pre-read or follow-up lookup and does not update the observation or its FTS
+  row for an ordinary duplicate.
+- Expiry is evaluated against the caller's current time during arbitration.
+  An expired protected claim (private, secret, sensitive, or legal hold), or a
+  claim whose protection metadata cannot be decoded, fails closed.
+- Replacement and restore are atomic claim swaps. The displaced observation is
+  archived through the standard full-payload path in the same immediate
+  transaction; any archive, insert, or pointer failure rolls the claim back.
+- Claim routing is project-strict. A hash owned by another project is never
+  returned as that project's canonical observation.
+- Startup migration automatically rebuilds claims from active observations only
+  for an initial, older, or interrupted-building projection. Null hashes are
+  excluded. Ambiguous ownership or malformed protection metadata leaves the
+  gate not-ready rather than choosing a winner. Drift discovered from a ready,
+  current-version projection also stays not-ready across ordinary daemon
+  restarts until an operator runs the audited
+  `harness-mem admin-rebuild-dedupe-claims --execute` authoritative rebuild.
+  The command returns fixed readiness/error codes and never exposes content or
+  paths. Claim rows, canonical triggers, schema version, ready marker, and the
+  success audit row commit in one immediate transaction. An audit failure rolls
+  that transaction back and leaves the previously durable not-ready gate closed.
+  Periodic ingest then fails
+  closed with a rebuild-required result while daemon health and read APIs remain
+  available. Rebuild is crash-safe and idempotent.
+- Archive restore normalizes every project-bearing payload row before its
+  transaction. The normalized `mem_archive_stubs.project` is the authoritative
+  workspace anchor even when the archived observation has no dedupe hash or
+  active successor. Alias-equivalent observation, event, fact, and session rows
+  are restored under that canonical project; a genuinely cross-project payload
+  fails closed before claim arbitration or row restoration.
+  An existing `mem_sessions` primary-key row is updated when its project is an
+  alias of that canonical project; a genuinely different existing session
+  project aborts and rolls the restore transaction back.
 
 Where a per-source section below defines what is captured or how setup works,
 this budget contract governs how that source behaves on the timer path, not

@@ -21,7 +21,9 @@ function createClient(options: {
   blockMs: number;
   busyLogMs?: number;
   errors?: string[];
+  failures?: Array<{ error_code: string; retryable: boolean } | undefined>;
   codexProjectRoot?: string;
+  codexSessionsRoot?: string;
   forceUnconfirmedStop?: boolean;
 }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-mem-ingest-worker-"));
@@ -36,7 +38,7 @@ function createClient(options: {
       HARNESS_MEM_DB_PATH: dbPath,
       HARNESS_MEM_ENABLE_CODEX_INGEST: options.codexProjectRoot ? "1" : "0",
       HARNESS_MEM_CODEX_PROJECT_ROOT: options.codexProjectRoot,
-      HARNESS_MEM_CODEX_SESSIONS_ROOT: join(dir, "empty-codex-sessions"),
+      HARNESS_MEM_CODEX_SESSIONS_ROOT: options.codexSessionsRoot ?? join(dir, "empty-codex-sessions"),
       HARNESS_MEM_ENABLE_OPENCODE_INGEST: "0",
       HARNESS_MEM_ENABLE_CURSOR_INGEST: "0",
       HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST: "0",
@@ -45,7 +47,10 @@ function createClient(options: {
       HARNESS_MEM_TEST_INGEST_WORKER_BLOCK_MS: String(options.blockMs),
     },
     busyLogMs: options.busyLogMs ?? 1_000,
-    onError: (_source, reason) => options.errors?.push(reason),
+    onError: (_source, reason, failure) => {
+      options.errors?.push(reason);
+      options.failures?.push(failure);
+    },
     stopOwnedProcess: options.forceUnconfirmedStop
       ? async () => ({ status: "still_running" as const, forced: true, reason: "test" })
       : undefined,
@@ -105,6 +110,190 @@ describe("periodic ingest persistent worker", () => {
     expect(client.pendingSources()).toEqual(["cursor", "gemini"]);
 
     await waitFor(() => client.activeSource() === null && client.pendingSources().length === 0);
+  });
+
+  test("rebuild-required is a typed worker protocol failure and does not advance offsets", async () => {
+    const errors: string[] = [];
+    const { client, dbPath } = createClient({ blockMs: 0, errors });
+    const db = new Database(dbPath);
+    configureDatabase(db);
+    initSchema(db);
+    migrateSchema(db);
+    db.exec("DELETE FROM mem_content_dedupe_claims");
+    db.exec("UPDATE mem_meta SET value = 'not_ready' WHERE key = 'dedupe_claims.readiness'");
+    db.close();
+
+    expect(client.schedule("codex")).toBe(true);
+    await waitFor(() => client.activeSource() === null && errors.length > 0);
+    expect(errors).toEqual(["rebuild_required"]);
+    const verify = new Database(dbPath, { readonly: true });
+    expect(verify.query<{ count: number }, []>(
+      "SELECT COUNT(*) AS count FROM mem_ingest_offsets",
+    ).get()?.count).toBe(0);
+    expect(verify.query<{ value: string }, []>(
+      "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+    ).get()?.value).toBe("not_ready");
+    verify.close();
+  });
+
+  test("a permanent source rejection blocks timer retry until worker exit, then repaired work succeeds", async () => {
+    const errors: string[] = [];
+    const failures: Array<{ error_code: string; retryable: boolean } | undefined> = [];
+    const { client, dbPath } = createClient({ blockMs: 0, errors, failures });
+    const internals = client as unknown as {
+      active: { id: string; source: "claude_code"; startedAtMs: number } | null;
+      scheduled: Set<string>;
+      proc: unknown;
+      handleLine: (line: string) => void;
+      handleExit: (proc: unknown) => void;
+    };
+    internals.active = { id: "source-reject", source: "claude_code", startedAtMs: Date.now() };
+    internals.scheduled.add("claude_code");
+    internals.handleLine(JSON.stringify({
+      id: "source-reject",
+      ok: false,
+      error_code: "dedupe_project_mismatch",
+      retryable: false,
+    }));
+
+    expect(errors).toEqual(["source_rejected"]);
+    expect(failures).toEqual([{ error_code: "dedupe_project_mismatch", retryable: false }]);
+    expect(client.schedule("claude_code")).toBe(false);
+
+    internals.active = { id: "protected-reject", source: "codex", startedAtMs: Date.now() };
+    internals.scheduled.add("codex");
+    internals.handleLine(JSON.stringify({
+      id: "protected-reject",
+      ok: false,
+      error_code: "dedupe_protected_policy_required",
+      retryable: false,
+    }));
+    expect(errors).toEqual(["source_rejected", "source_rejected"]);
+    expect(client.schedule("codex")).toBe(false);
+
+    const exitedWorker = {};
+    internals.proc = exitedWorker;
+    internals.handleExit(exitedWorker);
+    const repaired = new Database(dbPath);
+    configureDatabase(repaired);
+    initSchema(repaired);
+    migrateSchema(repaired);
+    repaired.close();
+    expect(client.schedule("claude_code")).toBe(true);
+    await waitFor(() => client.activeSource() === null);
+    expect(errors).toEqual(["source_rejected", "source_rejected"]);
+  });
+
+  test("a repaired source-read failure retries without restarting the worker", async () => {
+    const errors: string[] = [];
+    const failures: Array<{ error_code: string; retryable: boolean } | undefined> = [];
+    const sourceRoot = mkdtempSync(join(tmpdir(), "harness-mem-worker-read-repair-"));
+    dirs.push(sourceRoot);
+    const sessionsRoot = join(sourceRoot, "sessions");
+    writeFileSync(sessionsRoot, "not-a-directory", "utf8");
+    const { client, dbPath } = createClient({
+      blockMs: 0,
+      errors,
+      failures,
+      codexProjectRoot: sourceRoot,
+      codexSessionsRoot: sessionsRoot,
+    });
+    const initialized = new Database(dbPath);
+    configureDatabase(initialized);
+    initSchema(initialized);
+    migrateSchema(initialized);
+    initialized.close();
+
+    expect(client.schedule("codex")).toBe(true);
+    await waitFor(() => client.activeSource() === null && errors.length === 1);
+    const workerPid = client.workerPid();
+    expect(errors).toEqual(["retryable"]);
+    expect(failures).toEqual([{ error_code: "record_write_failed", retryable: true }]);
+
+    rmSync(sessionsRoot);
+    const rolloutDir = join(sessionsRoot, "2026", "08", "19");
+    mkdirSync(rolloutDir, { recursive: true });
+    const rolloutPath = join(
+      rolloutDir,
+      "rollout-2026-08-19T00-00-00-22222222-2222-2222-2222-222222222222.jsonl",
+    );
+    writeFileSync(rolloutPath, JSON.stringify({
+      timestamp: "2026-08-19T00:00:00.000Z",
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "retry source read after repair" }],
+      },
+    }) + "\n", "utf8");
+
+    expect(client.schedule("codex")).toBe(true);
+    await waitFor(() => client.activeSource() === null);
+    expect(client.workerPid()).toBe(workerPid);
+    const verify = new Database(dbPath, { readonly: true });
+    expect(verify.query<{ count: number }, []>(
+      "SELECT COUNT(*) AS count FROM mem_observations WHERE archived_at IS NULL",
+    ).get()?.count).toBe(1);
+    expect(verify.query<{ offset: number }, [string]>(
+      "SELECT offset FROM mem_ingest_offsets WHERE source_key = ?",
+    ).get(`codex_rollout:${rolloutPath}`)?.offset).toBe(statSync(rolloutPath).size);
+    verify.close();
+
+    expect(client.schedule("codex")).toBe(true);
+    await waitFor(() => client.activeSource() === null);
+    const verifyOnce = new Database(dbPath, { readonly: true });
+    expect(verifyOnce.query<{ count: number }, []>(
+      "SELECT COUNT(*) AS count FROM mem_observations WHERE archived_at IS NULL",
+    ).get()?.count).toBe(1);
+    verifyOnce.close();
+  });
+
+  test("a transient structured failure never blocks the source and can retry", async () => {
+    const errors: string[] = [];
+    const failures: Array<{ error_code: string; retryable: boolean } | undefined> = [];
+    const { client } = createClient({ blockMs: 0, errors, failures });
+    const internals = client as unknown as {
+      active: { id: string; source: "claude_code"; startedAtMs: number } | null;
+      scheduled: Set<string>;
+      handleLine: (line: string) => void;
+    };
+    internals.active = { id: "source-retry", source: "claude_code", startedAtMs: Date.now() };
+    internals.scheduled.add("claude_code");
+    internals.handleLine(JSON.stringify({
+      id: "source-retry",
+      ok: false,
+      error_code: "sqlite_busy",
+      retryable: true,
+    }));
+
+    expect(errors).toEqual(["retryable"]);
+    expect(failures).toEqual([{ error_code: "sqlite_busy", retryable: true }]);
+    expect(client.schedule("claude_code")).toBe(true);
+    await waitFor(() => client.activeSource() === null);
+  });
+
+  test("generic nonretryable record failure never enters the policy blocked set", async () => {
+    const errors: string[] = [];
+    const failures: Array<{ error_code: string; retryable: boolean } | undefined> = [];
+    const { client } = createClient({ blockMs: 0, errors, failures });
+    const internals = client as unknown as {
+      active: { id: string; source: "claude_code"; startedAtMs: number } | null;
+      scheduled: Set<string>;
+      handleLine: (line: string) => void;
+    };
+    internals.active = { id: "generic-failure", source: "claude_code", startedAtMs: Date.now() };
+    internals.scheduled.add("claude_code");
+    internals.handleLine(JSON.stringify({
+      id: "generic-failure",
+      ok: false,
+      error_code: "record_write_failed",
+      retryable: false,
+    }));
+
+    expect(errors).toEqual(["operational"]);
+    expect(failures).toEqual([{ error_code: "record_write_failed", retryable: false }]);
+    expect(client.schedule("claude_code")).toBe(true);
+    await waitFor(() => client.activeSource() === null);
   });
 
   test("a stall beyond the former timeout finishes in the same worker and drains FIFO", async () => {
@@ -171,7 +360,7 @@ describe("periodic ingest persistent worker", () => {
     expect(offset?.offset).toBe(statSync(historyPath).size);
     verifyDb.close();
     await parentCore.shutdown("scale-test");
-  });
+  }, 15_000);
 
   test("shutdown leaves no periodic ingest worker process behind", async () => {
     const { client } = createClient({ blockMs: 2_000 });

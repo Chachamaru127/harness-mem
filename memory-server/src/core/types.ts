@@ -444,12 +444,25 @@ export interface ApiMeta {
   [key: string]: unknown;
 }
 
+export type RecordEventErrorCode =
+  | "invalid_event"
+  | "invalid_project"
+  | "managed_backend_unavailable"
+  | "dedupe_claims_rebuild_required"
+  | "dedupe_project_mismatch"
+  | "dedupe_protected_policy_required"
+  | "embedding_temporarily_unavailable"
+  | "sqlite_busy"
+  | "record_write_failed";
+
 export interface ApiResponse {
   ok: boolean;
   source: "core" | "merged" | "sync" | "audio_ingest";
   items: unknown[];
   meta: ApiMeta;
   error?: string;
+  error_code?: RecordEventErrorCode;
+  retryable?: boolean;
   no_memory?: boolean;
   no_memory_reason?: string;
 }

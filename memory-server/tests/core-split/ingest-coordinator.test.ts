@@ -11,16 +11,18 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, mkdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { Database } from "bun:sqlite";
 import {
   IngestCoordinator,
   type IngestCoordinatorDeps,
 } from "../../src/core/ingest-coordinator";
-import type { ApiResponse, EventEnvelope } from "../../src/core/types";
+import { HarnessMemCore } from "../../src/core/harness-mem-core";
+import type { ApiResponse, EventEnvelope, RecordEventErrorCode } from "../../src/core/types";
 import { createTestDb, createTestConfig, makeEvent } from "./test-helpers";
+import { configureDatabase, migrateSchema, rebuildContentDedupeClaimsProjection } from "../../src/db/schema";
 import {
   recordSessionEnsuredForCurrentTick,
   shouldEnsureSessionForCurrentTick,
@@ -40,13 +42,19 @@ function makeOkResponse(extra?: Partial<ApiResponse>): ApiResponse {
   };
 }
 
-function makeErrResponse(error: string): ApiResponse {
+function makeErrResponse(
+  error: string,
+  error_code?: RecordEventErrorCode,
+  retryable?: boolean,
+): ApiResponse {
   return {
     ok: false,
     source: "core",
     items: [],
     meta: { count: 0, latency_ms: 1, sla_latency_ms: 200, filters: {}, ranking: "none" },
     error,
+    error_code,
+    retryable,
   };
 }
 
@@ -120,6 +128,268 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
 
     deps.recordEvent({ ...event, event_id: "explicit-event", dedupe_hash: "explicit-hash" });
     expect(decisions).toEqual([true, false, true]);
+  });
+
+  test("all six periodic sources propagate the first structured record failure", () => {
+    const recordEvent = mock(() => makeErrResponse(
+      "database contention detail must not cross worker protocol",
+      "sqlite_busy",
+      true,
+    ));
+    deps = makeDeps({ recordEvent });
+    coordinator = new IngestCoordinator(deps);
+    const internals = coordinator as unknown as {
+      recordIngestEvent: IngestCoordinatorDeps["recordEvent"];
+      ingestCodexHistoryTick: () => void;
+      ingestOpencodeHistoryTick: () => void;
+      ingestCursorHistoryTick: () => void;
+      ingestAntigravityHistoryTick: () => void;
+      ingestGeminiHistoryTick: () => void;
+      ingestClaudeCodeSessions: () => {
+        eventsImported: number;
+        filesScanned: number;
+        filesSkippedBackfill: number;
+      };
+    };
+    const invokeRecord = () => {
+      internals.recordIngestEvent(makeEvent(), { allowQueue: false });
+      internals.recordIngestEvent(makeEvent({ event_id: "must-not-run-after-failure" }), { allowQueue: false });
+    };
+    internals.ingestCodexHistoryTick = invokeRecord;
+    internals.ingestOpencodeHistoryTick = invokeRecord;
+    internals.ingestCursorHistoryTick = invokeRecord;
+    internals.ingestAntigravityHistoryTick = invokeRecord;
+    internals.ingestGeminiHistoryTick = invokeRecord;
+    internals.ingestClaudeCodeSessions = () => {
+      invokeRecord();
+      return { eventsImported: 0, filesScanned: 1, filesSkippedBackfill: 0 };
+    };
+
+    for (const source of ["codex", "opencode", "cursor", "antigravity", "gemini", "claude_code"] as const) {
+      expect(coordinator.runPeriodicIngestTickLocal(source)).toEqual({
+        ok: false,
+        error_code: "sqlite_busy",
+        retryable: true,
+      });
+    }
+    expect(recordEvent).toHaveBeenCalledTimes(6);
+  });
+
+  test("runTick types thrown failures and maintenance remains available while claims are not-ready", () => {
+    const internals = coordinator as unknown as {
+      runTick: (label: string, fn: () => void) => unknown;
+    };
+    const busy = new Error("private database detail") as Error & { code?: string; errno?: number };
+    busy.code = "SQLITE_LOCKED";
+    busy.errno = 6;
+    expect(internals.runTick("maintenance", () => { throw busy; })).toEqual({
+      ok: false,
+      error_code: "sqlite_busy",
+      retryable: true,
+    });
+    expect(internals.runTick("maintenance", () => { throw new Error("private internal detail"); })).toEqual({
+      ok: false,
+      error_code: "record_write_failed",
+      retryable: true,
+    });
+
+    deps.db.exec("UPDATE mem_meta SET value = 'not_ready' WHERE key = 'dedupe_claims.readiness'");
+    let retryQueueRuns = 0;
+    let checkpointRuns = 0;
+    expect(internals.runTick("retry_queue", () => { retryQueueRuns += 1; })).toEqual({ ok: true });
+    expect(internals.runTick("wal_checkpoint", () => { checkpointRuns += 1; })).toEqual({ ok: true });
+    expect({ retryQueueRuns, checkpointRuns }).toEqual({ retryQueueRuns: 1, checkpointRuns: 1 });
+    expect(coordinator.runPeriodicIngestTickLocal("codex")).toEqual({
+      ok: false,
+      error_code: "dedupe_claims_rebuild_required",
+      retryable: true,
+    });
+  });
+
+  test("periodic Codex enumeration failure preserves progress until repair", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-codex-list-fail-"));
+    const sessionsRoot = join(dir, "sessions");
+    writeFileSync(sessionsRoot, "not-a-directory", "utf8");
+    const db = createTestDb();
+    const recorded: string[] = [];
+    const deps = makeDeps({
+      db,
+      config: createTestConfig({
+        codexHistoryEnabled: true,
+        codexSessionsRoot: sessionsRoot,
+        codexHistoryPath: join(dir, "missing-history.jsonl"),
+        codexProjectRoot: dir,
+        codexBackfillHours: 24,
+      }),
+      recordEvent: mock((event) => {
+        recorded.push(event.dedupe_hash ?? "");
+        return makeOkResponse();
+      }),
+    });
+    const coordinator = new IngestCoordinator(deps);
+    try {
+      expect(coordinator.ingestCodexHistory().ok).toBe(true);
+      expect(coordinator.runPeriodicIngestTickLocal("codex")).toEqual({
+        ok: false,
+        error_code: "record_write_failed",
+        retryable: true,
+      });
+      expect(recorded).toEqual([]);
+
+      rmSync(sessionsRoot);
+      const rolloutDir = join(sessionsRoot, "2026", "08", "19");
+      mkdirSync(rolloutDir, { recursive: true });
+      const rolloutPath = join(
+        rolloutDir,
+        "rollout-2026-08-19T00-00-00-11111111-1111-1111-1111-111111111111.jsonl",
+      );
+      writeFileSync(rolloutPath, JSON.stringify({
+        timestamp: "2026-08-19T00:00:00.000Z",
+        type: "response_item",
+        payload: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "repair enumeration" }],
+        },
+      }) + "\n", "utf8");
+
+      expect(coordinator.runPeriodicIngestTickLocal("codex")).toEqual({ ok: true });
+      expect(recorded).toHaveLength(1);
+      expect(coordinator.runPeriodicIngestTickLocal("codex")).toEqual({ ok: true });
+      expect(recorded).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("periodic OpenCode message and session enumeration failures preserve progress until repair", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-list-fail-"));
+    const storageRoot = join(dir, "storage");
+    const messageRoot = join(storageRoot, "message");
+    const sessionRoot = join(storageRoot, "session");
+    mkdirSync(storageRoot, { recursive: true });
+    writeFileSync(messageRoot, "not-a-directory", "utf8");
+    writeFileSync(sessionRoot, "not-a-directory", "utf8");
+    const db = createTestDb();
+    const recorded: string[] = [];
+    const deps = makeDeps({
+      db,
+      config: createTestConfig({
+        opencodeIngestEnabled: true,
+        opencodeDbPath: join(dir, "missing.db"),
+        opencodeStorageRoot: storageRoot,
+        opencodeBackfillHours: 24,
+      }),
+      recordEvent: mock((event) => {
+        recorded.push(event.dedupe_hash ?? "");
+        return makeOkResponse();
+      }),
+    });
+    const coordinator = new IngestCoordinator(deps);
+    try {
+      expect(coordinator.ingestOpencodeHistory().ok).toBe(true);
+      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({
+        ok: false,
+        error_code: "record_write_failed",
+        retryable: true,
+      });
+      expect(recorded).toEqual([]);
+
+      rmSync(messageRoot);
+      const sessionMessages = join(messageRoot, "ses_list");
+      mkdirSync(sessionMessages, { recursive: true });
+      const messagePath = join(sessionMessages, "msg_list.json");
+      writeFileSync(messagePath, JSON.stringify({
+        id: "msg_list",
+        sessionID: "ses_list",
+        role: "user",
+        time: { created: Date.now() - 1000 },
+        summary: { title: "repair opencode enumeration" },
+      }), "utf8");
+      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({
+        ok: false,
+        error_code: "record_write_failed",
+        retryable: true,
+      });
+      expect(recorded).toEqual([]);
+      expect(db.query("SELECT offset FROM mem_ingest_offsets WHERE source_key = ?")
+        .get(`opencode_rollout:${messagePath}`)).toBeNull();
+
+      rmSync(sessionRoot);
+      mkdirSync(sessionRoot);
+      writeFileSync(join(sessionRoot, "ses_list.json"), JSON.stringify({
+        id: "ses_list",
+        directory: dir,
+      }), "utf8");
+      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({ ok: true });
+      expect(recorded).toHaveLength(1);
+      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({ ok: true });
+      expect(recorded).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("periodic Antigravity markdown and planner enumeration failures preserve progress until repair", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-list-fail-"));
+    const workspaceRoot = join(dir, "workspace");
+    const checkpointRoot = join(workspaceRoot, "docs", "checkpoints");
+    const logsRoot = join(dir, "logs");
+    mkdirSync(dirname(checkpointRoot), { recursive: true });
+    writeFileSync(checkpointRoot, "not-a-directory", "utf8");
+    writeFileSync(logsRoot, "not-a-directory", "utf8");
+    const db = createTestDb();
+    const recorded: string[] = [];
+    const deps = makeDeps({
+      db,
+      config: createTestConfig({
+        antigravityIngestEnabled: true,
+        antigravityWorkspaceRoots: [workspaceRoot],
+        antigravityWorkspaceStorageRoot: join(dir, "missing-storage"),
+        antigravityLogsRoot: logsRoot,
+        antigravityBackfillHours: 24,
+        codexProjectRoot: dir,
+      }),
+      recordEvent: mock((event) => {
+        recorded.push(event.dedupe_hash ?? "");
+        return makeOkResponse();
+      }),
+    });
+    const coordinator = new IngestCoordinator(deps);
+    try {
+      expect(coordinator.ingestAntigravityHistory().ok).toBe(true);
+      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({
+        ok: false,
+        error_code: "record_write_failed",
+        retryable: true,
+      });
+      expect(recorded).toEqual([]);
+
+      rmSync(checkpointRoot);
+      mkdirSync(checkpointRoot);
+      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({
+        ok: false,
+        error_code: "record_write_failed",
+        retryable: true,
+      });
+      expect(recorded).toEqual([]);
+
+      rmSync(logsRoot);
+      const logDir = join(logsRoot, "ws", "google.antigravity", "1", "exthost1", "output_logging_x");
+      mkdirSync(logDir, { recursive: true });
+      const logPath = join(logDir, "Antigravity.log");
+      writeFileSync(
+        logPath,
+        "2026-08-19 00:00:00.000 [info] Requesting planner with 1 chat messages\n",
+        "utf8",
+      );
+      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({ ok: true });
+      expect(recorded).toHaveLength(1);
+      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({ ok: true });
+      expect(recorded).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("Codex rollout and legacy lanes share one periodic budget", () => {
@@ -261,6 +531,70 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
       const second = retryCoordinator.ingestCodexHistory();
       expect(second.ok).toBe(true);
       expect(second.items[0]?.events_imported).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("Codex rollout keeps context at the failed entry boundary and retries exactly once", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-codex-context-fail-"));
+    const sessionsRoot = join(dir, "codex-sessions");
+    const dayDir = join(sessionsRoot, "2026", "08", "19");
+    mkdirSync(dayDir, { recursive: true });
+    const rolloutPath = join(dayDir, "rollout-context-boundary.jsonl");
+    writeFileSync(rolloutPath, [
+      JSON.stringify({
+        timestamp: "2026-08-19T00:00:00.000Z",
+        type: "response_item",
+        payload: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "retry this failed entry" }],
+        },
+      }),
+      JSON.stringify({
+        timestamp: "2026-08-19T00:00:01.000Z",
+        type: "session_meta",
+        payload: { id: "later-session", cwd: "/tmp/later-wrong-workspace" },
+      }),
+    ].join("\n") + "\n", "utf8");
+
+    const db = createTestDb();
+    const seenProjects: string[] = [];
+    const deps = makeDeps({
+      db,
+      config: createTestConfig({
+        codexHistoryEnabled: true,
+        codexProjectRoot: join(dir, "expected-workspace"),
+        codexSessionsRoot: sessionsRoot,
+        codexBackfillHours: 24,
+      }),
+      recordEvent: mock((event) => {
+        seenProjects.push(event.project);
+        return makeErrResponse("temporary", "sqlite_busy", true);
+      }),
+    });
+    try {
+      const first = new IngestCoordinator(deps).runPeriodicIngestTickLocal("codex");
+      expect(first).toEqual({ ok: false, error_code: "sqlite_busy", retryable: true });
+      const failedProject = seenProjects[0];
+      expect(failedProject).toBeTruthy();
+      const sourceKey = `codex_rollout:${rolloutPath}`;
+      expect((db.query<{ offset: number }, [string]>(
+        "SELECT offset FROM mem_ingest_offsets WHERE source_key = ?",
+      ).get(sourceKey)?.offset ?? 0)).toBe(0);
+
+      deps.recordEvent = mock((event) => {
+        seenProjects.push(event.project);
+        return makeOkResponse();
+      });
+      expect(new IngestCoordinator(deps).runPeriodicIngestTickLocal("codex")).toEqual({ ok: true });
+      expect(seenProjects).toEqual([failedProject as string, failedProject as string]);
+      expect(db.query<{ offset: number }, [string]>(
+        "SELECT offset FROM mem_ingest_offsets WHERE source_key = ?",
+      ).get(sourceKey)?.offset).toBe(statSync(rolloutPath).size);
+      expect(new IngestCoordinator(deps).runPeriodicIngestTickLocal("codex")).toEqual({ ok: true });
+      expect(seenProjects).toHaveLength(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -581,6 +915,11 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
           time_updated INTEGER NOT NULL,
           data TEXT NOT NULL
         );
+        CREATE TABLE part (
+          id TEXT PRIMARY KEY,
+          message_id TEXT NOT NULL,
+          data TEXT NOT NULL
+        );
       `);
       db.query(`INSERT INTO session (id, directory) VALUES (?, ?)`).run("ses_1", "/tmp/opencode-db-test-project");
     } finally {
@@ -697,6 +1036,112 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
         offset: number;
       } | null;
       expect(offsetAfterRetry?.offset).toBe(3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("periodic OpenCode DB propagates SQLITE_BUSY while malformed rows remain skippable", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-db-busy-"));
+    const dbPath = join(dir, "opencode.db");
+    setupOpencodeDb(dbPath);
+    insertMessage(dbPath, { id: "valid", role: "user", timeCreated: Date.now() - 1000 });
+    const db = createTestDb();
+    const deps = makeDeps({
+      db,
+      config: createTestConfig({
+        opencodeIngestEnabled: true,
+        opencodeDbPath: dbPath,
+        opencodeBackfillHours: 24,
+      }),
+    });
+    const coordinator = new IngestCoordinator(deps);
+    const locker = new Database(dbPath, { create: false, strict: false });
+    try {
+      locker.exec("PRAGMA journal_mode = DELETE");
+      locker.exec("BEGIN EXCLUSIVE");
+      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({
+        ok: false,
+        error_code: "sqlite_busy",
+        retryable: true,
+      });
+      locker.exec("ROLLBACK");
+
+      const source = new Database(dbPath, { create: false, strict: false });
+      try {
+        source.query("UPDATE message SET data = '{malformed-json' WHERE id = 'valid'").run();
+      } finally {
+        source.close(false);
+      }
+      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({ ok: true });
+      expect(deps.recordEvent).not.toHaveBeenCalled();
+
+      const brokenSource = new Database(dbPath, { create: false, strict: false });
+      try {
+        brokenSource.exec("DROP TABLE message");
+      } finally {
+        brokenSource.close(false);
+      }
+      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({
+        ok: false,
+        error_code: "record_write_failed",
+        retryable: true,
+      });
+    } finally {
+      try { locker.exec("ROLLBACK"); } catch { /* already rolled back */ }
+      locker.close(false);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("periodic OpenCode DB does not write or advance when the part query fails", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-part-fail-"));
+    const dbPath = join(dir, "opencode.db");
+    setupOpencodeDb(dbPath);
+    insertMessage(dbPath, { id: "needs-part", role: "user", timeCreated: Date.now() - 1000 });
+    const source = new Database(dbPath, { create: false, strict: false });
+    source.exec("DROP TABLE part");
+    source.close(false);
+    const db = createTestDb();
+    const recordedPrompts: string[] = [];
+    const deps = makeDeps({
+      db,
+      config: createTestConfig({
+        opencodeIngestEnabled: true,
+        opencodeDbPath: dbPath,
+        opencodeBackfillHours: 24,
+      }),
+      recordEvent: mock((event) => {
+        recordedPrompts.push(String(event.payload.prompt ?? event.payload.content ?? ""));
+        return makeOkResponse();
+      }),
+    });
+    const coordinator = new IngestCoordinator(deps);
+    const sourceKey = `opencode_db_message:${dbPath}`;
+    try {
+      expect(coordinator.ingestOpencodeHistory().ok).toBe(true);
+      expect(recordedPrompts).toEqual(["title-needs-part"]);
+      db.query("DELETE FROM mem_ingest_offsets WHERE source_key = ?").run(sourceKey);
+      recordedPrompts.length = 0;
+
+      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({
+        ok: false,
+        error_code: "record_write_failed",
+        retryable: true,
+      });
+      expect(recordedPrompts).toEqual([]);
+      expect(db.query("SELECT offset FROM mem_ingest_offsets WHERE source_key = ?").get(sourceKey)).toBeNull();
+
+      const repaired = new Database(dbPath, { create: false, strict: false });
+      repaired.exec("CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT NOT NULL, data TEXT NOT NULL)");
+      repaired.query("INSERT INTO part(id, message_id, data) VALUES ('part-1', 'needs-part', ?)")
+        .run(JSON.stringify({ type: "text", text: "repaired exact prompt" }));
+      repaired.close(false);
+
+      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({ ok: true });
+      expect(recordedPrompts).toEqual(["repaired exact prompt"]);
+      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({ ok: true });
+      expect(recordedPrompts).toHaveLength(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -1606,6 +2051,65 @@ describe("ingest-coordinator: ingestAntigravityLogEvents (§160-007)", () => {
     }
   });
 
+  test("periodic Antigravity propagates nested storage and exthost I/O failures before offset advance", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-nested-io-"));
+    const storageRoot = join(dir, "workspace-storage");
+    writeFileSync(storageRoot, "not-a-directory", "utf8");
+    const logPath = setupAntigravityLogFile(
+      join(dir, "logs"),
+      "ws-nested",
+      plannerLine("2026-08-19 00:00:00.000", 1) + "\n",
+    );
+    const exthostLog = join(dirname(dirname(logPath)), "exthost.log");
+    mkdirSync(exthostLog);
+    const db = createTestDb();
+    const recorded: string[] = [];
+    const deps = makeDeps({
+      db,
+      config: createTestConfig({
+        antigravityIngestEnabled: true,
+        antigravityLogsRoot: join(dir, "logs"),
+        antigravityWorkspaceStorageRoot: storageRoot,
+        antigravityWorkspaceRoots: [],
+        codexProjectRoot: dir,
+      }),
+      recordEvent: mock((event) => {
+        recorded.push(event.dedupe_hash ?? "");
+        return makeOkResponse();
+      }),
+    });
+    const coordinator = new IngestCoordinator(deps);
+    const sourceKey = `antigravity_log:${logPath}`;
+    try {
+      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({
+        ok: false,
+        error_code: "record_write_failed",
+        retryable: true,
+      });
+      expect(recorded).toEqual([]);
+      expect(db.query("SELECT offset FROM mem_ingest_offsets WHERE source_key = ?").get(sourceKey)).toBeNull();
+
+      rmSync(storageRoot);
+      mkdirSync(storageRoot);
+      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({
+        ok: false,
+        error_code: "record_write_failed",
+        retryable: true,
+      });
+      expect(recorded).toEqual([]);
+      expect(db.query("SELECT offset FROM mem_ingest_offsets WHERE source_key = ?").get(sourceKey)).toBeNull();
+
+      rmSync(exthostLog, { recursive: true });
+      writeFileSync(exthostLog, "workspaceStorage/aaaaaaaa\n", "utf8");
+      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({ ok: true });
+      expect(recorded).toHaveLength(1);
+      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({ ok: true });
+      expect(recorded).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-log-budget-"));
     try {
@@ -1962,6 +2466,238 @@ describe("ingest-coordinator: Claude Code timer startup", () => {
       globalThis.clearTimeout = originalClearTimeout;
       globalThis.setInterval = originalSetInterval;
       globalThis.clearInterval = originalClearInterval;
+    }
+  });
+});
+
+describe("ingest-coordinator: Claude Code record rejection boundaries", () => {
+  test("a failed file retains the scan cursor and is retried before later files", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-claude-failed-cursor-"));
+    const projectDir = join(dir, "projects", "-tmp-cursor-project");
+    mkdirSync(projectDir, { recursive: true });
+    const failedPath = join(projectDir, "ffffffff-ffff-4fff-8fff-ffffffffffff.jsonl");
+    const laterPath = join(projectDir, "11111111-1111-4111-8111-111111111111.jsonl");
+    const writeClaudeUser = (path: string, sessionId: string, content: string) => {
+      writeFileSync(path, `${JSON.stringify({
+        type: "user",
+        sessionId,
+        cwd: "/tmp/cursor-project",
+        timestamp: "2026-08-19T00:00:00.000Z",
+        message: { role: "user", content },
+      })}\n`);
+    };
+    writeClaudeUser(failedPath, "ffffffff-ffff-4fff-8fff-ffffffffffff", "failed file must retry first");
+    writeClaudeUser(laterPath, "11111111-1111-4111-8111-111111111111", "later file must remain later");
+    const sameMtime = new Date("2026-08-19T00:00:00.000Z");
+    utimesSync(failedPath, sameMtime, sameMtime);
+    utimesSync(laterPath, sameMtime, sameMtime);
+
+    const db = createTestDb();
+    const recorded: string[] = [];
+    let failFirst = true;
+    const deps = makeDeps({
+      db,
+      config: createTestConfig({
+        claudeCodeIngestEnabled: true,
+        claudeCodeProjectsRoot: join(dir, "projects"),
+        claudeCodeBackfillHours: 24,
+      }),
+      recordEvent: mock((event) => {
+        const content = String(event.payload.content ?? "");
+        if (failFirst) {
+          failFirst = false;
+          return makeErrResponse("temporary", "sqlite_busy", true);
+        }
+        recorded.push(content);
+        const until = Date.now() + 5;
+        while (Date.now() < until) { /* consume this tick budget */ }
+        return makeOkResponse();
+      }),
+    });
+    const coordinator = new IngestCoordinator(deps);
+    const previousBudget = process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
+    process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = "1";
+    try {
+      expect(coordinator.runPeriodicIngestTickLocal("claude_code")).toEqual({
+        ok: false,
+        error_code: "sqlite_busy",
+        retryable: true,
+      });
+      expect(recorded).toEqual([]);
+      expect(db.query<{ offset: number }, [string]>(
+        "SELECT offset FROM mem_ingest_offsets WHERE source_key = ?",
+      ).get(`claude_code:${failedPath}`)?.offset).toBe(0);
+
+      expect(coordinator.runPeriodicIngestTickLocal("claude_code")).toEqual({ ok: true });
+      expect(recorded).toEqual(["failed file must retry first"]);
+      expect(coordinator.runPeriodicIngestTickLocal("claude_code")).toEqual({ ok: true });
+      expect(recorded).toEqual(["failed file must retry first", "later file must remain later"]);
+      expect(coordinator.runPeriodicIngestTickLocal("claude_code")).toEqual({ ok: true });
+      expect(recorded).toHaveLength(2);
+    } finally {
+      if (previousBudget === undefined) delete process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
+      else process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = previousBudget;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a readiness loss between the tick gate and recordEvent resumes exactly once after repair", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-claude-readiness-race-"));
+    const projectsRoot = join(dir, "projects");
+    const projectDir = join(projectsRoot, "-tmp-race-project");
+    const sessionId = "11111111-1111-4111-8111-111111111111";
+    const filePath = join(projectDir, `${sessionId}.jsonl`);
+    const dbPath = join(dir, "memory.db");
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(filePath, `${JSON.stringify({
+      type: "user",
+      sessionId,
+      cwd: "/tmp/race-project",
+      timestamp: "2026-08-19T00:00:00.000Z",
+      message: { role: "user", content: "import after projection repair" },
+    })}\n`);
+
+    const config = createTestConfig({
+      dbPath,
+      backgroundWorkersEnabled: false,
+      claudeCodeIngestEnabled: true,
+      claudeCodeProjectsRoot: projectsRoot,
+      claudeCodeBackfillHours: 24,
+    });
+    const core = new HarnessMemCore(config);
+    const other = new Database(dbPath);
+    configureDatabase(other);
+    let invalidateBeforeFirstRecord = true;
+    const coordinator = new IngestCoordinator(makeDeps({
+      db: core.getRawDb(),
+      config,
+      recordEvent: (event, options) => {
+        if (invalidateBeforeFirstRecord) {
+          invalidateBeforeFirstRecord = false;
+          other.exec("DELETE FROM mem_content_dedupe_claims");
+          other.exec(`
+            UPDATE mem_meta SET value = 'not_ready'
+            WHERE key = 'dedupe_claims.readiness'
+          `);
+        }
+        return core.recordEvent(event, options);
+      },
+    }));
+    const sourceKey = `claude_code:${filePath}`;
+
+    try {
+      const failed = coordinator.runPeriodicIngestTickLocal("claude_code");
+      expect(failed).toEqual({
+        ok: false,
+        error_code: "dedupe_claims_rebuild_required",
+        retryable: true,
+      });
+      expect(core.getRawDb().query<{ count: number }, []>(`
+        SELECT COUNT(*) AS count FROM mem_observations
+        WHERE content = 'import after projection repair'
+      `).get()?.count).toBe(0);
+      expect(core.getRawDb().query<{ offset: number }, [string]>(`
+        SELECT offset FROM mem_ingest_offsets WHERE source_key = ?
+      `).get(sourceKey)?.offset).toBe(0);
+      expect(core.getRawDb().query<{ value: string }, [string]>(`
+        SELECT value FROM mem_meta WHERE key = ?
+      `).get(`claude_code_context:${sourceKey}`)).toBeNull();
+
+      rebuildContentDedupeClaimsProjection(core.getRawDb());
+      expect(coordinator.runPeriodicIngestTickLocal("claude_code")).toEqual({ ok: true });
+      expect(coordinator.runPeriodicIngestTickLocal("claude_code")).toEqual({ ok: true });
+      expect(core.getRawDb().query<{ count: number }, []>(`
+        SELECT COUNT(*) AS count FROM mem_observations
+        WHERE content = 'import after projection repair'
+      `).get()?.count).toBe(1);
+      expect(core.getRawDb().query<{ offset: number }, [string]>(`
+        SELECT offset FROM mem_ingest_offsets WHERE source_key = ?
+      `).get(sourceKey)?.offset).toBe(statSync(filePath).size);
+    } finally {
+      other.close();
+      await core.shutdown("test");
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a non-readiness record rejection is a non-retryable typed source failure", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-claude-source-reject-"));
+    const projectDir = join(dir, "projects", "-tmp-rejected-project");
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(join(projectDir, "22222222-2222-4222-8222-222222222222.jsonl"), `${JSON.stringify({
+      type: "user",
+      sessionId: "22222222-2222-4222-8222-222222222222",
+      cwd: "/tmp/rejected-project",
+      timestamp: "2026-08-19T00:00:00.000Z",
+      message: { role: "user", content: "permanently rejected source entry" },
+    })}\n`);
+    const deps = makeDeps({
+      config: createTestConfig({
+        claudeCodeIngestEnabled: true,
+        claudeCodeProjectsRoot: join(dir, "projects"),
+        claudeCodeBackfillHours: 24,
+      }),
+      recordEvent: mock(() => makeErrResponse(
+        "content dedupe claim belongs to another project",
+        "dedupe_project_mismatch",
+        false,
+      )),
+    });
+    try {
+      expect(new IngestCoordinator(deps).runPeriodicIngestTickLocal("claude_code")).toEqual({
+        ok: false,
+        error_code: "dedupe_project_mismatch",
+        retryable: false,
+      });
+      expect((deps.recordEvent as ReturnType<typeof mock>).mock.calls.length).toBe(1);
+      const sourceKey = `claude_code:${join(projectDir, "22222222-2222-4222-8222-222222222222.jsonl")}`;
+      expect(deps.db.query<{ offset: number }, [string]>(
+        "SELECT offset FROM mem_ingest_offsets WHERE source_key = ?",
+      ).get(sourceKey)?.offset).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a transient structured record failure preserves its code and retry boundary", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-claude-source-retry-"));
+    const filePath = join(
+      dir,
+      "projects",
+      "-tmp-retry-project",
+      "33333333-3333-4333-8333-333333333333.jsonl",
+    );
+    mkdirSync(join(filePath, ".."), { recursive: true });
+    writeFileSync(filePath, `${JSON.stringify({
+      type: "user",
+      sessionId: "33333333-3333-4333-8333-333333333333",
+      cwd: "/tmp/retry-project",
+      timestamp: "2026-08-19T00:00:00.000Z",
+      message: { role: "user", content: "retry after embedding warmup" },
+    })}\n`);
+    const deps = makeDeps({
+      config: createTestConfig({
+        claudeCodeIngestEnabled: true,
+        claudeCodeProjectsRoot: join(dir, "projects"),
+        claudeCodeBackfillHours: 24,
+      }),
+      recordEvent: mock(() => makeErrResponse(
+        "provider is warming",
+        "embedding_temporarily_unavailable",
+        true,
+      )),
+    });
+    try {
+      expect(new IngestCoordinator(deps).runPeriodicIngestTickLocal("claude_code")).toEqual({
+        ok: false,
+        error_code: "embedding_temporarily_unavailable",
+        retryable: true,
+      });
+      expect(deps.db.query<{ offset: number }, [string]>(
+        "SELECT offset FROM mem_ingest_offsets WHERE source_key = ?",
+      ).get(`claude_code:${filePath}`)?.offset).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

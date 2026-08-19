@@ -16,8 +16,15 @@
  */
 
 import { createHash } from "node:crypto";
-import type { Database } from "bun:sqlite";
-import type { ApiResponse, Config, EventEnvelope, MemoryType, StreamEvent } from "./types.js";
+import type { Database, SQLQueryBindings } from "bun:sqlite";
+import type {
+  ApiResponse,
+  Config,
+  EventEnvelope,
+  MemoryType,
+  RecordEventErrorCode,
+  StreamEvent,
+} from "./types.js";
 import { splitIntoNuggets } from "./nugget-splitter.js";
 import {
   clampLimit,
@@ -48,16 +55,24 @@ import { extractCodeProvenance } from "./provenance-extractor.js";
 import { stripPrivateBlocks } from "./privacy-tags.js";
 import { extractEntitiesAndRelations } from "./entity-extractor.js";
 import { resolveSlowTickLogMs } from "./ingest-coordinator.js";
+import { assertContentDedupeClaimsReady } from "../db/schema.js";
+import {
+  arbitrateContentDedupeClaim,
+  contentDedupeProtectionMask,
+} from "./content-dedupe-claims.js";
 import {
   getCurrentIngestTickTelemetry,
   recordSessionEnsuredForCurrentTick,
+  recordSessionObservedForCurrentTick,
   recordSessionActivityPersistedForCurrentTick,
   recordSqliteError,
   recordSqlitePhase,
   readProcessIoCounters,
   recordTransactionIoDelta,
   shouldEnsureSessionForCurrentTick,
+  shouldPersistSessionMetadataForCurrentTick,
   shouldPersistSessionActivityForCurrentTick,
+  sqliteErrorCodes,
 } from "./sqlite-performance-telemetry.js";
 
 // ---------------------------------------------------------------------------
@@ -207,16 +222,48 @@ function isRetryableWriteEmbeddingFailure(error: unknown): boolean {
     code === "warming" ||
     lowered.includes("requires async prime before sync embed") ||
     (lowered.includes("local onnx model") && lowered.includes("warming up"));
-  const looksLikeEmbeddingFailure =
-    maybe.name === "EmbeddingReadinessError" ||
-    lowered.includes("write embedding is unavailable") ||
-    lowered.includes("write embedding is not ready");
-
-  if (!looksLikeEmbeddingFailure || !coldStartFailure) {
+  if (!coldStartFailure) {
     return false;
   }
 
   return maybe.readiness?.retryable !== false;
+}
+
+function classifyRecordEventFailure(error: unknown): {
+  error_code: RecordEventErrorCode;
+  retryable: boolean;
+} {
+  const message = formatErrorMessage(error);
+  if (message === "content dedupe claims require rebuild") {
+    return { error_code: "dedupe_claims_rebuild_required", retryable: true };
+  }
+  if (message === "content dedupe claim belongs to another project") {
+    return { error_code: "dedupe_project_mismatch", retryable: false };
+  }
+  if (message === "expired privacy-protected dedupe row requires policy resolution") {
+    return { error_code: "dedupe_protected_policy_required", retryable: false };
+  }
+  if (sqliteErrorCodes(error).busyOrLocked) {
+    return { error_code: "sqlite_busy", retryable: true };
+  }
+  if (isRetryableWriteEmbeddingFailure(error)) {
+    return { error_code: "embedding_temporarily_unavailable", retryable: true };
+  }
+  return { error_code: "record_write_failed", retryable: false };
+}
+
+function makeRecordEventErrorResponse(
+  startedAt: number,
+  message: string,
+  filters: Record<string, unknown>,
+  error_code: RecordEventErrorCode,
+  retryable: boolean,
+): ApiResponse {
+  return {
+    ...makeErrorResponse(startedAt, message, filters),
+    error_code,
+    retryable,
+  };
 }
 
 function writeQueueDelayMsForTest(): number {
@@ -557,7 +604,6 @@ export class EventRecorder {
   // Cached prepared statements for extractAndStoreEntities
   private insertEntityStmt: ReturnType<Database["query"]> | null = null;
   private linkEntityStmt: ReturnType<Database["query"]> | null = null;
-
   constructor(private readonly deps: EventRecorderDeps) {}
 
   /**
@@ -1250,14 +1296,26 @@ export class EventRecorder {
     }
 
     if (!event.project || !event.session_id || !event.event_type || !event.platform) {
-      return makeErrorResponse(startedAt, "event.project / event.session_id / event.event_type / event.platform are required", {});
+      return makeRecordEventErrorResponse(
+        startedAt,
+        "event.project / event.session_id / event.event_type / event.platform are required",
+        {},
+        "invalid_event",
+        false,
+      );
     }
 
     let normalizedProject: string;
     try {
       normalizedProject = this.deps.normalizeProject(event.project);
     } catch (e) {
-      return makeErrorResponse(startedAt, e instanceof Error ? e.message : String(e), { project: event.project });
+      return makeRecordEventErrorResponse(
+        startedAt,
+        e instanceof Error ? e.message : String(e),
+        { project: event.project },
+        "invalid_project",
+        false,
+      );
     }
     if (this.deps.isAbsoluteProjectPath(normalizedProject)) {
       this.deps.extendProjectNormalizationRoots([normalizedProject]);
@@ -1272,7 +1330,7 @@ export class EventRecorder {
 
     // Fail-close in managed mode
     if (this.deps.getManagedRequired() && !this.deps.isManagedConnected()) {
-      return makeErrorResponse(
+      return makeRecordEventErrorResponse(
         startedAt,
         "managed backend is required but not connected; write blocked (fail-close)",
         {
@@ -1280,7 +1338,9 @@ export class EventRecorder {
           session_id: event.session_id,
           backend_mode: this.deps.config.backendMode || "local",
           write_durability: "blocked",
-        }
+        },
+        "managed_backend_unavailable",
+        true,
       );
     }
 
@@ -1301,7 +1361,7 @@ export class EventRecorder {
     const memoryType = this.classifyMemoryType(event.event_type, observationBase.title, observationBase.content);
     const contentDedupeHash = buildContentDedupeHash(event, observationType, redactedContent);
     const observationId = `obs_${eventId}`;
-    const current = nowIso();
+    let current = "";
     let degradedEmbeddingWarning: string | null = null;
     const deferEmbedding = options.deferEmbedding === true && event.event_type === "checkpoint";
 
@@ -1350,17 +1410,43 @@ export class EventRecorder {
         teamId,
       };
       const ensureSessionRequired = shouldEnsureSessionForCurrentTick(event.session_id, sessionState);
+      const sessionMetadataUpdateRequired = !ensureSessionRequired &&
+        shouldPersistSessionMetadataForCurrentTick(event.session_id, sessionState);
       const activityUpdateRequired = shouldPersistSessionActivityForCurrentTick(event.session_id);
       let transactionBodyMs = 0;
       const transaction = this.deps.db.transaction(() => {
         const transactionBodyStartedAt = performance.now();
         try {
+          // BEGIN IMMEDIATE has acquired the write lock before this callback runs.
+          // Claim expiry must be compared with this post-wait timestamp.
+          current = nowIso();
+          this.measureSyncSegment("dedupe_claim_readiness", () =>
+            assertContentDedupeClaimsReady(this.deps.db)
+          );
           if (ensureSessionRequired) {
             this.measureSyncSegment("ensure_session", () =>
               ensureSession(this.deps.db, event.session_id, event.platform, normalizedProject, timestamp, event.correlation_id, userId, teamId)
             );
           } else if (getCurrentIngestTickTelemetry()) {
             recordSqlitePhase("ensure_session_skipped", 0);
+          }
+          if (sessionMetadataUpdateRequired) {
+            this.measureSyncSegment("session_metadata_update", () =>
+              this.deps.db.query(`
+                UPDATE mem_sessions SET
+                  started_at = CASE WHEN started_at <= ? THEN started_at ELSE ? END,
+                  correlation_id = COALESCE(correlation_id, ?)
+                WHERE session_id = ?
+                  AND (started_at > ? OR (correlation_id IS NULL AND ? IS NOT NULL))
+              `).run(
+                sessionState.startedAt,
+                sessionState.startedAt,
+                sessionState.correlationId,
+                event.session_id,
+                sessionState.startedAt,
+                sessionState.correlationId,
+              )
+            );
           }
 
         const eventInsert = this.measureSyncSegment("event_insert", () =>
@@ -1419,9 +1505,52 @@ export class EventRecorder {
         const titleFts = observationBase.title ? segmentJapaneseForFts(observationBase.title) : null;
         const contentFts = segmentJapaneseForFts(redactedContent);
 
+        type ObservationInsertResult = { id: string };
+        if (contentDedupeHash) {
+          const claim = this.measureSyncSegment("dedupe_claim_arbitration", () =>
+            arbitrateContentDedupeClaim(this.deps.db, {
+              hash: contentDedupeHash,
+              observationId,
+              project: normalizedProject,
+              expiresAt,
+              protectionMask: contentDedupeProtectionMask(privacyTags, tags),
+              now: current,
+            })
+          );
+          if (claim.outcome === "project_mismatch") {
+            throw new Error("content dedupe claim belongs to another project");
+          }
+          if (claim.outcome === "protected_expired") {
+            throw new Error("expired privacy-protected dedupe row requires policy resolution");
+          }
+          if (claim.outcome === "replacement") {
+            if (!claim.displaced_observation_id) {
+              throw new Error("content dedupe replacement is missing displaced observation");
+            }
+            this.measureSyncSegment("dedupe_expired_archive", () =>
+              this.deps.archiveExpiredObservation(claim.displaced_observation_id!)
+            );
+          } else if (claim.outcome === "duplicate") {
+            this.deps.db.query(`UPDATE mem_events SET observation_id = ? WHERE event_id = ?`)
+              .run(claim.canonical_observation_id, eventId);
+            if (activityUpdateRequired) {
+              this.measureSyncSegment("session_activity_update", () =>
+                this.deps.db.query("UPDATE mem_sessions SET updated_at = ? WHERE session_id = ? AND updated_at < ?")
+                  .run(current, event.session_id, current)
+              );
+            }
+            return {
+              duplicated: true,
+              observationId: claim.canonical_observation_id,
+              dedupeBasis: "content",
+              contentDedupeHash,
+              activityPersisted: activityUpdateRequired,
+            };
+          }
+        }
         let observationInsert = this.measureSyncSegment("observation_insert", () =>
           this.deps.db
-            .query(`
+            .query<ObservationInsertResult, SQLQueryBindings[]>(`
               INSERT INTO mem_observations(
                 id, event_id, platform, project, session_id,
                 title, content, content_redacted, content_dedupe_hash, raw_text, observation_type, memory_type,
@@ -1433,8 +1562,9 @@ export class EventRecorder {
                 created_at, updated_at
               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT DO NOTHING
+              RETURNING id, expires_at, privacy_tags_json, tags_json
             `)
-            .run(
+            .get(
               observationId,
               eventId,
               event.platform,
@@ -1469,66 +1599,8 @@ export class EventRecorder {
             )
         );
 
-        if (Number((observationInsert as { changes?: number }).changes ?? 0) === 0 && contentDedupeHash) {
-          const conflicting = this.measureSyncSegment("dedupe_conflict_lookup", () =>
-            this.deps.db.query<{ id: string; expires_at: string | null; privacy_tags_json: string; tags_json: string }, [string]>(`
-              SELECT id, expires_at, privacy_tags_json, tags_json FROM mem_observations
-              WHERE content_dedupe_hash = ? AND archived_at IS NULL
-              LIMIT 1
-            `).get(contentDedupeHash)
-          );
-          const protectedTags = conflicting
-            ? normalizeTags([...parseJsonArray(conflicting.privacy_tags_json), ...parseJsonArray(conflicting.tags_json)])
-            : [];
-          const privacyProtected = protectedTags.some((tag) => ["private", "secret", "sensitive", "legal_hold"].includes(tag));
-          const expired = conflicting?.expires_at && Date.parse(conflicting.expires_at) <= Date.now();
-          if (conflicting?.id && expired && !privacyProtected) {
-            this.measureSyncSegment("dedupe_expired_archive", () =>
-              this.deps.archiveExpiredObservation(conflicting.id)
-            );
-            observationInsert = this.measureSyncSegment("observation_insert_retry", () =>
-              this.deps.db.query(`
-                INSERT INTO mem_observations(
-                  id, event_id, platform, project, session_id, title, content, content_redacted,
-                  content_dedupe_hash, raw_text, observation_type, memory_type, tags_json, privacy_tags_json,
-                  signal_score, user_id, team_id, event_time, observed_at, valid_from, valid_to,
-                  supersedes, invalidated_at, thread_id, topic, expires_at, branch, title_fts, content_fts,
-                  created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT DO NOTHING
-              `).run(
-                observationId, eventId, event.platform, normalizedProject, event.session_id,
-                observationBase.title, observationBase.content, redactedContent, contentDedupeHash, rawText,
-                observationType, memoryType, JSON.stringify(tags), JSON.stringify(privacyTags), signalScore,
-                userId, teamId, temporalAnchors.event_time, temporalAnchors.observed_at,
-                temporalAnchors.valid_from, temporalAnchors.valid_to, temporalAnchors.supersedes,
-                temporalAnchors.invalidated_at, threadId, topic, expiresAt, branch, titleFts, contentFts,
-                timestamp, current,
-              )
-            );
-          } else if (conflicting?.id && expired && privacyProtected) {
-            throw new Error("expired privacy-protected dedupe row requires policy resolution");
-          } else if (conflicting?.id) {
-            this.deps.db.query(`UPDATE mem_events SET observation_id = ? WHERE event_id = ?`)
-              .run(conflicting.id, eventId);
-            if (activityUpdateRequired) {
-              this.measureSyncSegment("session_activity_update", () =>
-                this.deps.db.query("UPDATE mem_sessions SET updated_at = ? WHERE session_id = ? AND updated_at < ?")
-                  .run(current, event.session_id, current)
-              );
-            }
-            return {
-              duplicated: true,
-              observationId: conflicting.id,
-              dedupeBasis: "content",
-              contentDedupeHash,
-              activityPersisted: activityUpdateRequired,
-            };
-          }
-        }
-
-        if (Number((observationInsert as { changes?: number }).changes ?? 0) === 0) {
-          throw new Error("observation atomic insert did not create a row");
+        if (observationInsert?.id !== observationId) {
+          throw new Error("observation insert disagrees with content dedupe claim");
         }
 
         this.measureSyncSegment("tags_insert", () => {
@@ -1656,7 +1728,7 @@ export class EventRecorder {
         activityPersisted?: boolean;
       };
       try {
-        result = transaction() as typeof result;
+        result = transaction.immediate() as typeof result;
       } finally {
         const transactionTotalMs = performance.now() - transactionStartedAt;
         // Bun exposes no COMMIT-only hook. This is callback-external residual
@@ -1669,6 +1741,8 @@ export class EventRecorder {
       }
       if (ensureSessionRequired) {
         recordSessionEnsuredForCurrentTick(event.session_id, sessionState);
+      } else {
+        recordSessionObservedForCurrentTick(event.session_id, sessionState);
       }
       if (result.activityPersisted) {
         recordSessionActivityPersistedForCurrentTick(event.session_id);
@@ -1769,13 +1843,24 @@ export class EventRecorder {
       );
     } catch (error) {
       recordSqliteError(error);
-      if (options.allowQueue) {
-        this.enqueueRetry(event, error instanceof Error ? error.message : String(error));
+      const failure = classifyRecordEventFailure(error);
+      if (options.allowQueue && failure.retryable) {
+        try {
+          this.enqueueRetry(event, error instanceof Error ? error.message : String(error));
+        } catch (queueError) {
+          recordSqliteError(queueError);
+        }
       }
-      return makeErrorResponse(startedAt, error instanceof Error ? error.message : String(error), {
-        project: normalizedProject,
-        session_id: event.session_id,
-      });
+      return makeRecordEventErrorResponse(
+        startedAt,
+        error instanceof Error ? error.message : String(error),
+        {
+          project: normalizedProject,
+          session_id: event.session_id,
+        },
+        failure.error_code,
+        failure.retryable,
+      );
     }
   }
 

@@ -1,4 +1,8 @@
-import type { PeriodicIngestSource } from "./ingest-coordinator";
+import {
+  PERIODIC_INGEST_ERROR_CODES,
+  type PeriodicIngestSource,
+} from "./ingest-coordinator";
+import type { RecordEventErrorCode } from "./types";
 import { stopOwnedSearchWorkerProcess } from "./search-worker-lifecycle";
 
 type WorkerProcess = ReturnType<typeof Bun.spawn>;
@@ -11,6 +15,8 @@ type WorkerStdin = {
 interface WorkerReply {
   id?: unknown;
   ok?: unknown;
+  error_code?: unknown;
+  retryable?: unknown;
 }
 
 const SAFE_TELEMETRY_KEYS = new Set([
@@ -19,9 +25,18 @@ const SAFE_TELEMETRY_KEYS = new Set([
   "wal_checkpoint_available", "wal_checkpoint_age_available", "wal_checkpoint_age_ms", "wal_checkpoint",
   "os_fs_read_ops", "os_major_page_faults", "transaction_fs_read_ops",
   "transaction_major_page_faults", "io_counter_scope", "successful_lock_wait_available",
+  "os_fs_read_ops_available", "os_major_page_faults_available",
+  "transaction_fs_read_ops_available", "transaction_major_page_faults_available",
   "sqlite_db_read_latency_available", "lock_observation_scope", "sqlite_busy_count",
   "sqlite_locked_count", "sqlite_busy_failure_elapsed_ms", "sqlite_last_code",
   "sqlite_last_extended_code", "code", "extended_code", "busy_or_locked",
+]);
+
+const SOURCE_POLICY_REJECTION_CODES = new Set<RecordEventErrorCode>([
+  "invalid_event",
+  "invalid_project",
+  "dedupe_project_mismatch",
+  "dedupe_protected_policy_required",
 ]);
 
 export interface PeriodicIngestWorkerClientOptions {
@@ -29,15 +44,21 @@ export interface PeriodicIngestWorkerClientOptions {
   cwd: string;
   env: Record<string, string | undefined>;
   busyLogMs: number;
-  onError?: (source: PeriodicIngestSource, reason: "exit" | "protocol") => void;
+  onError?: (
+    source: PeriodicIngestSource,
+    reason: "exit" | "protocol" | "rebuild_required" | "retryable" | "operational" | "source_rejected",
+    failure?: { error_code: RecordEventErrorCode; retryable: boolean },
+  ) => void;
   stopOwnedProcess?: typeof stopOwnedSearchWorkerProcess;
 }
 
 export class PeriodicIngestWorkerClient {
   private proc: WorkerProcess | null = null;
+  private stoppingProc: WorkerProcess | null = null;
   private stdin: WorkerStdin | null = null;
   private readonly queue: PeriodicIngestSource[] = [];
   private readonly scheduled = new Set<PeriodicIngestSource>();
+  private readonly blocked = new Set<PeriodicIngestSource>();
   private active: { id: string; source: PeriodicIngestSource; startedAtMs: number } | null = null;
   private sequence = 0;
   private stopped = false;
@@ -48,7 +69,7 @@ export class PeriodicIngestWorkerClient {
   constructor(private readonly options: PeriodicIngestWorkerClientOptions) {}
 
   schedule(source: PeriodicIngestSource): boolean {
-    if (this.stopped) return false;
+    if (this.stopped || this.blocked.has(source)) return false;
     if (this.scheduled.has(source)) {
       this.recordBusyState();
       return false;
@@ -68,13 +89,19 @@ export class PeriodicIngestWorkerClient {
   }
 
   workerPid(): number | null {
-    return typeof this.proc?.pid === "number" ? this.proc.pid : null;
+    const proc = this.proc ?? this.stoppingProc;
+    return typeof proc?.pid === "number" ? proc.pid : null;
+  }
+
+  hasLiveProcess(): boolean {
+    return this.proc !== null || this.stoppingProc !== null;
   }
 
   stop(): Promise<void> {
     this.stopped = true;
     this.queue.length = 0;
     this.scheduled.clear();
+    this.blocked.clear();
     return this.stopWorker();
   }
 
@@ -189,7 +216,31 @@ export class PeriodicIngestWorkerClient {
       return;
     }
     if (!this.active || reply.id !== this.active.id) return;
-    if (reply.ok !== true) this.options.onError?.(this.active.source, "protocol");
+    if (reply.ok !== true) {
+      const errorCode = typeof reply.error_code === "string"
+        && PERIODIC_INGEST_ERROR_CODES.includes(reply.error_code as RecordEventErrorCode)
+        ? reply.error_code as RecordEventErrorCode
+        : null;
+      const retryable = typeof reply.retryable === "boolean" ? reply.retryable : null;
+      const sourcePolicyRejected = errorCode !== null
+        && retryable === false
+        && SOURCE_POLICY_REJECTION_CODES.has(errorCode);
+      const reason = errorCode === "dedupe_claims_rebuild_required" && retryable === true
+        ? "rebuild_required"
+        : errorCode && retryable === true
+          ? "retryable"
+          : sourcePolicyRejected
+            ? "source_rejected"
+            : errorCode === "record_write_failed" && retryable === false
+              ? "operational"
+              : "protocol";
+      if (sourcePolicyRejected) this.blocked.add(this.active.source);
+      this.options.onError?.(
+        this.active.source,
+        reason,
+        errorCode && retryable !== null ? { error_code: errorCode, retryable } : undefined,
+      );
+    }
     this.finishActive();
     this.drain();
   }
@@ -224,6 +275,7 @@ export class PeriodicIngestWorkerClient {
     if (this.proc !== proc) return;
     this.proc = null;
     this.stdin = null;
+    this.blocked.clear();
     if (this.active) {
       this.options.onError?.(this.active.source, "exit");
       this.finishActive();
@@ -233,12 +285,14 @@ export class PeriodicIngestWorkerClient {
 
   private stopWorker(): Promise<void> {
     if (this.stopPromise) return this.stopPromise;
+    this.blocked.clear();
     const proc = this.proc;
     const stdin = this.stdin;
     this.proc = null;
     this.stdin = null;
     if (this.active) this.finishActive();
     if (!proc) return Promise.resolve();
+    this.stoppingProc = proc;
     this.terminating = true;
     try { stdin?.end?.(); } catch { /* best effort */ }
     this.stopPromise = (async () => {
@@ -258,6 +312,7 @@ export class PeriodicIngestWorkerClient {
         }
       }
     })().finally(() => {
+      if (this.stoppingProc === proc) this.stoppingProc = null;
       this.stopPromise = null;
       this.terminating = false;
       this.drain();

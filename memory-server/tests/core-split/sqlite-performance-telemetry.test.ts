@@ -5,6 +5,7 @@ import {
   getCurrentIngestTickTelemetry,
   recordSqliteError,
   recordSqlitePhase,
+  setResourceUsageReaderForTests,
   recordWalCheckpointCompleted,
   sqliteErrorCodes,
 } from "../../src/core/sqlite-performance-telemetry";
@@ -12,8 +13,41 @@ import { createTestDb } from "./test-helpers";
 
 describe("sqlite performance telemetry", () => {
   afterEach(() => {
+    setResourceUsageReaderForTests(null);
     const active = getCurrentIngestTickTelemetry();
     if (active) endIngestTickTelemetry(active, createTestDb(), 0, Infinity);
+  });
+
+  test("resource counter failure is unavailable, never an observed zero", () => {
+    const db = createTestDb();
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    setResourceUsageReaderForTests(() => { throw new Error("unsupported"); });
+    const tick = beginIngestTickTelemetry("codex");
+    endIngestTickTelemetry(tick, db, 20, 10);
+    const line = String(warn.mock.calls[0]?.[0]);
+    expect(line).toContain('"os_fs_read_ops_available":false');
+    expect(line).toContain('"os_major_page_faults_available":false');
+    expect(line).toContain('"transaction_fs_read_ops_available":false');
+    expect(line).toContain('"transaction_major_page_faults_available":false');
+    expect(line).not.toContain('"os_fs_read_ops":0');
+    expect(line).not.toContain('"os_major_page_faults":0');
+    expect(line).not.toContain('"transaction_fs_read_ops":0');
+    expect(line).not.toContain('"transaction_major_page_faults":0');
+    warn.mockRestore();
+  });
+
+  test("successful zero counters remain available observed zeroes", () => {
+    const db = createTestDb();
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    setResourceUsageReaderForTests(() => ({ fsRead: 0, majorPageFault: 0 }));
+    const tick = beginIngestTickTelemetry("codex");
+    endIngestTickTelemetry(tick, db, 20, 10);
+    const line = String(warn.mock.calls[0]?.[0]);
+    expect(line).toContain('"os_fs_read_ops_available":true');
+    expect(line).toContain('"os_fs_read_ops":0');
+    expect(line).toContain('"transaction_fs_read_ops_available":true');
+    expect(line).toContain('"transaction_fs_read_ops":0');
+    warn.mockRestore();
   });
 
   test("slow tick emits one bounded privacy-safe aggregate", () => {

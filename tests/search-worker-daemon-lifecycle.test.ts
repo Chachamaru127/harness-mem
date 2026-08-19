@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { canonicalDatabaseIdentity } from "../memory-server/src/core/search-worker-lifecycle";
@@ -8,6 +8,7 @@ const ROOT = resolve(import.meta.dir, "..");
 const DAEMON = resolve(ROOT, "memory-server/src/index.ts");
 const WORKER = resolve(ROOT, "memory-server/src/tools/search-worker.ts");
 const REAL_WORKER = realpathSync(WORKER);
+const PERIODIC_WORKER = resolve(ROOT, "memory-server/src/tools/periodic-ingest-worker.ts");
 const cleanupPids = new Set<number>();
 const cleanupPaths: string[] = [];
 
@@ -95,7 +96,72 @@ function spawnDaemon(home: string, dbPath: string, port: number): ReturnType<typ
   return proc;
 }
 
+function periodicWorkerRows(parentPid: number): Array<{ pid: number; ppid: number; command: string }> {
+  const result = Bun.spawnSync(["ps", "-axo", "pid=,ppid=,command="], { stdout: "pipe", stderr: "inherit" });
+  if (result.exitCode !== 0) return [];
+  return result.stdout.toString().split(/\r?\n/).flatMap((line) => {
+    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/);
+    if (!match || Number(match[2]) !== parentPid || !match[3].includes(PERIODIC_WORKER)) return [];
+    return [{ pid: Number(match[1]), ppid: Number(match[2]), command: match[3] }];
+  });
+}
+
 describe("daemon search-worker lifecycle", () => {
+  test("actual daemon waits <=1s TERM grace, KILLs a busy periodic worker, then closes DB and exits normally", async () => {
+    if (process.platform === "win32") return;
+    const home = mkdtempSync(join(tmpdir(), "harness-mem-periodic-lifecycle-"));
+    cleanupPaths.push(home);
+    const dbPath = join(home, "memory.db");
+    const port = 48_000 + Math.floor(Math.random() * 1_000);
+    const daemon = Bun.spawn([process.execPath, "run", DAEMON], {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        NODE_ENV: "test",
+        HOME: home,
+        HARNESS_MEM_HOME: home,
+        HARNESS_MEM_DB_PATH: dbPath,
+        HARNESS_MEM_HOST: "127.0.0.1",
+        HARNESS_MEM_PORT: String(port),
+        HARNESS_MEM_BACKGROUND_WORKERS_ENABLED: "true",
+        HARNESS_MEM_SEARCH_WORKER: "false",
+        HARNESS_MEM_SEARCH_OFFLOAD: "false",
+        HARNESS_MEM_ENABLE_CODEX_INGEST: "true",
+        HARNESS_MEM_CODEX_INGEST_INTERVAL_MS: "1000",
+        HARNESS_MEM_TEST_INGEST_WORKER_BLOCK_MS: "10000",
+        HARNESS_MEM_ENABLE_CLAUDE_CODE_INGEST: "false",
+        HARNESS_MEM_ENABLE_CURSOR_INGEST: "false",
+        HARNESS_MEM_ENABLE_OPENCODE_INGEST: "false",
+        HARNESS_MEM_ENABLE_GEMINI_INGEST: "false",
+        HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST: "false",
+        HARNESS_MEM_OTEL_ENABLED: "false",
+        HARNESS_MEM_SHUTDOWN_TIMEOUT_MS: "50",
+      },
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    cleanupPids.add(daemon.pid);
+    const worker = await waitFor("periodic worker busy", () => periodicWorkerRows(daemon.pid)[0] ?? null, 15_000);
+    cleanupPids.add(worker.pid);
+    await Bun.sleep(100);
+
+    const shutdownStartedAt = Date.now();
+    daemon.kill("SIGTERM");
+    expect(await daemon.exited).toBe(0);
+    const shutdownElapsedMs = Date.now() - shutdownStartedAt;
+    expect(shutdownElapsedMs).toBeGreaterThanOrEqual(900);
+    expect(shutdownElapsedMs).toBeLessThan(1_800);
+    cleanupPids.delete(daemon.pid);
+    expect(running(worker.pid)).toBe(false);
+    cleanupPids.delete(worker.pid);
+    const heartbeat = JSON.parse(readFileSync(join(home, ".harness-mem/daemon.heartbeat"), "utf8")) as { state?: string };
+    expect(heartbeat.state).toBe("stopped:SIGTERM");
+    const reopened = new (await import("bun:sqlite")).Database(dbPath);
+    const quickCheck = reopened.query<Record<string, string>, []>("PRAGMA quick_check").get();
+    expect(Object.values(quickCheck ?? {})).toContain("ok");
+    reopened.close();
+  }, 30_000);
+
   test("SIGKILL orphan is reaped by the next same-DB daemon, whose shutdown awaits its worker", async () => {
     if (process.platform === "win32") return;
     const home = mkdtempSync(join(tmpdir(), "harness-mem-daemon-lifecycle-"));

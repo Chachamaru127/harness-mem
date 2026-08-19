@@ -7,9 +7,12 @@ import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   configureDatabase as configureDb,
+  assertContentDedupeClaimsReady,
+  contentDedupeClaimsReady,
   initFtsIndex as initFtsFromDb,
   initSchema as initDbSchema,
   migrateSchema as migrateDbSchema,
+  rebuildContentDedupeClaimsProjection,
 } from "../db/schema";
 import { runSearchDbMaintenanceIfDue } from "../db/search-maintenance";
 import type { StorageAdapter } from "../db/storage-adapter";
@@ -70,6 +73,10 @@ import { TtlCache } from "../system-environment/cache";
 import { getTelemetryStatus, hashTelemetryValue, recordRecallTelemetry } from "../telemetry/otel";
 import { SessionManager, buildCheckpointEvent } from "./session-manager";
 import { EventRecorder } from "./event-recorder";
+import {
+  contentDedupeProtectionMask,
+  swapContentDedupeClaimForRestore,
+} from "./content-dedupe-claims";
 import { ObservationStore } from "./observation-store";
 import {
   EXTERNAL_CHANNEL_BLOCKED_PRIVACY_TAGS,
@@ -82,6 +89,7 @@ import {
   IngestCoordinator,
   resolveSlowTickLogMs,
   type PeriodicIngestSource,
+  type PeriodicIngestTickResult,
 } from "./ingest-coordinator";
 import { PeriodicIngestWorkerClient } from "./periodic-ingest-worker-client";
 import {
@@ -565,6 +573,7 @@ type ArchivePayload = {
 type ArchiveStorageRow = {
   archive_id: string;
   observation_id: string;
+  project: string;
   archive_full_ref: string | null;
   archive_state: string;
   reason: string;
@@ -2720,7 +2729,9 @@ export class HarnessMemCore {
 
   private initSchema(): void {
     initDbSchema(this.db);
-    migrateDbSchema(this.db);
+    migrateDbSchema(this.db, {
+      authoritativeContentDedupeMigration: !isLightweightChildProcess(),
+    });
     this.ftsEnabled = initFtsFromDb(this.db);
     this.migrateLegacyProjectAliases();
     this.reconcileAbandonedConsolidationJobs();
@@ -3671,8 +3682,13 @@ export class HarnessMemCore {
           1_000,
           300_000,
         ),
-        onError: (source, reason) => {
-          console.warn(`[ingest-worker] ${source} tick ${reason}`);
+        onError: (source, reason, failure) => {
+          console.warn(`[ingest-worker] ${JSON.stringify({
+            source,
+            reason,
+            error_code: failure?.error_code ?? null,
+            retryable: failure?.retryable ?? null,
+          })}`);
         },
       });
     }
@@ -3899,7 +3915,7 @@ export class HarnessMemCore {
     return db
       .query<ArchiveStorageRow, string[]>(`
         SELECT
-          s.archive_id, s.observation_id, s.archive_full_ref, s.archive_state, s.reason,
+          s.archive_id, s.observation_id, s.project, s.archive_full_ref, s.archive_state, s.reason,
           s.content_sha256, s.manifest_sha256,
           f.payload_json, f.payload_sha256, f.purged_at AS full_purged_at
         FROM mem_archive_stubs s
@@ -4469,6 +4485,49 @@ export class HarnessMemCore {
     this.insertOrReplaceArchiveRows("mem_facts", rows.mem_facts);
     this.insertOrReplaceArchiveRows("mem_nuggets", rows.mem_nuggets);
     this.insertOrReplaceArchiveRows("mem_nugget_vectors", rows.mem_nugget_vectors);
+  }
+
+  private normalizeArchivePayloadProjects(payload: ArchivePayload, archiveProject: string): ArchivePayload {
+    const normalized = structuredClone(payload);
+    const projects = new Set<string>();
+    for (const [tableName, rows] of Object.entries(normalized.rows ?? {})) {
+      for (const row of rows) {
+        if (!Object.hasOwn(row, "project")) continue;
+        if (typeof row.project !== "string") {
+          throw new Error(`archive project metadata is invalid for ${tableName}`);
+        }
+        const project = this.normalizeProjectInput(row.project);
+        row.project = project;
+        projects.add(project);
+      }
+    }
+    if (projects.size > 1) {
+      throw new Error("archive payload contains cross-project rows");
+    }
+    if ([...projects].some((project) => project !== archiveProject)) {
+      throw new Error("archive payload project does not match archive workspace");
+    }
+    return normalized;
+  }
+
+  private reconcileArchivePayloadSessions(payload: ArchivePayload): void {
+    for (const row of payload.rows?.mem_sessions ?? []) {
+      if (typeof row.session_id !== "string" || typeof row.project !== "string") {
+        throw new Error("archive session project metadata is invalid");
+      }
+      const existing = this.db.query<{ project: string }, [string]>(
+        "SELECT project FROM mem_sessions WHERE session_id = ?",
+      ).get(row.session_id);
+      if (!existing) continue;
+      const existingProject = this.normalizeProjectInput(existing.project);
+      if (existingProject !== row.project) {
+        throw new Error("archive restore session belongs to another project");
+      }
+      if (existing.project !== row.project) {
+        this.db.query("UPDATE mem_sessions SET project = ? WHERE session_id = ?")
+          .run(row.project, row.session_id);
+      }
+    }
   }
 
   private processRetryQueue(force = false): void {
@@ -7020,7 +7079,7 @@ export class HarnessMemCore {
     const loadArchive = (): ArchiveStorageRow | null => this.db
       .query(`
         SELECT
-          s.archive_id, s.observation_id, s.archive_full_ref, s.archive_state, s.reason,
+          s.archive_id, s.observation_id, s.project, s.archive_full_ref, s.archive_state, s.reason,
           s.content_sha256, s.manifest_sha256,
           f.payload_json, f.payload_sha256, f.purged_at AS full_purged_at
         FROM mem_archive_stubs s
@@ -7072,6 +7131,20 @@ export class HarnessMemCore {
       );
     }
 
+    let normalizedPayload: ArchivePayload;
+    let normalizedArchiveProject: string;
+    try {
+      if (typeof initial.row.project !== "string") throw new Error("archive workspace metadata is invalid");
+      normalizedArchiveProject = this.normalizeProjectInput(initial.row.project);
+      normalizedPayload = this.normalizeArchivePayloadProjects(initial.payload, normalizedArchiveProject);
+    } catch (error) {
+      return makeErrorResponse(
+        startedAt,
+        error instanceof Error ? error.message : "archive project metadata is invalid",
+        request as unknown as Record<string, unknown>,
+      );
+    }
+
     let transactionStarted = false;
     let restored: {
       row: ArchiveStorageRow;
@@ -7086,26 +7159,60 @@ export class HarnessMemCore {
       if (!current.ok) {
         throw new Error(current.error);
       }
-      const archivedObservation = current.payload.rows.mem_observations?.[0];
+      if (current.payload_sha256 !== initial.payload_sha256) {
+        throw new Error("archive payload changed before restore");
+      }
+      if (this.normalizeProjectInput(current.row.project) !== normalizedArchiveProject) {
+        throw new Error("archive workspace changed before restore");
+      }
+      this.reconcileArchivePayloadSessions(normalizedPayload);
+      const archivedObservation = normalizedPayload.rows.mem_observations?.[0];
       const contentDedupeHash = typeof archivedObservation?.content_dedupe_hash === "string"
         ? archivedObservation.content_dedupe_hash
         : null;
       if (contentDedupeHash) {
-        const activeConflict = this.db.query<{ id: string }, [string, string]>(`
-          SELECT id FROM mem_observations
-          WHERE content_dedupe_hash = ? AND archived_at IS NULL AND id <> ?
-          LIMIT 1
-        `).get(contentDedupeHash, current.row.observation_id);
-        if (activeConflict?.id) {
+        assertContentDedupeClaimsReady(this.db);
+        const archivedProject = typeof archivedObservation?.project === "string"
+          ? archivedObservation.project
+          : (() => { throw new Error("archive dedupe project metadata is invalid"); })();
+        const parseProtectionTags = (value: unknown): string[] => {
+          if (typeof value !== "string") throw new Error("archive dedupe protection metadata is invalid");
+          let parsed: unknown;
+          try { parsed = JSON.parse(value); } catch { throw new Error("archive dedupe protection metadata is invalid"); }
+          if (!Array.isArray(parsed) || parsed.some((entry) => typeof entry !== "string")) {
+            throw new Error("archive dedupe protection metadata is invalid");
+          }
+          return parsed;
+        };
+        const claim = swapContentDedupeClaimForRestore(this.db, {
+          hash: contentDedupeHash,
+          observationId: current.row.observation_id,
+          project: archivedProject,
+          expiresAt: typeof archivedObservation?.expires_at === "string"
+            ? archivedObservation.expires_at
+            : null,
+          protectionMask: contentDedupeProtectionMask(
+            parseProtectionTags(archivedObservation?.privacy_tags_json),
+            parseProtectionTags(archivedObservation?.tags_json),
+          ),
+          now: nowIso(),
+        });
+        if (claim.outcome === "project_mismatch") {
+          throw new Error("archive restore claim belongs to another project");
+        }
+        if (claim.outcome === "protected_expired") {
+          throw new Error("archive restore active successor is privacy-protected");
+        }
+        if (claim.displaced_observation_id && claim.displaced_observation_id !== current.row.observation_id) {
           this.archiveObservationForReplacement(
-            activeConflict.id,
+            claim.displaced_observation_id,
             "archive restore canonical content swap",
           );
         }
       }
-      this.restoreArchivePayloadRows(current.payload);
+      this.restoreArchivePayloadRows(normalizedPayload);
       const restoredAt = nowIso();
-      const observationRows = current.payload.rows.mem_observations ?? [];
+      const observationRows = normalizedPayload.rows.mem_observations ?? [];
       const observation = observationRows[0] ?? {};
       const originalPrivacyTags = parseJsonStringArray(
         typeof observation.privacy_tags_json === "string" ? observation.privacy_tags_json : "[]",
@@ -7130,7 +7237,7 @@ export class HarnessMemCore {
       transactionStarted = false;
       restored = {
         row: current.row,
-        payload: current.payload,
+        payload: normalizedPayload,
         payload_sha256: current.payload_sha256,
         restored_at: restoredAt,
       };
@@ -7175,6 +7282,46 @@ export class HarnessMemCore {
       { ...request, execute: true },
       { manifest_sha256: restored.row.manifest_sha256, ranking: "archive_restore_execute_v1" },
     );
+  }
+
+  adminRebuildContentDedupeClaims(request: { execute?: boolean } = {}): ApiResponse {
+    const startedAt = performance.now();
+    if (request.execute !== true) {
+      const response = makeErrorResponse(
+        startedAt,
+        "content dedupe claims rebuild requires execute=true",
+        request as Record<string, unknown>,
+      );
+      response.meta.error_code = "dedupe_claims_rebuild_execute_required";
+      return response;
+    }
+    try {
+      rebuildContentDedupeClaimsProjection(this.db);
+      if (!contentDedupeClaimsReady(this.db)) {
+        throw new Error("content dedupe claims rebuild did not become ready");
+      }
+      return makeResponse(
+        startedAt,
+        [{ operation: "content_dedupe_claims_rebuild", outcome: "ready", schema_version: 1 }],
+        request as Record<string, unknown>,
+      );
+    } catch {
+      try {
+        this.writeAuditLog("admin.content_dedupe_claims_rebuild", "projection", "content_dedupe_claims", {
+          outcome: "failed",
+          error_code: "dedupe_claims_rebuild_failed",
+        });
+      } catch {
+        // The fixed failure response remains authoritative if audit persistence is unavailable.
+      }
+      const response = makeErrorResponse(
+        startedAt,
+        "content dedupe claims rebuild failed",
+        request as Record<string, unknown>,
+      );
+      response.meta.error_code = "dedupe_claims_rebuild_failed";
+      return response;
+    }
   }
 
   private currentDatabaseIdentitySha256(): string {
@@ -8694,6 +8841,7 @@ export class HarnessMemCore {
     const startedAt = performance.now();
     this.refreshEmbeddingHealth();
     const embeddingReadiness = this.getEmbeddingReadiness();
+    const dedupeClaimsReadiness = contentDedupeClaimsReady(this.db) ? "ready" : "not_ready";
 
     const includeCounts = options.includeCounts === true;
     const counts = includeCounts
@@ -8737,6 +8885,7 @@ export class HarnessMemCore {
           embedding_readiness_required: embeddingReadiness.required,
           embedding_readiness_state: embeddingReadiness.state,
           embedding_readiness_retryable: embeddingReadiness.retryable,
+          dedupe_claims_readiness: dedupeClaimsReadiness,
           telemetry: getTelemetryStatus(),
           embedding_migration_notice: embeddingMigrationNotice,
           features: {
@@ -8798,6 +8947,9 @@ export class HarnessMemCore {
             ...(this.managedRequired && (!this.managedBackend || !this.managedBackend.isConnected())
               ? ["managed mode active but ManagedBackend not connected — writes are BLOCKED (fail-close)"]
               : []),
+            ...(dedupeClaimsReadiness === "not_ready"
+              ? ["content dedupe claims require rebuild; ingest writes are blocked"]
+              : []),
           ],
           counts_status: includeCounts ? "exact" : "omitted",
           ...(counts ? { counts } : {}),
@@ -8812,6 +8964,7 @@ export class HarnessMemCore {
     const startedAt = performance.now();
     const embeddingReadiness = this.getEmbeddingReadiness();
     const managedReady = !this.managedRequired || !!this.managedBackend?.isConnected();
+    const dedupeClaimsReadiness = contentDedupeClaimsReady(this.db) ? "ready" : "not_ready";
     const ready = managedReady && (!embeddingReadiness.required || embeddingReadiness.ready);
 
     return makeResponse(
@@ -8829,6 +8982,7 @@ export class HarnessMemCore {
           embedding_readiness_state: embeddingReadiness.state,
           embedding_readiness_retryable: embeddingReadiness.retryable,
           managed_ready: managedReady,
+          dedupe_claims_readiness: dedupeClaimsReadiness,
           managed_backend: this.managedBackend ? this.managedBackend.getStatus() : null,
         },
       ],
@@ -9654,8 +9808,8 @@ export class HarnessMemCore {
   }
 
   /** Local worker entrypoint. Timer callbacks use the persistent child instead. */
-  runPeriodicIngestTickLocal(source: PeriodicIngestSource): void {
-    this.ingestCoord.runPeriodicIngestTickLocal(source);
+  runPeriodicIngestTickLocal(source: PeriodicIngestSource): PeriodicIngestTickResult {
+    return this.ingestCoord.runPeriodicIngestTickLocal(source);
   }
 
   ingestHermesState(request: HermesStateIngestRequest): Promise<ApiResponse> {
@@ -9741,8 +9895,10 @@ export class HarnessMemCore {
     }
     if (this.periodicIngestWorker) {
       hadPeriodicIngestWorker = true;
-      periodicIngestWorkerStop = this.periodicIngestWorker.stop();
-      this.periodicIngestWorker = null;
+      const periodicIngestWorker = this.periodicIngestWorker;
+      periodicIngestWorkerStop = periodicIngestWorker.stop().finally(() => {
+        if (this.periodicIngestWorker === periodicIngestWorker) this.periodicIngestWorker = null;
+      });
     }
 
     // §91-002: stop partial-finalize scheduler before stopping ingest timers
@@ -9810,7 +9966,10 @@ export class HarnessMemCore {
   }
 
   hasUnconfirmedSearchWorker(): boolean {
-    return this.shuttingDown && this.searchWorker?.hasLiveProcess() === true;
+    return this.shuttingDown && (
+      this.searchWorker?.hasLiveProcess() === true ||
+      this.periodicIngestWorker?.hasLiveProcess() === true
+    );
   }
 
   /**

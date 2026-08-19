@@ -176,6 +176,14 @@ general-lifelog 競合の公開数値については、機械可読な監査証�
 | **Cursor もローカルクライアントとして使う** | `harness-mem setup --platform cursor` → `harness-mem doctor --platform cursor` → 必要なら Cursor を reload / restart |
 | **Hermes Agent を command tower として使う** | Layer 1 MCP は `harness-mem mcp-config --transport http --client hermes --write`。Layer 2 MemoryProvider は [`integrations/hermes/`](integrations/hermes/) の手順を参照 |
 
+定期 ingest が `dedupe_claims_rebuild_required` を返した場合、通常の daemon
+再起動では意図的に write block を維持します。原因となる observation / schema
+drift を解消した後、監査対象の明示 repair を実行します。
+
+```bash
+harness-mem admin-rebuild-dedupe-claims --execute
+```
+
 ### Claude-harness companion mode
 
 Claude-harness は、記憶の内部実装を埋め込まず、harness-mem を外部 companion として管理できます。この場合、Claude-harness は次のコマンドを呼び出します。

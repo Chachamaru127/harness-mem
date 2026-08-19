@@ -6,6 +6,10 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { HarnessMemCore, type Config } from "../../src/core/harness-mem-core";
 import { startHarnessMemServer } from "../../src/server";
+import {
+  migrateSchema,
+  setContentDedupeMigrationTestHook,
+} from "../../src/db/schema";
 
 function createConfig(dir: string): Config {
   return {
@@ -200,6 +204,155 @@ function seedArchiveForObservation(core: HarnessMemCore, observationId: string):
 }
 
 describe("memory admin integration", () => {
+  test("explicit admin claims rebuild repairs drift and keeps failures not-ready", () => {
+    const { core, dir } = createCore("dedupe-claims-rebuild");
+    const db = core.getRawDb();
+    const event = (suffix: string) => ({
+      event_id: `admin-claims-${suffix}`,
+      platform: "claude",
+      project: "admin-project",
+      session_id: "session-admin-claims",
+      event_type: "user_prompt",
+      ts: `2026-08-19T00:00:0${suffix.length}.000Z`,
+      payload: { content: `admin claims rebuild ${suffix}` },
+      tags: [],
+      privacy_tags: [],
+    });
+    try {
+      expect(core.recordEvent(event("before"))).toHaveProperty("ok", true);
+      db.exec("DELETE FROM mem_content_dedupe_claims");
+      migrateSchema(db);
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("not_ready");
+      expect(core.recordEvent(event("blocked"))).toMatchObject({
+        ok: false,
+        error_code: "dedupe_claims_rebuild_required",
+      });
+
+      expect(core.adminRebuildContentDedupeClaims()).toMatchObject({
+        ok: false,
+        meta: { error_code: "dedupe_claims_rebuild_execute_required" },
+      });
+      expect(core.adminRebuildContentDedupeClaims({ execute: true })).toMatchObject({
+        ok: true,
+        items: [{ operation: "content_dedupe_claims_rebuild", outcome: "ready", schema_version: 1 }],
+      });
+      expect(core.recordEvent(event("after"))).toHaveProperty("ok", true);
+      const successAudit = db.query<{ details_json: string }, []>(`
+        SELECT details_json FROM mem_audit_log
+        WHERE action = 'admin.content_dedupe_claims_rebuild'
+        ORDER BY id DESC LIMIT 1
+      `).get();
+      expect(JSON.parse(successAudit?.details_json ?? "{}")).toEqual({ outcome: "ready", schema_version: 1 });
+      expect(db.query<{ count: number }, []>(`
+        SELECT COUNT(*) AS count FROM mem_audit_log
+        WHERE action = 'admin.content_dedupe_claims_rebuild'
+          AND json_extract(details_json, '$.outcome') = 'ready'
+      `).get()?.count).toBe(1);
+
+      db.exec("DELETE FROM mem_content_dedupe_claims");
+      migrateSchema(db);
+      const triggersBeforeAuditFault = db.query<{ name: string; sql: string }, []>(`
+        SELECT name, sql FROM sqlite_master
+        WHERE type = 'trigger' AND name LIKE 'mem_observations_dedupe_claim_a%'
+        ORDER BY name
+      `).all();
+      db.exec(`
+        CREATE TRIGGER fail_dedupe_rebuild_success_audit
+        BEFORE INSERT ON mem_audit_log
+        WHEN NEW.action = 'admin.content_dedupe_claims_rebuild'
+          AND instr(NEW.details_json, '"outcome":"ready"') > 0
+        BEGIN
+          SELECT RAISE(ABORT, 'secret success audit fault');
+        END
+      `);
+      const auditFailed = core.adminRebuildContentDedupeClaims({ execute: true });
+      expect(auditFailed).toMatchObject({
+        ok: false,
+        error: "content dedupe claims rebuild failed",
+        meta: { error_code: "dedupe_claims_rebuild_failed" },
+      });
+      expect(JSON.stringify(auditFailed)).not.toContain("secret success");
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("not_ready");
+      expect(db.query<{ count: number }, []>(
+        "SELECT COUNT(*) AS count FROM mem_content_dedupe_claims",
+      ).get()?.count).toBe(0);
+      expect(db.query<{ name: string; sql: string }, []>(`
+        SELECT name, sql FROM sqlite_master
+        WHERE type = 'trigger' AND name LIKE 'mem_observations_dedupe_claim_a%'
+        ORDER BY name
+      `).all()).toEqual(triggersBeforeAuditFault);
+      expect(db.query<{ count: number }, []>(`
+        SELECT COUNT(*) AS count FROM mem_audit_log
+        WHERE action = 'admin.content_dedupe_claims_rebuild'
+          AND json_extract(details_json, '$.outcome') = 'ready'
+      `).get()?.count).toBe(1);
+      db.exec("DROP TRIGGER fail_dedupe_rebuild_success_audit");
+
+      setContentDedupeMigrationTestHook((phase) => {
+        if (phase === "after_trigger_drop") throw new Error("secret path synthetic rebuild fault");
+      });
+      db.exec(`
+        CREATE TRIGGER fail_dedupe_rebuild_failure_audit
+        BEFORE INSERT ON mem_audit_log
+        WHEN NEW.action = 'admin.content_dedupe_claims_rebuild'
+        BEGIN
+          SELECT RAISE(ABORT, 'secret failure audit fault');
+        END
+      `);
+      const failed = core.adminRebuildContentDedupeClaims({ execute: true });
+      expect(failed).toMatchObject({
+        ok: false,
+        error: "content dedupe claims rebuild failed",
+        meta: { error_code: "dedupe_claims_rebuild_failed" },
+      });
+      expect(JSON.stringify(failed)).not.toContain("secret path");
+      expect(JSON.stringify(failed)).not.toContain("secret failure");
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("not_ready");
+      expect(db.query<{ count: number }, []>(`
+        SELECT COUNT(*) AS count FROM sqlite_master
+        WHERE type = 'trigger' AND name LIKE 'mem_observations_dedupe_claim_a%'
+      `).get()?.count).toBe(3);
+      db.exec("DROP TRIGGER fail_dedupe_rebuild_failure_audit");
+    } finally {
+      setContentDedupeMigrationTestHook(null);
+      core.shutdown("test");
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("content dedupe claims rebuild is exposed through the admin HTTP endpoint", async () => {
+    const runtime = await createRuntime("dedupe-claims-rebuild-endpoint");
+    try {
+      expect(runtime.core.recordEvent({
+        event_id: "admin-claims-endpoint-before",
+        platform: "claude",
+        project: "admin-project",
+        session_id: "session-admin-claims-endpoint",
+        event_type: "user_prompt",
+        ts: "2026-08-19T00:00:00.000Z",
+        payload: { content: "admin claims endpoint before" },
+        tags: [],
+        privacy_tags: [],
+      })).toHaveProperty("ok", true);
+      runtime.core.getRawDb().exec("DELETE FROM mem_content_dedupe_claims");
+      migrateSchema(runtime.core.getRawDb());
+      const response = await postJson(runtime.baseUrl, "/v1/admin/rebuild-content-dedupe-claims", { execute: true });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        ok: true,
+        items: [{ operation: "content_dedupe_claims_rebuild", outcome: "ready", schema_version: 1 }],
+      });
+    } finally {
+      runtime.stop();
+    }
+  });
+
   test("reindexVectors and metrics endpoints data shape", async () => {
     const { core, dir } = createCore("reindex");
     try {

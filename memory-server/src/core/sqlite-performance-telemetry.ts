@@ -16,18 +16,25 @@ interface EnsuredSessionState {
   teamId: string | null;
 }
 
+interface ProcessIoCounters {
+  fsReadOps: number | null;
+  majorPageFaults: number | null;
+}
+
 export interface IngestTickTelemetryContext {
   readonly source: string;
   readonly startedAt: string;
   readonly startedAtMs: number;
-  readonly fsReadStart: number;
-  readonly majorPageFaultStart: number;
+  readonly ioStart: ProcessIoCounters;
   readonly phases: Map<string, PhaseAggregate>;
   readonly ensuredSessions: Map<string, EnsuredSessionState>;
+  readonly observedSessions: Map<string, EnsuredSessionState>;
   readonly activitySessions: Set<string>;
   eventCount: number;
   transactionFsReadOps: number;
   transactionMajorPageFaults: number;
+  transactionFsReadOpsAvailable: boolean;
+  transactionMajorPageFaultsAvailable: boolean;
   sqliteBusyCount: number;
   sqliteLockedCount: number;
   sqliteLastCode: string | null;
@@ -39,21 +46,36 @@ export interface IngestTickTelemetryContext {
 let currentTick: IngestTickTelemetryContext | null = null;
 let lastWalCheckpointCompletedAtMs: number | null = null;
 let lastWalCheckpointResult: { busy: number; log: number; checkpointed: number } | null = null;
+let resourceUsageReader: () => { fsRead?: number; majorPageFault?: number } = () => process.resourceUsage();
 
 const SQLITE_PHASES = new Set([
   "ensure_session", "ensure_session_skipped", "event_insert", "observation_insert",
-  "observation_insert_retry", "dedupe_conflict_lookup", "dedupe_expired_archive",
+  "dedupe_claim_readiness", "dedupe_claim_arbitration", "dedupe_expired_archive",
   "tags_insert", "vector_upsert", "extract_entities", "extract_graph_relations",
   "auto_link", "auto_supersedes", "semantic_auto_linker", "insert_nuggets", "audit_log",
   "record_event_transaction_total", "record_event_commit_residual",
-  "session_activity_update",
+  "session_activity_update", "session_metadata_update",
 ]);
 
-function readFsOperations(): number {
+function finiteCounter(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+export function setResourceUsageReaderForTests(
+  reader: (() => { fsRead?: number; majorPageFault?: number }) | null,
+): void {
+  resourceUsageReader = reader ?? (() => process.resourceUsage());
+}
+
+export function readProcessIoCounters(): ProcessIoCounters {
   try {
-    return Number(process.resourceUsage().fsRead ?? 0);
+    const usage = resourceUsageReader();
+    return {
+      fsReadOps: finiteCounter(usage.fsRead),
+      majorPageFaults: finiteCounter(usage.majorPageFault),
+    };
   } catch {
-    return 0;
+    return { fsReadOps: null, majorPageFaults: null };
   }
 }
 
@@ -91,18 +113,21 @@ function readDurableWalCheckpoint(db: Database): {
 
 export function beginIngestTickTelemetry(source: string): IngestTickTelemetryContext {
   const now = Date.now();
+  const ioStart = readProcessIoCounters();
   const context: IngestTickTelemetryContext = {
     source,
     startedAt: new Date(now).toISOString(),
     startedAtMs: now,
-    fsReadStart: readFsOperations(),
-    majorPageFaultStart: Number(process.resourceUsage().majorPageFault ?? 0),
+    ioStart,
     phases: new Map(),
     ensuredSessions: new Map(),
+    observedSessions: new Map(),
     activitySessions: new Set(),
     eventCount: 0,
     transactionFsReadOps: 0,
     transactionMajorPageFaults: 0,
+    transactionFsReadOpsAvailable: ioStart.fsReadOps !== null,
+    transactionMajorPageFaultsAvailable: ioStart.majorPageFaults !== null,
     sqliteBusyCount: 0,
     sqliteLockedCount: 0,
     sqliteLastCode: null,
@@ -132,28 +157,45 @@ export function shouldEnsureSessionForCurrentTick(sessionId: string, next: Ensur
   const context = currentTick;
   if (!context) return true;
   context.eventCount += 1;
-  const previous = context.ensuredSessions.get(sessionId);
-  if (!previous) return true;
-  const needsRefresh =
-    next.startedAt < previous.startedAt ||
-    (previous.correlationId === null && next.correlationId !== null);
-  return needsRefresh;
+  return !context.ensuredSessions.has(sessionId);
 }
 
-export function recordSessionEnsuredForCurrentTick(sessionId: string, next: EnsuredSessionState): void {
-  const context = currentTick;
-  if (!context) return;
-  const previous = context.ensuredSessions.get(sessionId);
-  context.ensuredSessions.set(sessionId, previous
+function mergeSessionState(previous: EnsuredSessionState | undefined, next: EnsuredSessionState): EnsuredSessionState {
+  return previous
     ? {
-      platform: next.platform,
-      project: next.project,
+      platform: previous.platform,
+      project: previous.project,
       startedAt: next.startedAt < previous.startedAt ? next.startedAt : previous.startedAt,
       correlationId: previous.correlationId ?? next.correlationId,
       userId: previous.userId,
       teamId: previous.teamId,
     }
-    : next);
+    : next;
+}
+
+export function recordSessionEnsuredForCurrentTick(sessionId: string, next: EnsuredSessionState): void {
+  const context = currentTick;
+  if (!context) return;
+  context.ensuredSessions.set(sessionId, next);
+  context.observedSessions.set(sessionId, mergeSessionState(context.observedSessions.get(sessionId), next));
+}
+
+export function recordSessionObservedForCurrentTick(sessionId: string, next: EnsuredSessionState): void {
+  const context = currentTick;
+  if (!context) return;
+  context.observedSessions.set(sessionId, mergeSessionState(context.observedSessions.get(sessionId), next));
+}
+
+export function shouldPersistSessionMetadataForCurrentTick(
+  sessionId: string,
+  next: EnsuredSessionState,
+): boolean {
+  const context = currentTick;
+  if (!context) return false;
+  const previous = context.observedSessions.get(sessionId) ?? context.ensuredSessions.get(sessionId);
+  if (!previous) return false;
+  return next.startedAt < previous.startedAt ||
+    (previous.correlationId === null && next.correlationId !== null);
 }
 
 export function shouldPersistSessionActivityForCurrentTick(sessionId: string): boolean {
@@ -186,22 +228,22 @@ export function recordWalCheckpointCompleted(
   }
 }
 
-export function readProcessIoCounters(): { fsReadOps: number; majorPageFaults: number } {
-  const usage = process.resourceUsage();
-  return {
-    fsReadOps: Number(usage.fsRead ?? 0),
-    majorPageFaults: Number(usage.majorPageFault ?? 0),
-  };
-}
-
 export function recordTransactionIoDelta(
-  before: { fsReadOps: number; majorPageFaults: number },
-  after: { fsReadOps: number; majorPageFaults: number },
+  before: ProcessIoCounters,
+  after: ProcessIoCounters,
 ): void {
   const context = currentTick;
   if (!context) return;
-  context.transactionFsReadOps += Math.max(0, after.fsReadOps - before.fsReadOps);
-  context.transactionMajorPageFaults += Math.max(0, after.majorPageFaults - before.majorPageFaults);
+  if (before.fsReadOps === null || after.fsReadOps === null) {
+    context.transactionFsReadOpsAvailable = false;
+  } else if (context.transactionFsReadOpsAvailable) {
+    context.transactionFsReadOps += Math.max(0, after.fsReadOps - before.fsReadOps);
+  }
+  if (before.majorPageFaults === null || after.majorPageFaults === null) {
+    context.transactionMajorPageFaultsAvailable = false;
+  } else if (context.transactionMajorPageFaultsAvailable) {
+    context.transactionMajorPageFaults += Math.max(0, after.majorPageFaults - before.majorPageFaults);
+  }
 }
 
 export function sqliteErrorCodes(error: unknown): { code: string | null; extendedCode: number | null; busyOrLocked: boolean } {
@@ -265,6 +307,9 @@ export function endIngestTickTelemetry(
   const checkpointCompletedAtMs = durableCheckpoint?.completedAtMs ?? lastWalCheckpointCompletedAtMs;
   const checkpointResult = durableCheckpoint?.result ?? lastWalCheckpointResult;
   const walSize = walBytes(db);
+  const ioEnd = readProcessIoCounters();
+  const osFsReadOpsAvailable = context.ioStart.fsReadOps !== null && ioEnd.fsReadOps !== null;
+  const osMajorPageFaultsAvailable = context.ioStart.majorPageFaults !== null && ioEnd.majorPageFaults !== null;
   console.warn(`[sqlite-perf] ${JSON.stringify({
     kind: "slow_ingest_tick",
     tick_available: true,
@@ -272,7 +317,7 @@ export function endIngestTickTelemetry(
     source: context.source,
     elapsed_ms: elapsedMs,
     event_count: context.eventCount,
-    distinct_session_count: context.ensuredSessions.size,
+    distinct_session_count: context.observedSessions.size,
     phases,
     wal_size_available: walSize !== null,
     ...(walSize !== null ? { wal_bytes: walSize } : {}),
@@ -280,10 +325,18 @@ export function endIngestTickTelemetry(
     wal_checkpoint_age_available: checkpointCompletedAtMs !== null,
     ...(checkpointCompletedAtMs !== null ? { wal_checkpoint_age_ms: Math.max(0, now - checkpointCompletedAtMs) } : {}),
     ...(checkpointResult !== null ? { wal_checkpoint: checkpointResult } : {}),
-    os_fs_read_ops: Math.max(0, readFsOperations() - context.fsReadStart),
-    os_major_page_faults: Math.max(0, Number(process.resourceUsage().majorPageFault ?? 0) - context.majorPageFaultStart),
-    transaction_fs_read_ops: context.transactionFsReadOps,
-    transaction_major_page_faults: context.transactionMajorPageFaults,
+    os_fs_read_ops_available: osFsReadOpsAvailable,
+    ...(osFsReadOpsAvailable ? { os_fs_read_ops: Math.max(0, ioEnd.fsReadOps! - context.ioStart.fsReadOps!) } : {}),
+    os_major_page_faults_available: osMajorPageFaultsAvailable,
+    ...(osMajorPageFaultsAvailable ? {
+      os_major_page_faults: Math.max(0, ioEnd.majorPageFaults! - context.ioStart.majorPageFaults!),
+    } : {}),
+    transaction_fs_read_ops_available: context.transactionFsReadOpsAvailable,
+    ...(context.transactionFsReadOpsAvailable ? { transaction_fs_read_ops: context.transactionFsReadOps } : {}),
+    transaction_major_page_faults_available: context.transactionMajorPageFaultsAvailable,
+    ...(context.transactionMajorPageFaultsAvailable ? {
+      transaction_major_page_faults: context.transactionMajorPageFaults,
+    } : {}),
     io_counter_scope: "process_delta_not_bytes",
     successful_lock_wait_available: false,
     sqlite_db_read_latency_available: false,

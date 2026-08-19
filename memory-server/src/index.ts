@@ -70,7 +70,7 @@ const gracefulShutdown = async (signal: string): Promise<void> => {
   let watchdog: ReturnType<typeof setTimeout>;
   const enforceShutdownDeadline = (): void => {
     if (core.hasUnconfirmedSearchWorker()) {
-      console.error("[harness-memd] shutdown deadline reached; waiting for owned search worker exit");
+      console.error("[harness-memd] shutdown deadline reached; waiting for owned worker exit");
       watchdog = setTimeout(enforceShutdownDeadline, shutdownTimeoutMs);
       return;
     }

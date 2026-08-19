@@ -6,6 +6,385 @@ function parsePragmaInt(raw: string | undefined): number | null {
   return Number.isFinite(value) ? Math.trunc(value) : null;
 }
 
+const DEDUPE_CLAIMS_VERSION = "1";
+const DEDUPE_CLAIMS_VERSION_KEY = "dedupe_claims.schema_version";
+const DEDUPE_CLAIMS_READINESS_KEY = "dedupe_claims.readiness";
+const JS_TRIM_SQL_CHARS = [
+  9, 10, 11, 12, 13, 32, 160, 5760,
+  8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202,
+  8232, 8233, 8239, 8287, 12288, 65279,
+].map((codePoint) => `char(${codePoint})`).join(" || ");
+const normalizedProtectionTagSql = "lower(trim(CAST(value AS TEXT), " + JS_TRIM_SQL_CHARS + "))";
+
+const protectionMaskSql = (alias: string): string => `
+  (CASE WHEN EXISTS (
+    SELECT 1 FROM (
+      SELECT value FROM json_each(${alias}.privacy_tags_json)
+      UNION ALL SELECT value FROM json_each(${alias}.tags_json)
+    ) WHERE ${normalizedProtectionTagSql} = 'private'
+  ) THEN 1 ELSE 0 END)
+  | (CASE WHEN EXISTS (
+    SELECT 1 FROM (
+      SELECT value FROM json_each(${alias}.privacy_tags_json)
+      UNION ALL SELECT value FROM json_each(${alias}.tags_json)
+    ) WHERE ${normalizedProtectionTagSql} = 'secret'
+  ) THEN 2 ELSE 0 END)
+  | (CASE WHEN EXISTS (
+    SELECT 1 FROM (
+      SELECT value FROM json_each(${alias}.privacy_tags_json)
+      UNION ALL SELECT value FROM json_each(${alias}.tags_json)
+    ) WHERE ${normalizedProtectionTagSql} = 'sensitive'
+  ) THEN 4 ELSE 0 END)
+  | (CASE WHEN EXISTS (
+    SELECT 1 FROM (
+      SELECT value FROM json_each(${alias}.privacy_tags_json)
+      UNION ALL SELECT value FROM json_each(${alias}.tags_json)
+    ) WHERE ${normalizedProtectionTagSql} = 'legal_hold'
+  ) THEN 8 ELSE 0 END)
+`;
+
+const invalidProtectionMetadataSql = (alias: string): string => `
+  json_valid(${alias}.privacy_tags_json) = 0
+  OR json_type(${alias}.privacy_tags_json) <> 'array'
+  OR EXISTS (SELECT 1 FROM json_each(${alias}.privacy_tags_json) WHERE type <> 'text')
+  OR json_valid(${alias}.tags_json) = 0
+  OR json_type(${alias}.tags_json) <> 'array'
+  OR EXISTS (SELECT 1 FROM json_each(${alias}.tags_json) WHERE type <> 'text')
+`;
+
+function initContentDedupeClaimsTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mem_content_dedupe_claims (
+      content_dedupe_hash TEXT PRIMARY KEY,
+      canonical_observation_id TEXT NOT NULL,
+      project TEXT NOT NULL,
+      expires_at TEXT,
+      protection_mask INTEGER NOT NULL,
+      generation INTEGER NOT NULL DEFAULT 1,
+      last_outcome TEXT NOT NULL DEFAULT 'claimed',
+      displaced_observation_id TEXT,
+      updated_at TEXT NOT NULL
+    ) WITHOUT ROWID;
+  `);
+}
+
+type ContentDedupeMigrationPhase = "exhaustive_scan" | "after_trigger_drop";
+let contentDedupeMigrationTestHook: ((phase: ContentDedupeMigrationPhase) => void) | null = null;
+
+export function setContentDedupeMigrationTestHook(
+  hook: ((phase: ContentDedupeMigrationPhase) => void) | null,
+): void {
+  contentDedupeMigrationTestHook = hook;
+}
+
+function contentDedupeClaimTriggerStatements(): Array<{ name: string; sql: string }> {
+  const mask = protectionMaskSql("NEW");
+  return [
+    {
+      name: "mem_observations_dedupe_claim_ai",
+      sql: `CREATE TRIGGER mem_observations_dedupe_claim_ai
+    AFTER INSERT ON mem_observations
+    WHEN NEW.content_dedupe_hash IS NOT NULL AND NEW.archived_at IS NULL
+    BEGIN
+      SELECT CASE WHEN ${invalidProtectionMetadataSql("NEW")}
+        THEN RAISE(ABORT, 'content dedupe protection metadata invalid') END;
+      INSERT OR IGNORE INTO mem_content_dedupe_claims(
+        content_dedupe_hash, canonical_observation_id, project, expires_at,
+        protection_mask, generation, last_outcome, displaced_observation_id, updated_at
+      ) VALUES (
+        NEW.content_dedupe_hash, NEW.id, NEW.project, NEW.expires_at,
+        ${mask}, 1, 'claimed', NULL, NEW.updated_at
+      );
+      SELECT CASE WHEN NOT EXISTS (
+        SELECT 1 FROM mem_content_dedupe_claims
+        WHERE content_dedupe_hash = NEW.content_dedupe_hash
+          AND canonical_observation_id = NEW.id
+          AND project = NEW.project
+      ) THEN RAISE(ABORT, 'content dedupe claim drift') END;
+    END`,
+    },
+    {
+      name: "mem_observations_dedupe_claim_au",
+      sql: `CREATE TRIGGER mem_observations_dedupe_claim_au
+    AFTER UPDATE OF archived_at, content_dedupe_hash, project, expires_at,
+      privacy_tags_json, tags_json ON mem_observations
+    BEGIN
+      SELECT CASE WHEN NEW.content_dedupe_hash IS NOT NULL AND NEW.archived_at IS NULL
+        AND (${invalidProtectionMetadataSql("NEW")})
+        THEN RAISE(ABORT, 'content dedupe protection metadata invalid') END;
+      DELETE FROM mem_content_dedupe_claims
+      WHERE content_dedupe_hash = OLD.content_dedupe_hash
+        AND canonical_observation_id = OLD.id
+        AND (NEW.archived_at IS NOT NULL OR NEW.content_dedupe_hash IS NULL
+          OR NEW.content_dedupe_hash <> OLD.content_dedupe_hash);
+
+      UPDATE mem_content_dedupe_claims SET
+        project = NEW.project,
+        expires_at = NEW.expires_at,
+        protection_mask = ${mask},
+        updated_at = NEW.updated_at
+      WHERE NEW.archived_at IS NULL
+        AND content_dedupe_hash = NEW.content_dedupe_hash
+        AND canonical_observation_id = NEW.id;
+
+      INSERT OR IGNORE INTO mem_content_dedupe_claims(
+        content_dedupe_hash, canonical_observation_id, project, expires_at,
+        protection_mask, generation, last_outcome, displaced_observation_id, updated_at
+      ) SELECT NEW.content_dedupe_hash, NEW.id, NEW.project, NEW.expires_at,
+        ${mask}, 1, 'claimed', NULL, NEW.updated_at
+      WHERE NEW.content_dedupe_hash IS NOT NULL AND NEW.archived_at IS NULL;
+
+      SELECT CASE WHEN NEW.content_dedupe_hash IS NOT NULL AND NEW.archived_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM mem_content_dedupe_claims
+          WHERE content_dedupe_hash = NEW.content_dedupe_hash
+            AND canonical_observation_id = NEW.id
+            AND project = NEW.project
+        ) THEN RAISE(ABORT, 'content dedupe claim drift') END;
+    END`,
+    },
+    {
+      name: "mem_observations_dedupe_claim_ad",
+      sql: `CREATE TRIGGER mem_observations_dedupe_claim_ad
+    AFTER DELETE ON mem_observations
+    WHEN OLD.content_dedupe_hash IS NOT NULL
+    BEGIN
+      DELETE FROM mem_content_dedupe_claims
+      WHERE content_dedupe_hash = OLD.content_dedupe_hash
+        AND canonical_observation_id = OLD.id;
+    END`,
+    },
+  ];
+}
+
+function normalizeSqlBody(sql: string): string {
+  let normalized = "";
+  let quote: "'" | "\"" | "`" | null = null;
+  let pendingSpace = false;
+  for (let index = 0; index < sql.length; index += 1) {
+    const character = sql[index]!;
+    if (quote) {
+      normalized += character;
+      if (character === quote) {
+        if (sql[index + 1] === quote) {
+          normalized += quote;
+          index += 1;
+        } else {
+          quote = null;
+        }
+      }
+      continue;
+    }
+    if (character === "'" || character === "\"" || character === "`") {
+      if (pendingSpace && normalized) normalized += " ";
+      pendingSpace = false;
+      quote = character;
+      normalized += character;
+      continue;
+    }
+    if (/\s/.test(character)) {
+      pendingSpace = true;
+      continue;
+    }
+    if (pendingSpace && normalized) normalized += " ";
+    pendingSpace = false;
+    normalized += character.toLowerCase();
+  }
+  return normalized.trim().replace(/;$/, "");
+}
+
+function contentDedupeTriggersComplete(db: Database): boolean {
+  const actual = new Map(db.query<{ name: string; sql: string | null }, []>(`
+    SELECT name, sql FROM sqlite_master
+    WHERE type = 'trigger' AND name IN (
+      'mem_observations_dedupe_claim_ai',
+      'mem_observations_dedupe_claim_au',
+      'mem_observations_dedupe_claim_ad'
+    )
+  `).all().map((row) => [row.name, row.sql]));
+  return contentDedupeClaimTriggerStatements().every(({ name, sql }) => {
+    const actualSql = actual.get(name);
+    return typeof actualSql === "string" && normalizeSqlBody(actualSql) === normalizeSqlBody(sql);
+  });
+}
+
+function installContentDedupeClaimTriggers(db: Database): void {
+  const statements = contentDedupeClaimTriggerStatements();
+  db.exec(statements.map(({ name }) => `DROP TRIGGER IF EXISTS ${name};`).join("\n"));
+  contentDedupeMigrationTestHook?.("after_trigger_drop");
+  for (const { sql } of statements) db.exec(sql);
+}
+
+function writeContentDedupeReadiness(db: Database, value: "building" | "ready" | "not_ready", now: string): void {
+  db.query(`INSERT INTO mem_meta(key, value, updated_at) VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
+    .run(DEDUPE_CLAIMS_READINESS_KEY, value, now);
+}
+
+function markContentDedupeNotReady(db: Database): void {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    writeContentDedupeReadiness(db, "not_ready", new Date().toISOString());
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function markContentDedupeNotReadyUnlessRepaired(db: Database): void {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const readiness = db.query<{ value: string }, [string]>(
+      "SELECT value FROM mem_meta WHERE key = ?",
+    ).get(DEDUPE_CLAIMS_READINESS_KEY)?.value;
+    const schemaVersion = db.query<{ value: string }, [string]>(
+      "SELECT value FROM mem_meta WHERE key = ?",
+    ).get(DEDUPE_CLAIMS_VERSION_KEY)?.value;
+    if (!(readiness === "ready"
+      && schemaVersion === DEDUPE_CLAIMS_VERSION
+      && contentDedupeTriggersComplete(db))) {
+      writeContentDedupeReadiness(db, "not_ready", new Date().toISOString());
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function migrateContentDedupeClaims(
+  db: Database,
+  authoritative: boolean,
+  forceRebuild = false,
+  onRebuildReady?: () => void,
+): void {
+  initContentDedupeClaimsTable(db);
+  let readiness = db.query<{ value: string }, [string]>(
+    "SELECT value FROM mem_meta WHERE key = ?",
+  ).get(DEDUPE_CLAIMS_READINESS_KEY)?.value;
+  const schemaVersion = db.query<{ value: string }, [string]>(
+    "SELECT value FROM mem_meta WHERE key = ?",
+  ).get(DEDUPE_CLAIMS_VERSION_KEY)?.value;
+  const triggersComplete = contentDedupeTriggersComplete(db);
+
+  if (!authoritative) {
+    if (readiness === "ready" && schemaVersion === DEDUPE_CLAIMS_VERSION && triggersComplete) return;
+    markContentDedupeNotReadyUnlessRepaired(db);
+    return;
+  }
+  if (schemaVersion !== undefined && schemaVersion !== "0" && schemaVersion !== DEDUPE_CLAIMS_VERSION) {
+    markContentDedupeNotReady(db);
+    return;
+  }
+  if (schemaVersion === DEDUPE_CLAIMS_VERSION
+    && readiness !== "ready"
+    && readiness !== "not_ready"
+    && readiness !== "building"
+    && !forceRebuild) {
+    markContentDedupeNotReady(db);
+    return;
+  }
+  if (readiness === "ready" && schemaVersion === DEDUPE_CLAIMS_VERSION && !triggersComplete) {
+    markContentDedupeNotReady(db);
+    readiness = "not_ready";
+    if (!forceRebuild) return;
+  }
+  if (readiness === "not_ready" && schemaVersion === DEDUPE_CLAIMS_VERSION && !forceRebuild) return;
+  const now = new Date().toISOString();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    let rebuildReady = false;
+    contentDedupeMigrationTestHook?.("exhaustive_scan");
+    const invalid = db.query<{ invalid: number }, []>(`
+      SELECT 1 AS invalid FROM mem_observations
+      WHERE archived_at IS NULL AND content_dedupe_hash IS NOT NULL
+        AND (${invalidProtectionMetadataSql("mem_observations")})
+      LIMIT 1
+    `).get();
+    const ambiguous = db.query<{ invalid: number }, []>(`
+      SELECT 1 AS invalid FROM mem_observations
+      WHERE archived_at IS NULL AND content_dedupe_hash IS NOT NULL
+      GROUP BY content_dedupe_hash HAVING COUNT(*) <> 1 LIMIT 1
+    `).get();
+    const drift = !invalid && !ambiguous
+      && readiness === "ready" && schemaVersion === DEDUPE_CLAIMS_VERSION
+      ? db.query<{ invalid: number }, []>(`
+        SELECT 1 AS invalid FROM mem_observations o
+        LEFT JOIN mem_content_dedupe_claims c
+          ON c.content_dedupe_hash = o.content_dedupe_hash
+        WHERE o.archived_at IS NULL AND o.content_dedupe_hash IS NOT NULL
+          AND (c.canonical_observation_id IS NULL OR c.canonical_observation_id <> o.id
+            OR c.project <> o.project OR c.expires_at IS NOT o.expires_at
+            OR c.protection_mask <> (${protectionMaskSql("o")}))
+        UNION ALL
+        SELECT 1 AS invalid FROM mem_content_dedupe_claims c
+        LEFT JOIN mem_observations o ON o.id = c.canonical_observation_id
+          AND o.archived_at IS NULL AND o.content_dedupe_hash = c.content_dedupe_hash
+        WHERE o.id IS NULL
+        LIMIT 1
+      `).get() : { invalid: 1 };
+    if (invalid || ambiguous) {
+      db.exec("DELETE FROM mem_content_dedupe_claims");
+      writeContentDedupeReadiness(db, "not_ready", now);
+    } else if (drift && readiness === "ready" && schemaVersion === DEDUPE_CLAIMS_VERSION && !forceRebuild) {
+      writeContentDedupeReadiness(db, "not_ready", now);
+    } else if (drift || forceRebuild) {
+      writeContentDedupeReadiness(db, "building", now);
+      installContentDedupeClaimTriggers(db);
+      db.exec("DELETE FROM mem_content_dedupe_claims");
+      db.exec(`
+        INSERT INTO mem_content_dedupe_claims(
+          content_dedupe_hash, canonical_observation_id, project, expires_at,
+          protection_mask, generation, last_outcome, displaced_observation_id, updated_at
+        )
+        SELECT content_dedupe_hash, id, project, expires_at,
+          ${protectionMaskSql("mem_observations")}, 1, 'claimed', NULL, updated_at
+        FROM mem_observations
+        WHERE archived_at IS NULL AND content_dedupe_hash IS NOT NULL
+      `);
+      writeContentDedupeReadiness(db, "ready", now);
+      rebuildReady = true;
+    }
+    if (!invalid && !ambiguous) {
+      db.query(`INSERT INTO mem_meta(key, value, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
+        .run(DEDUPE_CLAIMS_VERSION_KEY, DEDUPE_CLAIMS_VERSION, now);
+    }
+    if (rebuildReady) onRebuildReady?.();
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function rebuildContentDedupeClaimsProjection(db: Database): void {
+  markContentDedupeNotReady(db);
+  migrateContentDedupeClaims(db, true, true, () => {
+    db.query(`
+      INSERT INTO mem_audit_log(action, actor, target_type, target_id, details_json, created_at)
+      VALUES ('admin.content_dedupe_claims_rebuild', 'system', 'projection',
+        'content_dedupe_claims', ?, ?)
+    `).run(JSON.stringify({ outcome: "ready", schema_version: 1 }), new Date().toISOString());
+  });
+}
+
+export function contentDedupeClaimsReady(db: Database): boolean {
+  const rows = db.query<{ key: string; value: string }, [string, string]>(
+    "SELECT key, value FROM mem_meta WHERE key IN (?, ?)",
+  ).all(DEDUPE_CLAIMS_READINESS_KEY, DEDUPE_CLAIMS_VERSION_KEY);
+  const values = new Map(rows.map((row) => [row.key, row.value]));
+  return values.get(DEDUPE_CLAIMS_READINESS_KEY) === "ready"
+    && values.get(DEDUPE_CLAIMS_VERSION_KEY) === DEDUPE_CLAIMS_VERSION;
+}
+
+export function assertContentDedupeClaimsReady(db: Database): void {
+  if (!contentDedupeClaimsReady(db)) {
+    throw new Error("content dedupe claims require rebuild");
+  }
+}
+
 export function configureDatabase(
   db: Database,
   env: Record<string, string | undefined> = process.env,
@@ -669,6 +1048,7 @@ export function initSchema(db: Database): void {
   initWorkGraphSchema(db);
   initRecallProjectionSchema(db);
   initArchiveSchema(db);
+  initContentDedupeClaimsTable(db);
 }
 
 function addColumnIfMissing(db: Database, tableName: string, columnName: string, definition: string): void {
@@ -795,7 +1175,10 @@ function migrateTemporalAnchorColumns(db: Database): void {
   `);
 }
 
-export function migrateSchema(db: Database): void {
+export function migrateSchema(
+  db: Database,
+  options: { authoritativeContentDedupeMigration?: boolean } = {},
+): void {
   migrateMemVectorsPrimaryKey(db);
 
   try {
@@ -1355,6 +1738,7 @@ export function migrateSchema(db: Database): void {
   initWorkGraphSchema(db);
   initRecallProjectionSchema(db);
   initArchiveSchema(db);
+  migrateContentDedupeClaims(db, options.authoritativeContentDedupeMigration !== false);
 }
 
 export function initFtsIndex(db: Database): boolean {

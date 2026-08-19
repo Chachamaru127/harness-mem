@@ -19,6 +19,8 @@ export interface CodexSessionsEvent {
   timestamp: string;
   payload: Record<string, unknown>;
   dedupeHash: string;
+  contextBefore: CodexSessionsContext;
+  contextAfter: CodexSessionsContext;
 }
 
 interface NormalizedCodexEvent {
@@ -109,6 +111,7 @@ export function parseCodexSessionsChunk(params: {
     }
 
     for (const normalized of normalizedEvents) {
+      const contextBefore = { ...context };
       const normalizedPrompt = normalizeString(normalized.payload.prompt) || normalizeString(normalized.payload.content);
       if (normalized.eventType === "user_prompt" && normalizedPrompt) {
         context.lastUserPrompt = normalizedPrompt;
@@ -136,6 +139,8 @@ export function parseCodexSessionsChunk(params: {
         timestamp: normalized.timestamp,
         payload: normalized.payload,
         dedupeHash,
+        contextBefore,
+        contextAfter: { ...context },
       });
     }
   }

@@ -13,6 +13,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { HarnessMemCore, type Config, type EventEnvelope } from "../../src/core/harness-mem-core";
+import { Database } from "bun:sqlite";
+import { configureDatabase, initSchema } from "../../src/db/schema";
 
 const ENV_KEYS = [
   "HARNESS_MEM_DREAMING_LLM_PROVIDER",
@@ -1882,28 +1884,40 @@ describe("S154-201 dreaming consolidation job", () => {
     }
   });
 
-  test("dreaming tense rewrite fail-closes malformed privacy tag metadata", async () => {
-    mockOllamaRewrite({
-      changed: true,
-      false_positive: false,
-      rewritten: "GearChange API spec was submitted.",
-      completed_at: "2026-06-09T10:00:00.000Z",
-      reason: "Evidence says submitted.",
-    });
+  test("authoritative migration fail-closes legacy malformed privacy metadata", () => {
+    const config = createConfig("tense-malformed-privacy");
+    const legacy = new Database(config.dbPath);
+    configureDatabase(legacy);
+    initSchema(legacy);
+    legacy.query(`
+      INSERT INTO mem_sessions(session_id, platform, project, started_at, created_at, updated_at)
+      VALUES ('s-malformed-privacy', 'claude', 'dream-malformed-privacy', ?, ?, ?)
+    `).run(
+      "2026-06-08T10:00:00.000Z",
+      "2026-06-08T10:00:00.000Z",
+      "2026-06-08T10:00:00.000Z",
+    );
+    legacy.query(`
+      INSERT INTO mem_observations(
+        id, platform, project, session_id, content, content_redacted,
+        content_dedupe_hash, tags_json, privacy_tags_json, created_at, updated_at
+      ) VALUES (
+        'legacy-malformed-privacy', 'claude', 'dream-malformed-privacy',
+        's-malformed-privacy', 'legacy planned content', 'legacy planned content',
+        'legacy-malformed-privacy-hash', '[]', '[{"tag":"private"}]', ?, ?
+      )
+    `).run("2026-06-08T10:00:00.000Z", "2026-06-08T10:00:00.000Z");
+    legacy.close();
 
-    const core = new HarnessMemCore(createConfig("tense-malformed-privacy"));
+    const core = new HarnessMemCore(config);
     try {
-      core.recordEvent({
-        platform: "claude",
-        project: "dream-malformed-privacy",
-        session_id: "s-malformed-privacy",
-        event_type: "checkpoint",
-        ts: "2026-06-08T10:00:00.000Z",
-        payload: { prompt: "We will submit the GearChange API spec on Friday." },
-        tags: [],
-        privacy_tags: [],
-      });
-      core.recordEvent({
+      expect(core.getRawDb().query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("not_ready");
+      expect(core.getRawDb().query<{ count: number }, []>(
+        "SELECT COUNT(*) AS count FROM mem_content_dedupe_claims",
+      ).get()?.count).toBe(0);
+      const rejected = core.recordEvent({
         platform: "claude",
         project: "dream-malformed-privacy",
         session_id: "s-malformed-privacy",
@@ -1913,23 +1927,8 @@ describe("S154-201 dreaming consolidation job", () => {
         tags: [],
         privacy_tags: [],
       });
-      core.getRawDb()
-        .query(`
-          UPDATE mem_observations
-          SET privacy_tags_json = '[{"tag":"private"}]'
-          WHERE project = 'dream-malformed-privacy'
-            AND content_redacted LIKE '%will submit%'
-        `)
-        .run();
-
-      const stats = await core.runConsolidation({ project: "dream-malformed-privacy", session_id: "s-malformed-privacy", reason: "dreaming" });
-      expect(stats.ok).toBe(true);
-      expect((stats.items[0] as { dreaming_rewrites_created?: number }).dreaming_rewrites_created).toBe(1);
-
-      const row = core.getRawDb()
-        .query(`SELECT privacy_tags_json FROM mem_observations WHERE platform = 'dreaming'`)
-        .get() as { privacy_tags_json: string };
-      expect(JSON.parse(row.privacy_tags_json)).toContain("private");
+      expect(rejected.ok).toBe(false);
+      expect(rejected.error_code).toBe("dedupe_claims_rebuild_required");
     } finally {
       core.shutdown("test");
     }

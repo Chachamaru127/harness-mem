@@ -124,6 +124,7 @@ fallback_error_code() {
 	    admin-backup-evidence) printf 'admin_backup_evidence_failed' ;;
 	    admin-reindex-vectors) printf 'admin_reindex_vectors_failed' ;;
 	    admin-repair-sqlite-vec-map) printf 'admin_repair_sqlite_vec_map_failed' ;;
+	    admin-rebuild-dedupe-claims) printf 'admin_rebuild_dedupe_claims_failed' ;;
 	    admin-vector-backfill-start) printf 'admin_vector_backfill_start_failed' ;;
 	    admin-vector-backfill-status) printf 'admin_vector_backfill_status_failed' ;;
 	    admin-vector-backfill-stop) printf 'admin_vector_backfill_stop_failed' ;;
@@ -243,6 +244,9 @@ main() {
 	    admin-repair-sqlite-vec-map)
 	      call_post "/v1/admin/repair-sqlite-vec-map" "$payload" || fallback_error "admin-repair-sqlite-vec-map" "admin-repair-sqlite-vec-map failed"
 	      ;;
+	    admin-rebuild-dedupe-claims)
+	      call_post "/v1/admin/rebuild-content-dedupe-claims" "$payload" || fallback_error "admin-rebuild-dedupe-claims" "admin-rebuild-dedupe-claims failed"
+	      ;;
 	    admin-vector-backfill-start)
 	      call_post "/v1/admin/vector-backfill/start" "$payload" || fallback_error "admin-vector-backfill-start" "admin-vector-backfill start failed"
 	      ;;
@@ -317,7 +321,7 @@ main() {
       call_post "/v1/admin/imports/${verify_job_id}/verify" "{}" || fallback_error "verify-import" "verify-import failed"
       ;;
     *)
-		      echo "Usage: $0 {health|record-event|search|timeline|get-observations|resume-pack|record-checkpoint|finalize-session|work-query|ingest-codex-history|ingest-hermes-state|admin-backup|admin-backup-evidence|admin-forget-maintenance|admin-forget-status|admin-reindex-vectors|admin-repair-sqlite-vec-map|admin-vector-backfill-start|admin-vector-backfill-status|admin-vector-backfill-stop|admin-cleanup-duplicates|admin-metrics|admin-consolidation-run|admin-consolidation-status|admin-audit-log|sessions-list|session-thread|search-facets|import-claude-mem|import-status|verify-import} [json/query]" >&2
+	      echo "Usage: $0 {health|record-event|search|timeline|get-observations|resume-pack|record-checkpoint|finalize-session|work-query|ingest-codex-history|ingest-hermes-state|admin-backup|admin-backup-evidence|admin-forget-maintenance|admin-forget-status|admin-reindex-vectors|admin-repair-sqlite-vec-map|admin-rebuild-dedupe-claims|admin-vector-backfill-start|admin-vector-backfill-status|admin-vector-backfill-stop|admin-cleanup-duplicates|admin-metrics|admin-consolidation-run|admin-consolidation-status|admin-audit-log|sessions-list|session-thread|search-facets|import-claude-mem|import-status|verify-import} [json/query]" >&2
       exit 1
       ;;
   esac

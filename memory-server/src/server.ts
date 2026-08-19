@@ -1476,6 +1476,13 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           }));
         }
 
+        if (request.method === "POST" && url.pathname === "/v1/admin/rebuild-content-dedupe-claims") {
+          const body = await parseRequestJson(request);
+          return jsonResponse(core.adminRebuildContentDedupeClaims({
+            execute: parseBooleanLike(body.execute, false),
+          }));
+        }
+
 	      if (request.method === "POST" && url.pathname === "/v1/admin/cleanup-duplicates") {
 	        const body = await parseRequestJson(request);
 	        return jsonResponse(core.cleanupDuplicateObservations({

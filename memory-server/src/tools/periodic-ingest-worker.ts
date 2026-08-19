@@ -15,8 +15,11 @@ function parseEnvelope(line: string): { id: string; source: PeriodicIngestSource
   return { id: value.id, source: value.source as PeriodicIngestSource };
 }
 
-function writeReply(id: string, ok: boolean): void {
-  process.stdout.write(`${JSON.stringify({ id, ok })}\n`);
+function writeReply(
+  id: string,
+  result: { ok: boolean; error_code?: string; retryable?: boolean }
+): void {
+  process.stdout.write(`${JSON.stringify({ id, ...result })}\n`);
 }
 
 async function main(): Promise<void> {
@@ -53,10 +56,9 @@ async function main(): Promise<void> {
           `).get(iterations);
           testDb.close();
         }
-        core.runPeriodicIngestTickLocal(request.source);
-        writeReply(id, true);
+        writeReply(id, core.runPeriodicIngestTickLocal(request.source));
       } catch {
-        writeReply(id, false);
+        writeReply(id, { ok: false, error_code: "worker_failure" });
       }
     }
   } finally {

@@ -3,7 +3,14 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configureDatabase, initSchema, migrateSchema } from "../../src/db/schema";
+import {
+  assertContentDedupeClaimsReady,
+  configureDatabase,
+  initSchema,
+  migrateSchema,
+  rebuildContentDedupeClaimsProjection,
+  setContentDedupeMigrationTestHook,
+} from "../../src/db/schema";
 
 const tempDirs: string[] = [];
 
@@ -16,12 +23,470 @@ function createTempDb(): Database {
 }
 
 afterEach(() => {
+  setContentDedupeMigrationTestHook(null);
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir) {
       rmSync(dir, { recursive: true, force: true });
     }
   }
+});
+
+describe("content dedupe claims migration", () => {
+  function seedObservation(
+    db: Database,
+    id: string,
+    hash: string,
+    privacy = "[]",
+    tags = "[]",
+  ): void {
+    const now = "2026-08-19T00:00:00.000Z";
+    db.query(`INSERT OR IGNORE INTO mem_sessions(
+      session_id, platform, project, started_at, created_at, updated_at
+    ) VALUES ('claim-session', 'test', 'claim-project', ?, ?, ?)`)
+      .run(now, now, now);
+    db.query(`INSERT INTO mem_observations(
+      id, platform, project, session_id, content, content_redacted,
+      content_dedupe_hash, tags_json, privacy_tags_json, created_at, updated_at
+    ) VALUES (?, 'test', 'claim-project', 'claim-session', ?, ?, ?, ?, ?, ?, ?)`)
+      .run(id, id, id, hash, tags, privacy, now, now);
+  }
+
+  test("clean backfill is ready, derived, and idempotent after an interrupted marker", () => {
+    const db = createTempDb();
+    try {
+      initSchema(db);
+      seedObservation(db, "claim-clean", "hash-clean");
+      migrateSchema(db);
+      expect(db.query<{ canonical_observation_id: string }, []>(
+        "SELECT canonical_observation_id FROM mem_content_dedupe_claims WHERE content_dedupe_hash = 'hash-clean'",
+      ).get()?.canonical_observation_id).toBe("claim-clean");
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("ready");
+
+      db.exec("DELETE FROM mem_content_dedupe_claims");
+      db.exec("UPDATE mem_meta SET value = 'building' WHERE key = 'dedupe_claims.readiness'");
+      migrateSchema(db);
+      migrateSchema(db);
+      expect(db.query<{ count: number }, []>(
+        "SELECT COUNT(*) AS count FROM mem_content_dedupe_claims",
+      ).get()?.count).toBe(1);
+      expect(db.query<{ generation: number }, []>(
+        "SELECT generation FROM mem_content_dedupe_claims WHERE content_dedupe_hash = 'hash-clean'",
+      ).get()?.generation).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("ready projection drift stays not-ready until an explicit authoritative rebuild", () => {
+    const db = createTempDb();
+    try {
+      initSchema(db);
+      seedObservation(db, "claim-drift", "hash-drift");
+      migrateSchema(db);
+      db.exec("DELETE FROM mem_content_dedupe_claims WHERE content_dedupe_hash = 'hash-drift'");
+
+      migrateSchema(db);
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("not_ready");
+      expect(() => assertContentDedupeClaimsReady(db)).toThrow("require rebuild");
+      expect(db.query<{ count: number }, []>(
+        "SELECT COUNT(*) AS count FROM mem_content_dedupe_claims",
+      ).get()?.count).toBe(0);
+
+      migrateSchema(db);
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("not_ready");
+      expect(db.query<{ count: number }, []>(
+        "SELECT COUNT(*) AS count FROM mem_content_dedupe_claims",
+      ).get()?.count).toBe(0);
+
+      rebuildContentDedupeClaimsProjection(db);
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("ready");
+      expect(db.query<{ string: string }, []>(
+        "SELECT canonical_observation_id AS string FROM mem_content_dedupe_claims WHERE content_dedupe_hash = 'hash-drift'",
+      ).get()?.string).toBe("claim-drift");
+
+      db.exec("DROP TRIGGER mem_observations_dedupe_claim_ai");
+      migrateSchema(db);
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("not_ready");
+      migrateSchema(db);
+      expect(db.query<{ count: number }, []>(`
+        SELECT COUNT(*) AS count FROM sqlite_master
+        WHERE type = 'trigger' AND name LIKE 'mem_observations_dedupe_claim_a%'
+      `).get()?.count).toBe(2);
+      rebuildContentDedupeClaimsProjection(db);
+      expect(db.query<{ count: number }, []>(`
+        SELECT COUNT(*) AS count FROM sqlite_master
+        WHERE type = 'trigger' AND name LIKE 'mem_observations_dedupe_claim_a%'
+      `).get()?.count).toBe(3);
+      expect(() => assertContentDedupeClaimsReady(db)).not.toThrow();
+    } finally {
+      db.close();
+    }
+  });
+
+  test("current-version unknown readiness marker requires explicit operator repair", () => {
+    const db = createTempDb();
+    try {
+      initSchema(db);
+      seedObservation(db, "claim-unknown-marker", "hash-unknown-marker");
+      migrateSchema(db);
+      db.exec("DELETE FROM mem_content_dedupe_claims WHERE content_dedupe_hash = 'hash-unknown-marker'");
+      db.exec("DROP TRIGGER mem_observations_dedupe_claim_ai");
+      db.exec("UPDATE mem_meta SET value = 'corrupt' WHERE key = 'dedupe_claims.readiness'");
+
+      migrateSchema(db);
+
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("not_ready");
+      expect(() => assertContentDedupeClaimsReady(db)).toThrow("require rebuild");
+      expect(db.query<{ count: number }, []>(
+        "SELECT COUNT(*) AS count FROM mem_content_dedupe_claims",
+      ).get()?.count).toBe(0);
+      expect(db.query<{ count: number }, []>(`
+        SELECT COUNT(*) AS count FROM sqlite_master
+        WHERE type = 'trigger' AND name = 'mem_observations_dedupe_claim_ai'
+      `).get()?.count).toBe(0);
+
+      rebuildContentDedupeClaimsProjection(db);
+
+      expect(() => assertContentDedupeClaimsReady(db)).not.toThrow();
+      expect(db.query<{ string: string }, []>(
+        "SELECT canonical_observation_id AS string FROM mem_content_dedupe_claims WHERE content_dedupe_hash = 'hash-unknown-marker'",
+      ).get()?.string).toBe("claim-unknown-marker");
+      expect(db.query<{ count: number }, []>(`
+        SELECT COUNT(*) AS count FROM mem_audit_log
+        WHERE action = 'admin.content_dedupe_claims_rebuild'
+          AND target_id = 'content_dedupe_claims'
+      `).get()?.count).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("same-name stale trigger bodies fail closed while canonical whitespace remains valid", () => {
+    const db = createTempDb();
+    const triggerNames = [
+      "mem_observations_dedupe_claim_ai",
+      "mem_observations_dedupe_claim_au",
+      "mem_observations_dedupe_claim_ad",
+    ];
+    try {
+      initSchema(db);
+      seedObservation(db, "trigger-body", "trigger-body-hash");
+      migrateSchema(db);
+      const canonical = db.query<{ name: string; sql: string }, []>(`
+        SELECT name, sql FROM sqlite_master
+        WHERE type = 'trigger' AND name LIKE 'mem_observations_dedupe_claim_a%'
+        ORDER BY name
+      `).all();
+      for (const row of canonical) {
+        db.exec(`DROP TRIGGER ${row.name}`);
+        db.exec(row.sql.split("\n").map((line) => `  ${line.trim()}  `).join("\n\n"));
+      }
+      migrateSchema(db);
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("ready");
+
+      for (const name of triggerNames) {
+        db.exec(`DROP TRIGGER ${name}`);
+        db.exec(`CREATE TRIGGER ${name} AFTER INSERT ON mem_observations BEGIN SELECT 1; END`);
+        migrateSchema(db);
+        expect(db.query<{ value: string }, []>(
+          "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+        ).get()?.value).toBe("not_ready");
+        migrateSchema(db);
+        expect(db.query<{ value: string }, []>(
+          "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+        ).get()?.value).toBe("not_ready");
+        rebuildContentDedupeClaimsProjection(db);
+        expect(db.query<{ value: string }, []>(
+          "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+        ).get()?.value).toBe("ready");
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  test("ambiguous ownership and malformed privacy metadata stay not-ready without a winner", () => {
+    for (const kind of ["ambiguous", "malformed"] as const) {
+      const db = createTempDb();
+      try {
+        initSchema(db);
+        if (kind === "ambiguous") {
+          seedObservation(db, "claim-ambiguous-a", "hash-ambiguous");
+          seedObservation(db, "claim-ambiguous-b", "hash-ambiguous");
+        } else {
+          seedObservation(db, "claim-malformed", "hash-malformed", "{not-json");
+        }
+        migrateSchema(db);
+        expect(db.query<{ value: string }, []>(
+          "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+        ).get()?.value).toBe("not_ready");
+        expect(db.query<{ count: number }, []>(
+          "SELECT COUNT(*) AS count FROM mem_content_dedupe_claims",
+        ).get()?.count).toBe(0);
+      } finally {
+        db.close();
+      }
+    }
+  });
+
+  test("ready drift scan fail-closes malformed metadata before evaluating protection masks", () => {
+    const db = createTempDb();
+    try {
+      initSchema(db);
+      seedObservation(db, "ready-malformed", "ready-malformed-hash");
+      migrateSchema(db);
+      const updateTrigger = db.query<{ sql: string }, []>(`
+        SELECT sql FROM sqlite_master
+        WHERE type = 'trigger' AND name = 'mem_observations_dedupe_claim_au'
+      `).get()?.sql;
+      if (!updateTrigger) throw new Error("canonical update trigger is missing");
+      db.exec("DROP TRIGGER mem_observations_dedupe_claim_au");
+      db.query("UPDATE mem_observations SET privacy_tags_json = '{not-json' WHERE id = 'ready-malformed'").run();
+      db.exec(updateTrigger);
+
+      expect(() => migrateSchema(db)).not.toThrow();
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("not_ready");
+      expect(() => assertContentDedupeClaimsReady(db)).toThrow("require rebuild");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("syntactically valid arrays with non-string protection entries fail closed", () => {
+    for (const [privacy, tags] of [
+      ["[1]", "[]"],
+      ["[{\"private\":true}]", "[]"],
+      ["[null]", "[]"],
+      ["[]", "[1]"],
+      ["[]", "[{\"legal_hold\":true}]"],
+      ["[]", "[null]"],
+    ] as const) {
+      const db = createTempDb();
+      try {
+        initSchema(db);
+        seedObservation(db, "claim-non-string", "hash-non-string", privacy, tags);
+        migrateSchema(db);
+        expect(db.query<{ value: string }, []>(
+          "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+        ).get()?.value).toBe("not_ready");
+        expect(db.query<{ count: number }, []>(
+          "SELECT COUNT(*) AS count FROM mem_content_dedupe_claims",
+        ).get()?.count).toBe(0);
+      } finally {
+        db.close();
+      }
+    }
+  });
+
+  test("version gate rejects unknown newer schema and safely rebuilds missing or older versions", () => {
+    for (const version of ["999", "0", null, "1"] as const) {
+      const db = createTempDb();
+      try {
+        initSchema(db);
+        seedObservation(db, `claim-version-${version ?? "missing"}`, `hash-version-${version ?? "missing"}`);
+        migrateSchema(db);
+        db.exec("DELETE FROM mem_content_dedupe_claims");
+        db.exec("UPDATE mem_meta SET value = 'building' WHERE key = 'dedupe_claims.readiness'");
+        if (version === null) {
+          db.exec("DELETE FROM mem_meta WHERE key = 'dedupe_claims.schema_version'");
+        } else {
+          db.query("UPDATE mem_meta SET value = ? WHERE key = 'dedupe_claims.schema_version'").run(version);
+        }
+        migrateSchema(db);
+        const meta = db.query<{ key: string; value: string }, []>(
+          "SELECT key, value FROM mem_meta WHERE key LIKE 'dedupe_claims.%' ORDER BY key",
+        ).all();
+        if (version === "999") {
+          expect(meta).toContainEqual({ key: "dedupe_claims.readiness", value: "not_ready" });
+          expect(meta).toContainEqual({ key: "dedupe_claims.schema_version", value: "999" });
+          expect(db.query<{ count: number }, []>(
+            "SELECT COUNT(*) AS count FROM mem_content_dedupe_claims",
+          ).get()?.count).toBe(0);
+        } else {
+          expect(meta).toContainEqual({ key: "dedupe_claims.readiness", value: "ready" });
+          expect(meta).toContainEqual({ key: "dedupe_claims.schema_version", value: "1" });
+          expect(db.query<{ count: number }, []>(
+            "SELECT COUNT(*) AS count FROM mem_content_dedupe_claims",
+          ).get()?.count).toBe(1);
+        }
+      } finally {
+        db.close();
+      }
+    }
+  });
+
+  test("ready older projection upgrades stale triggers before current-version drift rejection", () => {
+    const db = createTempDb();
+    try {
+      initSchema(db);
+      seedObservation(db, "older-stale-trigger", "older-stale-trigger-hash");
+      migrateSchema(db);
+      db.exec("DROP TRIGGER mem_observations_dedupe_claim_ai");
+      db.exec(`CREATE TRIGGER mem_observations_dedupe_claim_ai
+        AFTER INSERT ON mem_observations BEGIN SELECT 1; END`);
+      db.exec("UPDATE mem_meta SET value = '0' WHERE key = 'dedupe_claims.schema_version'");
+
+      migrateSchema(db);
+
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.schema_version'",
+      ).get()?.value).toBe("1");
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("ready");
+      expect(db.query<{ sql: string }, []>(`
+        SELECT sql FROM sqlite_master
+        WHERE type = 'trigger' AND name = 'mem_observations_dedupe_claim_ai'
+      `).get()?.sql).toContain("INSERT OR IGNORE INTO mem_content_dedupe_claims");
+      expect(() => assertContentDedupeClaimsReady(db)).not.toThrow();
+    } finally {
+      db.close();
+    }
+  });
+
+  test("backfill applies JavaScript trim whitespace semantics to protection tags", () => {
+    const db = createTempDb();
+    try {
+      initSchema(db);
+      for (const [id, privacy, tags] of [
+        ["tab", ["\tprivate\n"], []],
+        ["cr", [], ["\rsecret\r"]],
+        ["nbsp", ["\u00a0sensitive\u00a0"], []],
+        ["ideographic", [], ["\u3000legal_hold\u3000"]],
+      ] as const) {
+        seedObservation(db, `ws-${id}`, `ws-${id}-hash`, JSON.stringify(privacy), JSON.stringify(tags));
+      }
+      migrateSchema(db);
+      expect(db.query<{ protection_mask: number }, []>(
+        "SELECT protection_mask FROM mem_content_dedupe_claims ORDER BY content_dedupe_hash",
+      ).all().map((row) => row.protection_mask)).toEqual([2, 8, 4, 1]);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("marker-only child startup performs no exhaustive scan and fails closed on marker drift", () => {
+    const db = createTempDb();
+    let scans = 0;
+    try {
+      initSchema(db);
+      seedObservation(db, "child-fast", "child-fast-hash");
+      migrateSchema(db);
+      setContentDedupeMigrationTestHook((phase) => { if (phase === "exhaustive_scan") scans += 1; });
+      migrateSchema(db, { authoritativeContentDedupeMigration: false });
+      expect(scans).toBe(0);
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("ready");
+      db.exec("UPDATE mem_meta SET value = '999' WHERE key = 'dedupe_claims.schema_version'");
+      migrateSchema(db, { authoritativeContentDedupeMigration: false });
+      expect(scans).toBe(0);
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("not_ready");
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.schema_version'",
+      ).get()?.value).toBe("999");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("marker-only child rechecks readiness after a concurrent authoritative repair", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hmem-schema-child-race-"));
+    tempDirs.push(dir);
+    const dbPath = join(dir, "harness-mem.db");
+    const db = new Database(dbPath);
+    configureDatabase(db);
+    let transactionOpen = false;
+    try {
+      initSchema(db);
+      seedObservation(db, "child-race", "child-race-hash");
+      migrateSchema(db);
+      db.exec("UPDATE mem_meta SET value = 'not_ready' WHERE key = 'dedupe_claims.readiness'");
+
+      db.exec("BEGIN IMMEDIATE");
+      transactionOpen = true;
+      db.exec("UPDATE mem_meta SET value = 'ready' WHERE key = 'dedupe_claims.readiness'");
+      const schemaUrl = new URL("../../src/db/schema.ts", import.meta.url).href;
+      const child = Bun.spawn([
+        process.execPath,
+        "-e",
+        `import { Database } from "bun:sqlite";
+         import { configureDatabase, migrateSchema } from ${JSON.stringify(schemaUrl)};
+         const db = new Database(process.argv[1]);
+         configureDatabase(db);
+         db.exec("PRAGMA busy_timeout = 5000");
+         const started = Date.now();
+         migrateSchema(db, { authoritativeContentDedupeMigration: false });
+         const readiness = db.query("SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'").get()?.value;
+         console.log(JSON.stringify({ readiness, elapsedMs: Date.now() - started }));
+         db.close();`,
+        dbPath,
+      ], { stdout: "pipe", stderr: "pipe" });
+
+      await Bun.sleep(100);
+      expect(child.exitCode).toBeNull();
+      db.exec("COMMIT");
+      transactionOpen = false;
+      const [exitCode, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ]);
+      expect(exitCode).toBe(0);
+      expect(stderr).toBe("");
+      const result = JSON.parse(stdout) as { readiness: string; elapsedMs: number };
+      expect(result.readiness).toBe("ready");
+      expect(result.elapsedMs).toBeGreaterThanOrEqual(50);
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("ready");
+    } finally {
+      if (transactionOpen) db.exec("ROLLBACK");
+      db.close();
+    }
+  });
+
+  test("fault after trigger drop rolls migration back to a complete trigger set", () => {
+    const db = createTempDb();
+    try {
+      initSchema(db);
+      seedObservation(db, "fault-trigger", "fault-trigger-hash");
+      migrateSchema(db);
+      db.exec("UPDATE mem_meta SET value = '0' WHERE key = 'dedupe_claims.schema_version'");
+      setContentDedupeMigrationTestHook((phase) => {
+        if (phase === "after_trigger_drop") throw new Error("synthetic trigger migration fault");
+      });
+      expect(() => migrateSchema(db)).toThrow("synthetic trigger migration fault");
+      expect(db.query<{ count: number }, []>(`
+        SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'trigger'
+          AND name LIKE 'mem_observations_dedupe_claim_a%'
+      `).get()?.count).toBe(3);
+      expect(db.query<{ value: string }, []>(
+        "SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'",
+      ).get()?.value).toBe("ready");
+    } finally {
+      db.close();
+    }
+  });
 });
 
 function sqliteObjectExists(db: Database, type: string, name: string): boolean {

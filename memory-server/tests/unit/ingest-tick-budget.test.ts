@@ -159,9 +159,13 @@ describe("§159-003e ingest read slice", () => {
       expect(body).toMatch(/while \(\s*nextReadOffset < fileSize/);
       expect(body).toContain("readSync(");
       expect(body).toContain('pending.toString("utf8")');
-      expect(body).toContain("this.deps.recordEvent(");
+      expect(body).toContain("this.recordIngestEvent(");
       expect(body).toContain("Date.now() - startedAtMs > budgetMs");
     }
+
+    const declarations = extractMethodDeclarations(source);
+    expect(getMethodBody(source, declarations, "recordIngestEvent"))
+      .toContain("this.deps.recordEvent(event, options)");
   });
 
   test("最初のスライスは budget 超過済みでも処理する", () => {
@@ -287,7 +291,10 @@ describe("§159-003c codex ingest tick budget", () => {
     expect(source).toContain("private runTick(");
     expect(source).toContain("blocked the event loop for");
     // 各 periodic job が worker scheduler を通り、worker 内で runTick を通ること
-    expect(source).toContain("this.runTick(source, jobs[source])");
+    const declarations = extractMethodDeclarations(source);
+    expectPeriodicDispatcherContract(
+      getMethodBody(source, declarations, "runPeriodicIngestTickLocal") ?? "",
+    );
     for (const label of ["codex", "opencode", "cursor", "gemini", "claude_code"]) {
       expect(source).toContain(`this.schedulePeriodicIngest("${label}")`);
     }
@@ -422,6 +429,23 @@ function getMethodBody(source: string, decls: MethodDecl[], name: string): strin
   return source.slice(start, end);
 }
 
+function expectPeriodicDispatcherContract(dispatcher: string): void {
+  const runTick = dispatcher.indexOf("return this.runTick(source, () => {");
+  const firstReadinessGate = dispatcher.indexOf("assertContentDedupeClaimsReady(this.deps.db)");
+  const job = dispatcher.indexOf("const jobFailure = jobs[source]()");
+  const secondReadinessGate = dispatcher.indexOf(
+    "assertContentDedupeClaimsReady(this.deps.db)",
+    firstReadinessGate + 1,
+  );
+  const result = dispatcher.indexOf("return this.periodicRecordFailure ?? jobFailure");
+
+  expect(runTick).toBeGreaterThan(-1);
+  expect(firstReadinessGate).toBeGreaterThan(runTick);
+  expect(job).toBeGreaterThan(firstReadinessGate);
+  expect(secondReadinessGate).toBeGreaterThan(job);
+  expect(result).toBeGreaterThan(secondReadinessGate);
+}
+
 function hasBudgetEnforcement(body: string): boolean {
   return (
     /resolveIngestTickBudgetMs\s*\(/.test(body) ||
@@ -522,7 +546,7 @@ describe("§160-005c runTick 到達性による ingest budget 網羅検査", () 
     for (const call of extractRunTickCalls(coordinatorSource)) {
       expect(dispatcher).toContain(`${call.label}: () => this.${call.fnName}()`);
     }
-    expect(dispatcher).toContain("this.runTick(source, jobs[source])");
+    expectPeriodicDispatcherContract(dispatcher);
   });
 
   test("抽出ロジックの死活チェック: runTick 経路が現状 6 件以上ソースから読み取れる", () => {

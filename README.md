@@ -166,6 +166,14 @@ Pick the path that matches your stack. That's the whole decision.
 | **Cursor as an additional local client** | `harness-mem setup --platform cursor` → `harness-mem doctor --platform cursor` → reload/restart Cursor if MCP discovery is cached |
 | **Hermes Agent as a command tower** | `harness-mem mcp-config --transport http --client hermes --write` for Layer 1 MCP, or follow [`integrations/hermes/`](integrations/hermes/) for the optional MemoryProvider plugin |
 
+If periodic ingest reports `dedupe_claims_rebuild_required`, ordinary daemon
+restarts intentionally keep writes blocked. After resolving the underlying
+observation or schema drift, run the explicit audited repair:
+
+```bash
+harness-mem admin-rebuild-dedupe-claims --execute
+```
+
 ### Claude-harness companion mode
 
 Claude-harness can manage harness-mem as an external companion instead of embedding memory internals. In that mode Claude-harness may call:

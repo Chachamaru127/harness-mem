@@ -19,7 +19,7 @@
 import { Database } from "bun:sqlite";
 import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import type { ApiResponse, Config, EventEnvelope } from "./types.js";
+import type { ApiResponse, Config, EventEnvelope, RecordEventErrorCode } from "./types.js";
 import {
   clampLimit,
   DEFAULT_ANTIGRAVITY_BACKFILL_HOURS,
@@ -53,6 +53,7 @@ import {
 } from "./core-utils.js";
 import { buildClaudeMemImportPlan, type ClaudeMemImportRequest } from "../ingest/claude-mem-import";
 import type { PlatformIngester } from "../ingest/types.js";
+import { assertContentDedupeClaimsReady } from "../db/schema.js";
 import { parseCodexHistoryChunk } from "../ingest/codex-history";
 import { parseCodexSessionsChunk, type CodexSessionsContext } from "../ingest/codex-sessions";
 import { parseCursorHooksChunk } from "../ingest/cursor-hooks";
@@ -71,6 +72,7 @@ import {
   endIngestTickTelemetry,
   recordSqliteError,
   recordWalCheckpointCompleted,
+  sqliteErrorCodes,
 } from "./sqlite-performance-telemetry.js";
 
 // ---------------------------------------------------------------------------
@@ -214,7 +216,9 @@ const MAX_OPENCODE_DB_ROWS_PER_INGEST = 500;
 // ファイルリスト系ヘルパー（core から移動）
 // ---------------------------------------------------------------------------
 
-function listCodexRolloutFiles(rootDir: string): string[] {
+type EnumerationErrorHandler = (error: unknown) => void;
+
+function listCodexRolloutFiles(rootDir: string, onError?: EnumerationErrorHandler): string[] {
   const files: string[] = [];
   const stack: string[] = [rootDir];
 
@@ -229,7 +233,8 @@ function listCodexRolloutFiles(rootDir: string): string[] {
         isDirectory: () => boolean;
         isFile: () => boolean;
       }>;
-    } catch {
+    } catch (error) {
+      onError?.(error);
       continue;
     }
 
@@ -258,7 +263,7 @@ function inferSessionIdFromRolloutPath(filePath: string): string | null {
   return match?.[1] || null;
 }
 
-function listOpencodeMessageFiles(rootDir: string): string[] {
+function listOpencodeMessageFiles(rootDir: string, onError?: EnumerationErrorHandler): string[] {
   const files: string[] = [];
   const stack: string[] = [rootDir];
 
@@ -273,7 +278,8 @@ function listOpencodeMessageFiles(rootDir: string): string[] {
         isDirectory: () => boolean;
         isFile: () => boolean;
       }>;
-    } catch {
+    } catch (error) {
+      onError?.(error);
       continue;
     }
 
@@ -293,7 +299,7 @@ function listOpencodeMessageFiles(rootDir: string): string[] {
   return files;
 }
 
-function listOpencodeSessionFiles(rootDir: string): string[] {
+function listOpencodeSessionFiles(rootDir: string, onError?: EnumerationErrorHandler): string[] {
   const files: string[] = [];
   const stack: string[] = [rootDir];
 
@@ -308,7 +314,8 @@ function listOpencodeSessionFiles(rootDir: string): string[] {
         isDirectory: () => boolean;
         isFile: () => boolean;
       }>;
-    } catch {
+    } catch (error) {
+      onError?.(error);
       continue;
     }
 
@@ -328,7 +335,7 @@ function listOpencodeSessionFiles(rootDir: string): string[] {
   return files;
 }
 
-function listMarkdownFiles(rootDir: string): string[] {
+function listMarkdownFiles(rootDir: string, onError?: EnumerationErrorHandler): string[] {
   const files: string[] = [];
   const stack: string[] = [rootDir];
 
@@ -343,7 +350,8 @@ function listMarkdownFiles(rootDir: string): string[] {
         isDirectory: () => boolean;
         isFile: () => boolean;
       }>;
-    } catch {
+    } catch (error) {
+      onError?.(error);
       continue;
     }
 
@@ -363,7 +371,7 @@ function listMarkdownFiles(rootDir: string): string[] {
   return files;
 }
 
-function listAntigravityPlannerLogFiles(logsRoot: string): string[] {
+function listAntigravityPlannerLogFiles(logsRoot: string, onError?: EnumerationErrorHandler): string[] {
   const files: string[] = [];
   const stack: string[] = [logsRoot];
 
@@ -378,7 +386,8 @@ function listAntigravityPlannerLogFiles(logsRoot: string): string[] {
         isDirectory: () => boolean;
         isFile: () => boolean;
       }>;
-    } catch {
+    } catch (error) {
+      onError?.(error);
       continue;
     }
 
@@ -584,6 +593,22 @@ export const PERIODIC_INGEST_SOURCES = [
   "claude_code",
 ] as const;
 export type PeriodicIngestSource = (typeof PERIODIC_INGEST_SOURCES)[number];
+export const PERIODIC_INGEST_ERROR_CODES = [
+  "invalid_event",
+  "invalid_project",
+  "managed_backend_unavailable",
+  "dedupe_claims_rebuild_required",
+  "dedupe_project_mismatch",
+  "dedupe_protected_policy_required",
+  "embedding_temporarily_unavailable",
+  "sqlite_busy",
+  "record_write_failed",
+] as const satisfies readonly RecordEventErrorCode[];
+export type PeriodicIngestTickResult =
+  | { ok: true }
+  | { ok: false; error_code: RecordEventErrorCode; retryable: boolean };
+
+type PeriodicIngestTickFailure = Exclude<PeriodicIngestTickResult, { ok: true }>;
 
 // ---------------------------------------------------------------------------
 // IngestCoordinator クラス
@@ -593,6 +618,37 @@ const SQLITE_HEADER = "SQLite format 3\u0000";
 
 export class IngestCoordinator {
   private readonly codexRolloutContextCache = new Map<string, CodexSessionsContext>();
+  private periodicRecordFailure: PeriodicIngestTickFailure | null = null;
+  private collectingPeriodicRecordFailures = false;
+
+  private recordIngestEvent(
+    event: EventEnvelope,
+    options: { allowQueue: boolean },
+  ): ApiResponse {
+    if (this.collectingPeriodicRecordFailures && this.periodicRecordFailure) {
+      return {
+        ok: false,
+        source: "core",
+        items: [],
+        meta: { count: 0, latency_ms: 0, sla_latency_ms: 200, filters: {}, ranking: "error" },
+        error_code: this.periodicRecordFailure.error_code,
+        retryable: this.periodicRecordFailure.retryable,
+      };
+    }
+    const result = this.deps.recordEvent(event, options);
+    if (this.collectingPeriodicRecordFailures && !result.ok && this.periodicRecordFailure === null) {
+      this.periodicRecordFailure = {
+        ok: false,
+        error_code: result.error_code ?? "record_write_failed",
+        retryable: result.retryable === true,
+      };
+    }
+    return result;
+  }
+
+  private propagatePeriodicOperationalFailure(error: unknown): void {
+    if (this.collectingPeriodicRecordFailures && this.periodicRecordFailure === null) throw error;
+  }
 
   // §160-007 (review 指摘): サイズ上限超過ファイルは offset を進めない設計なので、
   // round-robin で再訪問するたびに同じ警告を出しログを埋める。source_key ごとに
@@ -672,14 +728,28 @@ export class IngestCoordinator {
    * 応答できない時間。既存の `try { ... } catch {}` と同じく例外は飲み込む
    * (post-shutdown の DB エラーで daemon を落とさないため)。
    */
-  private runTick(label: string, fn: () => void): void {
+  private runTick(
+    label: string,
+    fn: () => PeriodicIngestTickFailure | void
+  ): PeriodicIngestTickResult {
     const startedAt = Date.now();
     const telemetry = beginIngestTickTelemetry(label);
+    let result: PeriodicIngestTickResult = { ok: true };
     try {
-      fn();
+      result = fn() ?? { ok: true };
     } catch (error) {
       recordSqliteError(error);
-      /* ignore post-shutdown DB errors */
+      if (error instanceof Error && error.message === "content dedupe claims require rebuild") {
+        result = {
+          ok: false,
+          error_code: "dedupe_claims_rebuild_required",
+          retryable: true,
+        };
+      } else if (sqliteErrorCodes(error).busyOrLocked) {
+        result = { ok: false, error_code: "sqlite_busy", retryable: true };
+      } else {
+        result = { ok: false, error_code: "record_write_failed", retryable: true };
+      }
     } finally {
       const elapsed = Date.now() - startedAt;
       endIngestTickTelemetry(telemetry, this.deps.db, elapsed, resolveSlowTickLogMs());
@@ -687,18 +757,31 @@ export class IngestCoordinator {
         console.warn(`[ingest] slow tick: ${label} blocked the event loop for ${elapsed}ms`);
       }
     }
+    return result;
   }
 
-  runPeriodicIngestTickLocal(source: PeriodicIngestSource): void {
-    const jobs: Record<PeriodicIngestSource, () => void> = {
+  runPeriodicIngestTickLocal(source: PeriodicIngestSource): PeriodicIngestTickResult {
+    const jobs: Record<PeriodicIngestSource, () => PeriodicIngestTickFailure | void> = {
       codex: () => this.ingestCodexHistoryTick(),
       opencode: () => this.ingestOpencodeHistoryTick(),
       cursor: () => this.ingestCursorHistoryTick(),
       antigravity: () => this.ingestAntigravityHistoryTick(),
       gemini: () => this.ingestGeminiHistoryTick(),
-      claude_code: () => this.ingestClaudeCodeSessions(),
+      claude_code: () => this.ingestClaudeCodeSessions().failure,
     };
-    this.runTick(source, jobs[source]);
+    this.periodicRecordFailure = null;
+    this.collectingPeriodicRecordFailures = true;
+    try {
+      return this.runTick(source, () => {
+        assertContentDedupeClaimsReady(this.deps.db);
+        const jobFailure = jobs[source]();
+        assertContentDedupeClaimsReady(this.deps.db);
+        return this.periodicRecordFailure ?? jobFailure;
+      });
+    } finally {
+      this.collectingPeriodicRecordFailures = false;
+      this.periodicRecordFailure = null;
+    }
   }
 
   private schedulePeriodicIngest(source: PeriodicIngestSource): void {
@@ -1069,7 +1152,8 @@ export class IngestCoordinator {
       rows = sourceDb
         .query(`SELECT data FROM part WHERE message_id = ? ORDER BY rowid ASC`)
         .all(messageId) as Array<{ data: string }>;
-    } catch {
+    } catch (error) {
+      this.propagatePeriodicOperationalFailure(error);
       return "";
     }
 
@@ -1088,12 +1172,16 @@ export class IngestCoordinator {
 
   private loadOpencodeSessionDirectoryMap(sessionsRoot: string): Map<string, string> {
     const map = new Map<string, string>();
-    const sessionFiles = listOpencodeSessionFiles(sessionsRoot);
+    const sessionFiles = listOpencodeSessionFiles(
+      sessionsRoot,
+      (error) => this.propagatePeriodicOperationalFailure(error),
+    );
     for (const filePath of sessionFiles) {
       let raw = "";
       try {
         raw = readFileSync(filePath, "utf8");
-      } catch {
+      } catch (error) {
+        this.propagatePeriodicOperationalFailure(error);
         continue;
       }
 
@@ -1123,7 +1211,8 @@ export class IngestCoordinator {
         isDirectory: () => boolean;
         isFile: () => boolean;
       }>;
-    } catch {
+    } catch (error) {
+      this.propagatePeriodicOperationalFailure(error);
       return "";
     }
 
@@ -1137,7 +1226,8 @@ export class IngestCoordinator {
       let raw = "";
       try {
         raw = readFileSync(partPath, "utf8");
-      } catch {
+      } catch (error) {
+        this.propagatePeriodicOperationalFailure(error);
         continue;
       }
       const parsed = parseJsonSafe(raw);
@@ -1221,7 +1311,8 @@ export class IngestCoordinator {
         name: string;
         isDirectory: () => boolean;
       }>;
-    } catch {
+    } catch (error) {
+      this.propagatePeriodicOperationalFailure(error);
       return [];
     }
 
@@ -1298,7 +1389,8 @@ export class IngestCoordinator {
       } else {
         text = readFileSync(exthostLog, "utf8");
       }
-    } catch {
+    } catch (error) {
+      this.propagatePeriodicOperationalFailure(error);
       return "";
     }
     if (!text) return "";
@@ -1374,7 +1466,10 @@ export class IngestCoordinator {
       return summary;
     }
 
-    const files = listCodexRolloutFiles(sessionsRoot);
+    const files = listCodexRolloutFiles(
+      sessionsRoot,
+      (error) => this.propagatePeriodicOperationalFailure(error),
+    );
     const defaultProject = normalizeProjectName(resolve(this.deps.config.codexProjectRoot));
     const cutoffMs = Date.now() - Math.max(0, this.deps.config.codexBackfillHours) * 60 * 60 * 1000;
     let slicesProcessed = 0;
@@ -1410,7 +1505,8 @@ export class IngestCoordinator {
         const stats = statSync(rolloutPath);
         fileSize = stats.size;
         mtimeMs = stats.mtimeMs;
-      } catch {
+      } catch (error) {
+        this.propagatePeriodicOperationalFailure(error);
         continue;
       }
 
@@ -1509,8 +1605,6 @@ export class IngestCoordinator {
               continue;
             }
 
-            committedContext.sessionId = parsedChunk.context.sessionId || fallbackSessionId;
-            committedContext.project = parsedChunk.context.project || defaultProject;
             let nextOffset = currentOffset + parsedChunk.consumedBytes;
             let budgetExhausted = false;
             let sliceDeferred = false;
@@ -1526,12 +1620,13 @@ export class IngestCoordinator {
                 Date.now() - startedAtMs > budgetMs
               ) {
                 nextOffset = Math.max(currentOffset, entry.lineOffset);
+                Object.assign(committedContext, entry.contextBefore);
                 budgetExhausted = true;
                 sliceDeferred = true;
                 break;
               }
               processed += 1;
-              const result = this.deps.recordEvent(
+              const result = this.recordIngestEvent(
                 {
                   platform: "codex",
                   project: entry.project,
@@ -1547,6 +1642,7 @@ export class IngestCoordinator {
               );
               if (!result.ok) {
                 nextOffset = Math.max(currentOffset, entry.lineOffset);
+                Object.assign(committedContext, entry.contextBefore);
                 sliceDeferred = true;
                 break;
               }
@@ -1554,22 +1650,10 @@ export class IngestCoordinator {
               if (!deduped) {
                 imported += 1;
               }
-              committedContext.sessionId = entry.sessionId || committedContext.sessionId;
-              committedContext.project = entry.project || committedContext.project;
-              if (entry.eventType === "user_prompt") {
-                const prompt =
-                  normalizeString(entry.payload.prompt) || normalizeString(entry.payload.content);
-                if (prompt) {
-                  committedContext.lastUserPrompt = prompt;
-                }
-              }
-              if (entry.eventType === "checkpoint") {
-                const assistantContent = normalizeString(entry.payload.content);
-                if (assistantContent) {
-                  committedContext.lastAssistantContent = assistantContent;
-                }
-              }
+              Object.assign(committedContext, entry.contextAfter);
             }
+
+            if (!sliceDeferred) Object.assign(committedContext, parsedChunk.context);
 
             summary.eventsImported += imported;
             summary.sessionsEventsImported += imported;
@@ -1591,7 +1675,8 @@ export class IngestCoordinator {
         } finally {
           closeSync(fd);
         }
-      } catch {
+      } catch (error) {
+        this.propagatePeriodicOperationalFailure(error);
         continue;
       }
       if (stopTick) break;
@@ -1628,7 +1713,8 @@ export class IngestCoordinator {
     let fileSize = 0;
     try {
       fileSize = statSync(historyPath).size;
-    } catch {
+    } catch (error) {
+      this.propagatePeriodicOperationalFailure(error);
       return summary;
     }
 
@@ -1717,7 +1803,7 @@ export class IngestCoordinator {
               break;
             }
             entryIndex += 1;
-            const result = this.deps.recordEvent(
+            const result = this.recordIngestEvent(
               {
                 platform: "codex",
                 project,
@@ -1755,7 +1841,8 @@ export class IngestCoordinator {
       } finally {
         closeSync(fd);
       }
-    } catch {
+    } catch (error) {
+      this.propagatePeriodicOperationalFailure(error);
       // 読み込み失敗時は offset を進めず、次 tick で再試行する。
     }
 
@@ -1975,7 +2062,7 @@ export class IngestCoordinator {
           continue;
         }
 
-        const result = this.deps.recordEvent(
+        const result = this.recordIngestEvent(
           {
             platform: "opencode",
             project: parsed.project,
@@ -2010,7 +2097,8 @@ export class IngestCoordinator {
       summary.eventsImported += imported;
       summary.dbEventsImported += imported;
       return summary;
-    } catch {
+    } catch (error) {
+      this.propagatePeriodicOperationalFailure(error);
       return summary;
     } finally {
       if (sourceDb) {
@@ -2049,7 +2137,10 @@ export class IngestCoordinator {
     const maxBytesPerFile = options?.maxBytesPerFile ?? resolveIngestMaxBytesPerFile();
     const readSliceBytes = resolveIngestReadSliceBytes();
 
-    const files = listOpencodeMessageFiles(messageRoot);
+    const files = listOpencodeMessageFiles(
+      messageRoot,
+      (error) => this.propagatePeriodicOperationalFailure(error),
+    );
     const sessionDirectoryMap = this.loadOpencodeSessionDirectoryMap(sessionRoot);
     const cutoffMs = Date.now() - Math.max(0, this.getOpencodeBackfillHours()) * 60 * 60 * 1000;
 
@@ -2077,7 +2168,8 @@ export class IngestCoordinator {
         const stats = statSync(messagePath);
         fileSize = stats.size;
         mtimeMs = stats.mtimeMs;
-      } catch {
+      } catch (error) {
+        this.propagatePeriodicOperationalFailure(error);
         continue;
       }
 
@@ -2185,7 +2277,7 @@ export class IngestCoordinator {
                 break;
               }
               entryIndex += 1;
-              const result = this.deps.recordEvent(
+              const result = this.recordIngestEvent(
                 {
                   platform: "opencode",
                   project: entry.project,
@@ -2238,7 +2330,8 @@ export class IngestCoordinator {
         } finally {
           closeSync(fd);
         }
-      } catch {
+      } catch (error) {
+        this.propagatePeriodicOperationalFailure(error);
         continue;
       }
       if (stopTick) break;
@@ -2369,7 +2462,8 @@ export class IngestCoordinator {
       const stats = statSync(eventsPath);
       fileSize = stats.size;
       mtimeMs = stats.mtimeMs;
-    } catch {
+    } catch (error) {
+      this.propagatePeriodicOperationalFailure(error);
       return summary;
     }
 
@@ -2474,7 +2568,7 @@ export class IngestCoordinator {
               sliceDeferred = true;
               break;
             }
-            const result = this.deps.recordEvent(
+            const result = this.recordIngestEvent(
               {
                 platform: "cursor",
                 project: entry.project,
@@ -2525,7 +2619,8 @@ export class IngestCoordinator {
       } finally {
         closeSync(fd);
       }
-    } catch {
+    } catch (error) {
+      this.propagatePeriodicOperationalFailure(error);
       return summary;
     }
 
@@ -2628,10 +2723,16 @@ export class IngestCoordinator {
     const checkpointRoot = join(rootDir, "docs", "checkpoints");
     const responsesRoot = join(rootDir, "logs", "codex-responses");
     if (existsSync(checkpointRoot)) {
-      candidates.push(...listMarkdownFiles(checkpointRoot));
+      candidates.push(...listMarkdownFiles(
+        checkpointRoot,
+        (error) => this.propagatePeriodicOperationalFailure(error),
+      ));
     }
     if (existsSync(responsesRoot)) {
-      candidates.push(...listMarkdownFiles(responsesRoot));
+      candidates.push(...listMarkdownFiles(
+        responsesRoot,
+        (error) => this.propagatePeriodicOperationalFailure(error),
+      ));
     }
 
     const uniqueFiles = [...new Set(candidates)].sort((lhs, rhs) => lhs.localeCompare(rhs));
@@ -2667,7 +2768,8 @@ export class IngestCoordinator {
         const stats = statSync(filePath);
         fileSize = stats.size;
         mtimeMs = stats.mtimeMs;
-      } catch {
+      } catch (error) {
+        this.propagatePeriodicOperationalFailure(error);
         continue;
       }
 
@@ -2712,7 +2814,8 @@ export class IngestCoordinator {
       let content = "";
       try {
         content = readFileSync(filePath, "utf8");
-      } catch {
+      } catch (error) {
+        this.propagatePeriodicOperationalFailure(error);
         continue;
       }
 
@@ -2735,7 +2838,7 @@ export class IngestCoordinator {
             ? ["antigravity_files_ingest", "checkpoint_file"]
             : ["antigravity_files_ingest", "codex_response_file"];
 
-        const result = this.deps.recordEvent(
+        const result = this.recordIngestEvent(
           {
             platform: "antigravity",
             project: parsed.project,
@@ -2799,7 +2902,10 @@ export class IngestCoordinator {
     const maxBytesPerFile = options?.maxBytesPerFile ?? resolveIngestMaxBytesPerFile();
     const readSliceBytes = resolveIngestReadSliceBytes();
 
-    const logFiles = listAntigravityPlannerLogFiles(logsRoot);
+    const logFiles = listAntigravityPlannerLogFiles(
+      logsRoot,
+      (error) => this.propagatePeriodicOperationalFailure(error),
+    );
     const cutoffMs = Date.now() - Math.max(0, this.getAntigravityBackfillHours()) * 60 * 60 * 1000;
 
     // §159-003f と同型: 走査そのものを budget の対象にする。打ち切ると末尾のファイルが
@@ -2827,7 +2933,8 @@ export class IngestCoordinator {
         const stats = statSync(filePath);
         fileSize = stats.size;
         mtimeMs = stats.mtimeMs;
-      } catch {
+      } catch (error) {
+        this.propagatePeriodicOperationalFailure(error);
         continue;
       }
 
@@ -2927,7 +3034,7 @@ export class IngestCoordinator {
                 break;
               }
               entryIndex += 1;
-              const result = this.deps.recordEvent(
+              const result = this.recordIngestEvent(
                 {
                   platform: "antigravity",
                   project: entry.project,
@@ -2980,7 +3087,8 @@ export class IngestCoordinator {
         } finally {
           closeSync(fd);
         }
-      } catch {
+      } catch (error) {
+        this.propagatePeriodicOperationalFailure(error);
         continue;
       }
       if (stopTick) break;
@@ -3140,7 +3248,8 @@ export class IngestCoordinator {
       const stats = statSync(eventsPath);
       fileSize = stats.size;
       mtimeMs = stats.mtimeMs;
-    } catch {
+    } catch (error) {
+      this.propagatePeriodicOperationalFailure(error);
       return summary;
     }
 
@@ -3232,7 +3341,7 @@ export class IngestCoordinator {
               break;
             }
             entryIndex += 1;
-            const result = this.deps.recordEvent(
+            const result = this.recordIngestEvent(
               {
                 platform: "gemini",
                 project: entry.project,
@@ -3274,7 +3383,8 @@ export class IngestCoordinator {
       } finally {
         closeSync(fd);
       }
-    } catch {
+    } catch (error) {
+      this.propagatePeriodicOperationalFailure(error);
       // 読み込み失敗時は offset を進めず、次 tick で再試行する。
     }
 
@@ -3331,7 +3441,8 @@ export class IngestCoordinator {
         name: string;
         isDirectory: () => boolean;
       }>;
-    } catch {
+    } catch (error) {
+      this.propagatePeriodicOperationalFailure(error);
       return files;
     }
 
@@ -3344,7 +3455,8 @@ export class IngestCoordinator {
           name: string;
           isFile: () => boolean;
         }>;
-      } catch {
+      } catch (error) {
+        this.propagatePeriodicOperationalFailure(error);
         continue;
       }
       for (const entry of entries) {
@@ -3446,8 +3558,18 @@ export class IngestCoordinator {
     maxBytesPerFile?: number;
     replayFromStart?: boolean;
     budgetMs?: number;
-  }): { eventsImported: number; filesScanned: number; filesSkippedBackfill: number } {
-    const summary = { eventsImported: 0, filesScanned: 0, filesSkippedBackfill: 0 };
+  }): {
+    eventsImported: number;
+    filesScanned: number;
+    filesSkippedBackfill: number;
+    failure?: PeriodicIngestTickFailure;
+  } {
+    const summary: {
+      eventsImported: number;
+      filesScanned: number;
+      filesSkippedBackfill: number;
+      failure?: PeriodicIngestTickFailure;
+    } = { eventsImported: 0, filesScanned: 0, filesSkippedBackfill: 0 };
     const startedAtMs = Date.now();
     const budgetMs = options?.budgetMs ?? resolveIngestTickBudgetMs();
     const projectsRoot = resolveHomePath(
@@ -3476,6 +3598,7 @@ export class IngestCoordinator {
         ? this.getScanCursor(scanCursorKey) % files.length
         : 0;
     let filesVisited = 0;
+    let failedFileIndex: number | null = null;
 
     for (let step = 0; step < files.length; step += 1) {
       const filePath = files[(startIndex + step) % files.length] as string;
@@ -3497,7 +3620,8 @@ export class IngestCoordinator {
         const stats = statSync(filePath);
         fileSize = stats.size;
         mtimeMs = stats.mtimeMs;
-      } catch {
+      } catch (error) {
+        this.propagatePeriodicOperationalFailure(error);
         continue;
       }
 
@@ -3596,6 +3720,7 @@ export class IngestCoordinator {
 
             let imported = 0;
             let resumeOffset: number | null = null;
+            let resumeContext: ClaudeCodeContext | null = null;
             let entryIndex = 0;
             for (const entry of parsedChunk.events) {
               if (
@@ -3604,10 +3729,19 @@ export class IngestCoordinator {
                 Date.now() - startedAtMs > budgetMs
               ) {
                 resumeOffset = entry.lineOffset;
+                resumeContext = parseClaudeCodeChunk({
+                  sourceKey,
+                  baseOffset: currentOffset,
+                  chunk: pending.subarray(0, entry.lineOffset - currentOffset).toString("utf8"),
+                  fallbackNowIso: nowIso,
+                  context,
+                  defaultSessionId: fallbackSessionId,
+                  defaultProject: fallbackProject,
+                }).context;
                 break;
               }
               entryIndex += 1;
-              const result = this.deps.recordEvent(
+              const result = this.recordIngestEvent(
                 {
                   platform: "claude",
                   project: entry.project,
@@ -3622,12 +3756,40 @@ export class IngestCoordinator {
                 { allowQueue: false }
               );
               const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
-              if (result.ok && !deduped) imported += 1;
+              if (!result.ok) {
+                resumeOffset = entry.lineOffset;
+                resumeContext = parseClaudeCodeChunk({
+                  sourceKey,
+                  baseOffset: currentOffset,
+                  chunk: pending.subarray(0, entry.lineOffset - currentOffset).toString("utf8"),
+                  fallbackNowIso: nowIso,
+                  context,
+                  defaultSessionId: fallbackSessionId,
+                  defaultProject: fallbackProject,
+                }).context;
+                summary.failure = {
+                  ok: false,
+                  error_code: result.error_code ?? "record_write_failed",
+                  retryable: result.retryable === true,
+                };
+                failedFileIndex = (startIndex + step) % files.length;
+                break;
+              }
+              if (!deduped) imported += 1;
             }
 
             summary.eventsImported += imported;
             if (resumeOffset !== null) {
-              // chunk 全体の context を保存すると未挿入 event まで進むため、次 tick で再構成する。
+              // Offset と context は同じ行境界で永続化する。失敗した entry 自身が更新した
+              // session/project/prompt は含めず、repair 後はその entry から正確に再開する。
+              if (resumeContext) {
+                this.storeClaudeCodeContext(sourceKey, {
+                  sessionId: resumeContext.sessionId,
+                  project: resumeContext.project,
+                  lastUserPrompt: resumeContext.lastUserPrompt,
+                  lastAssistantContent: resumeContext.lastAssistantContent,
+                });
+              }
               this.updateIngestOffset(sourceKey, Math.max(offset, resumeOffset));
               stopTick = true;
               break;
@@ -3653,14 +3815,18 @@ export class IngestCoordinator {
         } finally {
           closeSync(fd);
         }
-      } catch {
+      } catch (error) {
+        this.propagatePeriodicOperationalFailure(error);
         continue;
       }
       if (stopTick) break;
     }
 
     if (!replayFromStart && files.length > 0) {
-      this.setScanCursor(scanCursorKey, (startIndex + filesVisited) % files.length);
+      this.setScanCursor(
+        scanCursorKey,
+        failedFileIndex ?? (startIndex + filesVisited) % files.length,
+      );
     }
 
     return summary;
@@ -3684,6 +3850,13 @@ export class IngestCoordinator {
       // 明示 API は完走させる (§159-003b の tick budget は定期実行のみに効かせる)
       budgetMs: Infinity,
     });
+    if (summary.failure) {
+      return makeErrorResponse(
+        startedAt,
+        summary.failure.error_code,
+        { ingest_mode: "claude_code_v1", retryable: summary.failure.retryable }
+      );
+    }
     return makeResponse(
       startedAt,
       [
@@ -3753,7 +3926,7 @@ export class IngestCoordinator {
       if (!dryRun) {
         for (const event of plan.events) {
           const normalizedTags = [...new Set([...(event.tags || []), "claude_mem_import", importTag])];
-          const response = this.deps.recordEvent(
+          const response = this.recordIngestEvent(
             {
               ...event,
               tags: normalizedTags,
@@ -4099,7 +4272,7 @@ export class IngestCoordinator {
     let imported = 0;
     let skipped = 0;
     for (const obs of observations) {
-      const result = this.deps.recordEvent(
+      const result = this.recordIngestEvent(
         {
           platform,
           project,
@@ -4185,7 +4358,7 @@ export class IngestCoordinator {
     let imported = 0;
     let skipped = 0;
     for (const obs of observations) {
-      const result = this.deps.recordEvent(
+      const result = this.recordIngestEvent(
         {
           platform,
           project,

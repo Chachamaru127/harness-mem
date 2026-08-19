@@ -32,3 +32,19 @@ describe("harness-mem sqlite-vec repair CLI contract", () => {
     expect(CLIENT).toContain("admin_repair_sqlite_vec_map_failed");
   });
 });
+
+describe("harness-mem content dedupe claims rebuild CLI contract", () => {
+  test("requires an explicit execute flag and returns only fixed readiness fields", () => {
+    expect(CLI).toContain("admin-rebuild-dedupe-claims requires --execute");
+    expect(CLI).toContain("DEDUPE_CLAIMS_REBUILD_EXECUTE=0");
+    expect(CLI).toContain("DEDUPE_CLAIMS_REBUILD_EXECUTE=1");
+    expect(CLI).toContain("admin-rebuild-dedupe-claims '{\"execute\":true}'");
+    expect(CLI).toContain('.items[0].outcome == "ready"');
+  });
+
+  test("uses the authenticated admin endpoint and a fixed failure code", () => {
+    expect(CLIENT).toContain("admin-rebuild-dedupe-claims");
+    expect(CLIENT).toContain("/v1/admin/rebuild-content-dedupe-claims");
+    expect(CLIENT).toContain("admin_rebuild_dedupe_claims_failed");
+  });
+});

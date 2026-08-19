@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
   HarnessMemCore,
   type Config,
@@ -217,6 +217,190 @@ describe("S129-002 archive-first restore-capable flow", () => {
     }
   });
 
+  test("restore normalizes a pre-alias-migration archived project but rejects a different project", () => {
+    const core = new HarnessMemCore(createConfig("restore-legacy-project-alias"));
+    const archiveWithPayloadProject = (
+      suffix: string,
+      archivedProject: string,
+      existingSessionProject = archivedProject,
+    ) => {
+      const content = `legacy project alias restore ${suffix}`;
+      const old = core.recordEvent({
+        ...eventFor(`legacy-alias-${suffix}-old`, content, process.cwd()),
+        event_type: "session_end",
+      });
+      expect(old.ok).toBe(true);
+      const target = (old.items[0] as { id: string }).id;
+      const targetRow = core.getRawDb().query<{ project: string; session_id: string }, [string]>(
+        "SELECT project, session_id FROM mem_observations WHERE id = ?",
+      ).get(target);
+      if (!targetRow) throw new Error("archive test target is missing");
+      core.getRawDb().query(`INSERT INTO mem_facts(
+        fact_id, observation_id, project, session_id, fact_type, fact_key, fact_value, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'preference', 'legacy-project', 'restore', ?, ?)`)
+        .run(
+          `fact-legacy-project-${suffix}`,
+          target,
+          targetRow.project,
+          targetRow.session_id,
+          "2026-05-20T00:00:00.000Z",
+          "2026-05-20T00:00:00.000Z",
+        );
+      core.getRawDb().query(
+        "UPDATE mem_observations SET created_at = ?, updated_at = ?, signal_score = 0, access_count = 0 WHERE id = ?",
+      ).run("2020-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z", target);
+      const plan = core.adminForgetArchive({ candidate_ids: [target] }).items[0] as { manifest_sha256: string };
+      const archived = core.adminForgetArchive({
+        candidate_ids: [target],
+        manifest_sha256: plan.manifest_sha256,
+        reason: "archive predating project alias migration",
+        execute: true,
+      });
+      expect(archived.ok).toBe(true);
+      const archiveId = (archived.items[0] as { archive_ids: string[] }).archive_ids[0];
+      const successor = core.recordEvent({
+        ...eventFor(`legacy-alias-${suffix}-successor`, content, process.cwd()),
+        event_type: "session_end",
+        ts: "2026-05-21T00:00:00.000Z",
+      });
+      expect(successor.ok).toBe(true);
+      const successorId = (successor.items[0] as { id: string }).id;
+      const canonicalProject = core.getRawDb().query<{ project: string }, [string]>(
+        "SELECT project FROM mem_observations WHERE id = ?",
+      ).get(successorId)?.project;
+      if (!canonicalProject) throw new Error("successor canonical project is missing");
+      const full = core.getRawDb().query<{ payload_json: string }, [string]>(
+        "SELECT payload_json FROM mem_archive_full WHERE archive_id = ?",
+      ).get(archiveId);
+      const payload = JSON.parse(full?.payload_json ?? "{}") as {
+        rows?: Record<string, Array<Record<string, unknown>>>;
+      };
+      const observation = payload.rows?.mem_observations?.[0];
+      if (!observation) throw new Error("archive test payload is missing observation");
+      for (const rows of Object.values(payload.rows ?? {})) {
+        for (const row of rows) {
+          if (Object.hasOwn(row, "project")) row.project = archivedProject;
+        }
+      }
+      const payloadJson = JSON.stringify(payload);
+      core.getRawDb().query(
+        "UPDATE mem_archive_full SET payload_json = ?, payload_sha256 = ? WHERE archive_id = ?",
+      ).run(payloadJson, sha256Text(payloadJson), archiveId);
+      core.getRawDb().query("UPDATE mem_archive_stubs SET project = ? WHERE archive_id = ?")
+        .run(archivedProject, archiveId);
+      core.getRawDb().query("UPDATE mem_sessions SET project = ? WHERE session_id = ?")
+        .run(existingSessionProject, targetRow.session_id);
+      return { archiveId, canonicalProject, target, sessionId: targetRow.session_id };
+    };
+    try {
+      const alias = archiveWithPayloadProject("equivalent", basename(process.cwd()));
+      const aliasRestore = core.adminForgetRestore({
+        archive_id: alias.archiveId,
+        reason: "restore alias-equivalent archived project",
+        execute: true,
+      });
+      expect(aliasRestore.ok).toBe(true);
+      const restoredAlias = core.getRawDb().query<{ project: string }, [string]>(`
+        SELECT project FROM mem_observations
+        WHERE id = (SELECT observation_id FROM mem_archive_stubs WHERE archive_id = ?)
+      `).get(alias.archiveId);
+      expect(restoredAlias?.project).toBe(alias.canonicalProject);
+      for (const [table, where, value] of [
+        ["mem_events", "observation_id", alias.target],
+        ["mem_facts", "observation_id", alias.target],
+        ["mem_sessions", "session_id", alias.sessionId],
+      ] as const) {
+        const projects = core.getRawDb().query<{ project: string }, [string]>(
+          `SELECT project FROM ${table} WHERE ${where} = ?`,
+        ).all(value);
+        expect(projects.length).toBeGreaterThan(0);
+        expect(projects.every((row) => row.project === alias.canonicalProject)).toBe(true);
+        expect(projects.some((row) => row.project === basename(process.cwd()))).toBe(false);
+      }
+
+      const different = archiveWithPayloadProject("different", "genuinely-different-project");
+      const differentRestore = core.adminForgetRestore({
+        archive_id: different.archiveId,
+        reason: "reject cross-project archived payload",
+        execute: true,
+      });
+      expect(differentRestore.ok).toBe(false);
+      expect(differentRestore.error).toContain("another project");
+
+      const sessionDifferent = archiveWithPayloadProject(
+        "session-different",
+        basename(process.cwd()),
+        "genuinely-different-session-project",
+      );
+      const sessionDifferentRestore = core.adminForgetRestore({
+        archive_id: sessionDifferent.archiveId,
+        reason: "reject cross-project existing session",
+        execute: true,
+      });
+      expect(sessionDifferentRestore.ok).toBe(false);
+      expect(sessionDifferentRestore.error).toContain("session belongs to another project");
+      expect(core.getRawDb().query<{ project: string }, [string]>(
+        "SELECT project FROM mem_sessions WHERE session_id = ?",
+      ).get(sessionDifferent.sessionId)?.project).toBe("genuinely-different-session-project");
+      expect(core.getRawDb().query<{ archived_at: string | null }, [string]>(
+        "SELECT archived_at FROM mem_observations WHERE id = ?",
+      ).get(sessionDifferent.target)?.archived_at).not.toBeNull();
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("restore anchors null-hash payload projects to the archive stub without a successor", () => {
+    const core = new HarnessMemCore(createConfig("restore-archive-workspace-anchor"));
+    try {
+      const target = insertObservation(core, "workspace-anchor", "workspace anchor without claim successor");
+      const plan = core.adminForgetArchive({ candidate_ids: [target] }).items[0] as { manifest_sha256: string };
+      const archived = core.adminForgetArchive({
+        candidate_ids: [target],
+        manifest_sha256: plan.manifest_sha256,
+        reason: "archive workspace anchor fixture",
+        execute: true,
+      });
+      expect(archived.ok).toBe(true);
+      const archiveId = (archived.items[0] as { archive_ids: string[] }).archive_ids[0];
+      const full = core.getRawDb().query<{ payload_json: string }, [string]>(
+        "SELECT payload_json FROM mem_archive_full WHERE archive_id = ?",
+      ).get(archiveId);
+      const payload = JSON.parse(full?.payload_json ?? "{}") as {
+        rows?: Record<string, Array<Record<string, unknown>>>;
+      };
+      for (const rows of Object.values(payload.rows ?? {})) {
+        for (const row of rows) {
+          if (Object.hasOwn(row, "project")) row.project = "internally-consistent-wrong-project";
+        }
+      }
+      const observation = payload.rows?.mem_observations?.[0];
+      if (!observation) throw new Error("archive test payload is missing observation");
+      observation.content_dedupe_hash = null;
+      const payloadJson = JSON.stringify(payload);
+      core.getRawDb().query(
+        "UPDATE mem_archive_full SET payload_json = ?, payload_sha256 = ? WHERE archive_id = ?",
+      ).run(payloadJson, sha256Text(payloadJson), archiveId);
+
+      const restore = core.adminForgetRestore({
+        archive_id: archiveId,
+        reason: "reject payload outside archive workspace",
+        execute: true,
+      });
+
+      expect(restore.ok).toBe(false);
+      expect(restore.error).toContain("archive workspace");
+      expect(core.getRawDb().query<{ archived_at: string | null }, [string]>(
+        "SELECT archived_at FROM mem_observations WHERE id = ?",
+      ).get(target)?.archived_at).not.toBeNull();
+      expect(countRows(core, "mem_observations", "project = ? AND archived_at IS NULL", [
+        "internally-consistent-wrong-project",
+      ])).toBe(0);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
   test("restore refuses to auto-archive a protected active successor and rolls back the swap", () => {
     const core = new HarnessMemCore(createConfig("protected-successor-restore"));
     try {
@@ -254,6 +438,67 @@ describe("S129-002 archive-first restore-capable flow", () => {
       `).all(oldId, successorId);
       expect(states.find((row) => row.id === oldId)?.archived_at).not.toBeNull();
       expect(states.find((row) => row.id === successorId)?.archived_at).toBeNull();
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("restore fails rebuild-required before claim swap when legacy duplicate ownership is not-ready", () => {
+    const core = new HarnessMemCore(createConfig("restore-claims-not-ready"));
+    try {
+      const content = "restore not-ready legacy duplicate ownership";
+      const first = core.recordEvent({
+        ...eventFor("restore-not-ready-old", content),
+        event_type: "session_end",
+        expires_at: "2020-01-01T00:00:00.000Z",
+      });
+      const oldId = String(first.items[0]?.id);
+      const replacement = core.recordEvent({
+        ...eventFor("restore-not-ready-new", content),
+        event_type: "session_end",
+        ts: "2026-05-21T00:00:00.000Z",
+      });
+      expect(replacement.ok).toBe(true);
+      const db = core.getRawDb();
+      const archive = db.query<{ archive_id: string }, [string]>(
+        "SELECT archive_id FROM mem_archive_stubs WHERE observation_id = ? AND archive_state = 'archived'",
+      ).get(oldId);
+      const successor = db.query<{
+        content_dedupe_hash: string;
+        project: string;
+        session_id: string;
+      }, []>(`
+        SELECT content_dedupe_hash, project, session_id FROM mem_observations
+        WHERE archived_at IS NULL AND content_dedupe_hash IS NOT NULL
+      `).get();
+      db.exec(`
+        DROP INDEX idx_mem_obs_content_dedupe_hash;
+        DROP TRIGGER mem_observations_dedupe_claim_ai;
+        DROP TRIGGER mem_observations_dedupe_claim_au;
+        DROP TRIGGER mem_observations_dedupe_claim_ad;
+      `);
+      const now = "2026-08-19T00:00:00.000Z";
+      db.query(`INSERT INTO mem_observations(
+        id, platform, project, session_id, content, content_redacted,
+        content_dedupe_hash, tags_json, privacy_tags_json, created_at, updated_at
+      ) VALUES ('legacy-extra-canonical', 'test', ?, ?, 'legacy', 'legacy', ?, '[]', '[]', ?, ?)`)
+        .run(successor?.project, successor?.session_id, successor?.content_dedupe_hash, now, now);
+      db.exec("UPDATE mem_meta SET value = 'not_ready' WHERE key = 'dedupe_claims.readiness'");
+
+      const restore = core.adminForgetRestore({
+        archive_id: archive?.archive_id,
+        reason: "must not restore through ambiguous claims",
+        execute: true,
+      });
+      expect(restore.ok).toBe(false);
+      expect(JSON.stringify(restore)).toContain("rebuild");
+      expect(db.query<{ archived_at: string | null }, [string]>(
+        "SELECT archived_at FROM mem_observations WHERE id = ?",
+      ).get(oldId)?.archived_at).not.toBeNull();
+      expect(db.query<{ count: number }, [string]>(`
+        SELECT COUNT(*) AS count FROM mem_observations
+        WHERE content_dedupe_hash = ? AND archived_at IS NULL
+      `).get(successor?.content_dedupe_hash ?? "")?.count).toBe(2);
     } finally {
       core.shutdown("test");
     }
