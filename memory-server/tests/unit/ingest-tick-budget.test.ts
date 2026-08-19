@@ -12,6 +12,9 @@ import {
 
 const COORDINATOR = resolve(import.meta.dir, "../../src/core/ingest-coordinator.ts");
 const SERVER = resolve(import.meta.dir, "../../src/server.ts");
+const CORE = resolve(import.meta.dir, "../../src/core/harness-mem-core.ts");
+const INGEST_WORKER_CLIENT = resolve(import.meta.dir, "../../src/core/periodic-ingest-worker-client.ts");
+const INGEST_WORKER = resolve(import.meta.dir, "../../src/tools/periodic-ingest-worker.ts");
 
 /**
  * メソッド本体を切り出す。**両端のマーカーが見つかることを必ず assert する。**
@@ -228,7 +231,8 @@ describe("§159-003c codex ingest tick budget", () => {
 
     // 定期 tick は専用の private 経路を通す。公開 API (ingestCodexHistory) は
     // budgetMs: Infinity で完走する契約なので、scheduler から呼ぶと budget が無効化される。
-    expect(source).toContain('this.runTick("codex", () => this.ingestCodexHistoryTick())');
+    expect(source).toContain('this.schedulePeriodicIngest("codex")');
+    expect(source).toContain('codex: () => this.ingestCodexHistoryTick()');
     expect(source).not.toContain('this.runTick("codex", () => this.ingestCodexHistory())');
 
     const apiStart = source.indexOf("ingestCodexHistory(): ApiResponse");
@@ -282,9 +286,10 @@ describe("§159-003c codex ingest tick budget", () => {
     expect(source).toContain("HARNESS_MEM_SLOW_TICK_LOG_MS");
     expect(source).toContain("private runTick(");
     expect(source).toContain("blocked the event loop for");
-    // 各 60 秒 job が runTick を通ること
+    // 各 periodic job が worker scheduler を通り、worker 内で runTick を通ること
+    expect(source).toContain("this.runTick(source, jobs[source])");
     for (const label of ["codex", "opencode", "cursor", "gemini", "claude_code"]) {
-      expect(source).toContain(`this.runTick("${label}"`);
+      expect(source).toContain(`this.schedulePeriodicIngest("${label}")`);
     }
   });
 });
@@ -398,6 +403,14 @@ function extractRunTickCalls(source: string): RunTickCall[] {
   while ((m = re.exec(source))) {
     calls.push({ label: m[1] as string, fnName: m[2] as string });
   }
+  const decls = extractMethodDeclarations(source);
+  const dispatcher = getMethodBody(source, decls, "runPeriodicIngestTickLocal");
+  if (dispatcher) {
+    const mapping = /^ {6}(\w+):\s*\(\)\s*=>\s*this\.(\w+)\(/gm;
+    while ((m = mapping.exec(dispatcher))) {
+      calls.push({ label: m[1] as string, fnName: m[2] as string });
+    }
+  }
   return calls;
 }
 
@@ -473,6 +486,45 @@ function traceIngestBudgetCoverage(source: string, maxDepth = 5): CoverageResult
 }
 
 describe("§160-005c runTick 到達性による ingest budget 網羅検査", () => {
+  test("daemon startup から child dispatcher まで6 sourceの実配線が連続している", () => {
+    const coordinatorSource = readFileSync(COORDINATOR, "utf8");
+    const coreSource = readFileSync(CORE, "utf8");
+    const clientSource = readFileSync(INGEST_WORKER_CLIENT, "utf8");
+    const workerSource = readFileSync(INGEST_WORKER, "utf8");
+    const coreDecls = extractMethodDeclarations(coreSource);
+    const coordinatorDecls = extractMethodDeclarations(coordinatorSource);
+    const clientDecls = extractMethodDeclarations(clientSource);
+
+    const startup = getMethodBody(coreSource, coreDecls, "startBackgroundWorkers") ?? "";
+    expect(startup.indexOf("this.getOrCreatePeriodicIngestWorker()"))
+      .toBeLessThan(startup.indexOf("this.ingestCoord.startTimers()"));
+    expect(getMethodBody(coreSource, coreDecls, "getOrCreatePeriodicIngestWorker"))
+      .toContain("new PeriodicIngestWorkerClient");
+
+    const timers = getMethodBody(coordinatorSource, coordinatorDecls, "startTimers") ?? "";
+    for (const source of ["codex", "opencode", "cursor", "antigravity", "gemini", "claude_code"]) {
+      expect(timers).toContain(`this.schedulePeriodicIngest("${source}")`);
+    }
+    expect(getMethodBody(coordinatorSource, coordinatorDecls, "schedulePeriodicIngest"))
+      .toContain("this.deps.schedulePeriodicIngest(source)");
+    expect(getMethodBody(coreSource, coreDecls, "schedulePeriodicIngest"))
+      .toContain("this.getOrCreatePeriodicIngestWorker().schedule(source)");
+    expect(getMethodBody(clientSource, clientDecls, "schedule")).toContain("this.queue.push(source)");
+    expect(getMethodBody(clientSource, clientDecls, "schedule")).toContain("this.drain()");
+    expect(getMethodBody(clientSource, clientDecls, "drain")).toContain("JSON.stringify({ id, source })");
+
+    expect(workerSource.indexOf("parseEnvelope(line)")).toBeLessThan(
+      workerSource.indexOf("core.runPeriodicIngestTickLocal(request.source)"),
+    );
+    expect(getMethodBody(coreSource, coreDecls, "runPeriodicIngestTickLocal"))
+      .toContain("this.ingestCoord.runPeriodicIngestTickLocal(source)");
+    const dispatcher = getMethodBody(coordinatorSource, coordinatorDecls, "runPeriodicIngestTickLocal") ?? "";
+    for (const call of extractRunTickCalls(coordinatorSource)) {
+      expect(dispatcher).toContain(`${call.label}: () => this.${call.fnName}()`);
+    }
+    expect(dispatcher).toContain("this.runTick(source, jobs[source])");
+  });
+
   test("抽出ロジックの死活チェック: runTick 経路が現状 6 件以上ソースから読み取れる", () => {
     const source = readFileSync(COORDINATOR, "utf8");
     const calls = extractRunTickCalls(source);

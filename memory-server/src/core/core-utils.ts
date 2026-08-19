@@ -1179,6 +1179,8 @@ export function ensureSession(
       END,
       correlation_id = COALESCE(mem_sessions.correlation_id, excluded.correlation_id),
       updated_at = excluded.updated_at
+    WHERE excluded.started_at < mem_sessions.started_at
+       OR (mem_sessions.correlation_id IS NULL AND excluded.correlation_id IS NOT NULL)
   `).run(sessionId, platform, project, ts, correlationId ?? null, resolvedUserId, resolvedTeamId, current, current);
 }
 

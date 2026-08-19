@@ -6,8 +6,13 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   EventRecorder,
+  setEventRecorderSegmentSink,
   type EventRecorderDeps,
 } from "../../src/core/event-recorder";
 import type {
@@ -15,6 +20,11 @@ import type {
   EventEnvelope,
 } from "../../src/core/types";
 import { createTestDb, createTestConfig, makeEvent } from "./test-helpers";
+import {
+  beginIngestTickTelemetry,
+  endIngestTickTelemetry,
+} from "../../src/core/sqlite-performance-telemetry";
+import { configureDatabase, initFtsIndex, initSchema, migrateSchema } from "../../src/db/schema";
 
 // ---------------------------------------------------------------------------
 // ヘルパー: EventRecorder インスタンスの生成
@@ -43,6 +53,10 @@ function makeRecorder(
     getEmbeddingHealthStatus: () => "healthy",
     getVectorModelVersion: () => "local-hash-v3",
     refreshEmbeddingHealth: () => {},
+    archiveExpiredObservation: (observationId) => {
+      db.query(`UPDATE mem_observations SET archived_at = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL`)
+        .run(new Date().toISOString(), new Date().toISOString(), observationId);
+    },
     ...depOverrides,
   };
   return new EventRecorder(deps);
@@ -53,6 +67,247 @@ function makeRecorder(
 // ---------------------------------------------------------------------------
 
 describe("event-recorder: recordEvent", () => {
+  test("new content uses the atomic unique-index write without a pre-read dedupe lookup", () => {
+    const recorder = makeRecorder();
+    const labels: string[] = [];
+    setEventRecorderSegmentSink((label) => labels.push(label));
+    try {
+      const result = recorder.recordEvent(makeEvent({
+        event_id: "atomic-content-first",
+        dedupe_hash: "atomic-event-first",
+        event_type: "session_end",
+        payload: { content: "atomic content dedupe contract" },
+      }));
+      expect(result.ok).toBe(true);
+      expect(labels).not.toContain("dedupe_lookup");
+    } finally {
+      setEventRecorderSegmentSink(null);
+    }
+  });
+
+  test("expired content does not block an atomic replacement observation", () => {
+    const recorder = makeRecorder();
+    const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+    const payload = { content: "replace expired semantic dedupe row" };
+    const first = recorder.recordEvent(makeEvent({
+      event_id: "expired-content-first",
+      dedupe_hash: "expired-event-first",
+      event_type: "session_end",
+      expires_at: "2020-01-01T00:00:00.000Z",
+      payload,
+    }));
+    const second = recorder.recordEvent(makeEvent({
+      event_id: "expired-content-second",
+      dedupe_hash: "expired-event-second",
+      event_type: "session_end",
+      ts: "2026-02-21T00:00:00.000Z",
+      payload,
+    }));
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    expect((second.meta as Record<string, unknown>).deduped).toBeFalsy();
+    const rows = db.query<{ archived_at: string | null }, []>(
+      `SELECT archived_at FROM mem_observations WHERE event_id LIKE 'expired-content-%' ORDER BY event_id`,
+    ).all();
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.archived_at).not.toBeNull();
+    expect(rows[1]?.archived_at).toBeNull();
+  });
+
+  test("same session is ensured once per tick, but an earlier start refreshes it", () => {
+    const recorder = makeRecorder();
+    const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+    const labels: string[] = [];
+    setEventRecorderSegmentSink((label) => labels.push(label));
+    const tick = beginIngestTickTelemetry("test");
+    try {
+      recorder.recordEvent(makeEvent({
+        event_id: "tick-session-1", dedupe_hash: "tick-hash-1",
+        ts: "2026-02-20T01:00:00.000Z", payload: { prompt: "one" },
+      }));
+      recorder.recordEvent(makeEvent({
+        event_id: "tick-session-2", dedupe_hash: "tick-hash-2",
+        ts: "2026-02-20T02:00:00.000Z", payload: { prompt: "two" },
+      }));
+      recorder.recordEvent(makeEvent({
+        event_id: "tick-session-3", dedupe_hash: "tick-hash-3",
+        ts: "2026-02-20T00:00:00.000Z", payload: { prompt: "three" },
+      }));
+    } finally {
+      endIngestTickTelemetry(tick, db, 0, Infinity);
+      setEventRecorderSegmentSink(null);
+    }
+    expect(labels.filter((label) => label === "ensure_session")).toHaveLength(2);
+    const session = db.query<{ started_at: string }, [string]>(
+      "SELECT started_at FROM mem_sessions WHERE session_id = ?",
+    ).get("test-session-001");
+    expect(session?.started_at).toBe("2026-02-20T00:00:00.000Z");
+  });
+
+  test("rolled-back recordEvent does not poison the per-tick session ensure cache", () => {
+    let failEmbedding = true;
+    const recorder = makeRecorder({}, {
+      getVectorEngine: () => "js-fallback",
+      embedContent: () => {
+        if (failEmbedding) throw new Error("synthetic embedding failure");
+        return new Array(64).fill(0);
+      },
+    });
+    const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+    const labels: string[] = [];
+    setEventRecorderSegmentSink((label) => labels.push(label));
+    const tick = beginIngestTickTelemetry("test");
+    try {
+      const failed = recorder.recordEvent(makeEvent({
+        event_id: "rollback-session-1", dedupe_hash: "rollback-hash-1",
+        payload: { prompt: "first fails" },
+      }), { allowQueue: false });
+      expect(failed.ok).toBe(false);
+      failEmbedding = false;
+      const retried = recorder.recordEvent(makeEvent({
+        event_id: "rollback-session-2", dedupe_hash: "rollback-hash-2",
+        payload: { prompt: "second succeeds" },
+      }), { allowQueue: false });
+      expect(retried.ok).toBe(true);
+    } finally {
+      endIngestTickTelemetry(tick, db, 0, Infinity);
+      setEventRecorderSegmentSink(null);
+    }
+    expect(labels.filter((label) => label === "ensure_session")).toHaveLength(2);
+  });
+
+  test("session updated_at ignores replay but advances for genuinely persisted activity", () => {
+    const recorder = makeRecorder();
+    const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+    recorder.recordEvent(makeEvent({
+      event_id: "session-update-1", dedupe_hash: "session-update-hash-1",
+      ts: "2026-02-20T00:00:00.000Z", payload: { prompt: "first" },
+    }));
+    db.query("UPDATE mem_sessions SET updated_at = '2000-01-01T00:00:00.000Z' WHERE session_id = ?")
+      .run("test-session-001");
+
+    recorder.recordEvent(makeEvent({
+      event_id: "session-update-1", dedupe_hash: "session-update-hash-1",
+      ts: "2026-02-20T00:00:00.000Z", payload: { prompt: "first" },
+    }));
+    const unchanged = db.query<{ updated_at: string }, [string]>(
+      "SELECT updated_at FROM mem_sessions WHERE session_id = ?",
+    ).get("test-session-001");
+    expect(unchanged?.updated_at).toBe("2000-01-01T00:00:00.000Z");
+
+    recorder.recordEvent(makeEvent({
+      event_id: "session-update-3", dedupe_hash: "session-update-hash-3",
+      ts: "2026-02-19T00:00:00.000Z", correlation_id: "new-correlation",
+      payload: { prompt: "earlier metadata" },
+    }));
+    const changed = db.query<{ updated_at: string; started_at: string; correlation_id: string }, [string]>(
+      "SELECT updated_at, started_at, correlation_id FROM mem_sessions WHERE session_id = ?",
+    ).get("test-session-001");
+    expect(changed?.updated_at).not.toBe("2000-01-01T00:00:00.000Z");
+    expect(changed?.started_at).toBe("2026-02-19T00:00:00.000Z");
+    expect(changed?.correlation_id).toBe("new-correlation");
+  });
+
+  test("a newly persisted content-duplicate event advances session activity", () => {
+    const recorder = makeRecorder();
+    const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+    const payload = { content: "same summary but a genuinely new event" };
+    const canonical = recorder.recordEvent(makeEvent({
+      event_id: "content-activity-1", dedupe_hash: "content-activity-hash-1",
+      event_type: "session_end", ts: "2026-02-20T00:00:00.000Z", payload,
+    }));
+    db.query("UPDATE mem_sessions SET updated_at = '2000-01-01T00:00:00.000Z' WHERE session_id = ?")
+      .run("test-session-001");
+    const duplicate = recorder.recordEvent(makeEvent({
+      event_id: "content-activity-2", dedupe_hash: "content-activity-hash-2",
+      event_type: "session_end", ts: "2026-02-21T00:00:00.000Z", payload,
+    }));
+    expect(duplicate.ok).toBe(true);
+    expect((duplicate.meta as Record<string, unknown>).dedupe_basis).toBe("content");
+    expect(duplicate.items[0]?.id).toBe(canonical.items[0]?.id);
+    expect(duplicate.items[0]?.observation_id).toBe(canonical.items[0]?.id);
+    const row = db.query<{ updated_at: string }, [string]>(
+      "SELECT updated_at FROM mem_sessions WHERE session_id = ?",
+    ).get("test-session-001");
+    expect(row?.updated_at).not.toBe("2000-01-01T00:00:00.000Z");
+  });
+
+  test("expired private/secret/sensitive/legal_hold collisions fail closed without auto-archive", () => {
+    const recorder = makeRecorder();
+    const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+    for (const tag of ["private", "secret", "sensitive", "legal_hold"]) {
+      const payload = { content: `protected expired semantic row ${tag}` };
+      expect(recorder.recordEvent(makeEvent({
+        event_id: `protected-${tag}-first`, dedupe_hash: `protected-${tag}-hash-1`, event_type: "session_end",
+        expires_at: "2020-01-01T00:00:00.000Z", privacy_tags: [tag], payload,
+      })).ok).toBe(true);
+      const second = recorder.recordEvent(makeEvent({
+        event_id: `protected-${tag}-second`, dedupe_hash: `protected-${tag}-hash-2`, event_type: "session_end", payload,
+      }), { allowQueue: false });
+      expect(second.ok).toBe(false);
+      const row = db.query<{ archived_at: string | null }, [string]>(
+        "SELECT archived_at FROM mem_observations WHERE event_id = ?",
+      ).get(`protected-${tag}-first`);
+      expect(row?.archived_at).toBeNull();
+    }
+
+    const taggedPayload = { content: "protected expired semantic row tags json legal hold" };
+    expect(recorder.recordEvent(makeEvent({
+      event_id: "protected-tag-first", dedupe_hash: "protected-tag-hash-1", event_type: "session_end",
+      expires_at: "2020-01-01T00:00:00.000Z", tags: ["legal_hold"], payload: taggedPayload,
+    })).ok).toBe(true);
+    expect(recorder.recordEvent(makeEvent({
+      event_id: "protected-tag-second", dedupe_hash: "protected-tag-hash-2", event_type: "session_end",
+      payload: taggedPayload,
+    }), { allowQueue: false }).ok).toBe(false);
+    expect(db.query<{ archived_at: string | null }, []>(
+      "SELECT archived_at FROM mem_observations WHERE event_id = 'protected-tag-first'",
+    ).get()?.archived_at).toBeNull();
+  });
+
+  test("two SQLite connections converge content duplicates on one canonical observation", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-atomic-dedupe-"));
+    const dbPath = join(dir, "memory.db");
+    const db1 = new Database(dbPath);
+    configureDatabase(db1);
+    initSchema(db1);
+    migrateSchema(db1);
+    initFtsIndex(db1);
+    const db2 = new Database(dbPath);
+    configureDatabase(db2);
+    const recorder1 = makeRecorder({}, { db: db1 });
+    const recorder2 = makeRecorder({}, { db: db2 });
+    const payload = { content: "cross connection atomic semantic dedupe" };
+    try {
+      const first = recorder1.recordEvent(makeEvent({
+        event_id: "connection-event-1", dedupe_hash: "connection-hash-1",
+        event_type: "session_end", payload,
+      }));
+      const second = recorder2.recordEvent(makeEvent({
+        event_id: "connection-event-2", dedupe_hash: "connection-hash-2",
+        event_type: "session_end", ts: "2026-02-21T00:00:00.000Z", payload,
+      }));
+      expect(first.ok).toBe(true);
+      expect(second.ok).toBe(true);
+      expect((second.meta as Record<string, unknown>).dedupe_basis).toBe("content");
+      const observations = db1.query<{ count: number }, []>(
+        "SELECT COUNT(*) AS count FROM mem_observations WHERE archived_at IS NULL",
+      ).get();
+      const pointers = db1.query<{ observation_id: string | null }, []>(
+        "SELECT observation_id FROM mem_events WHERE event_id LIKE 'connection-event-%' ORDER BY event_id",
+      ).all();
+      expect(observations?.count).toBe(1);
+      expect(pointers).toHaveLength(2);
+      expect(pointers[0]?.observation_id).toBeTruthy();
+      expect(pointers[1]?.observation_id).toBe(pointers[0]?.observation_id);
+    } finally {
+      db2.close();
+      db1.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("正常なイベントが ok=true で記録される", () => {
     const recorder = makeRecorder();
 

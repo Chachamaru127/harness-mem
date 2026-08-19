@@ -139,6 +139,126 @@ function removeCanonicalTargetRows(core: HarnessMemCore, targetId: string): void
 }
 
 describe("S129-002 archive-first restore-capable flow", () => {
+  test("expired dedupe replacement archives both generations and standard restore swaps the active canonical row", () => {
+    const core = new HarnessMemCore(createConfig("expired-dedupe-restore"));
+    try {
+      const content = "expired dedupe restore capable content";
+      const firstEvent = {
+        ...eventFor("expired-first", content),
+        event_type: "session_end",
+        expires_at: "2020-01-01T00:00:00.000Z",
+      };
+      const first = core.recordEvent(firstEvent);
+      const oldId = (first.items[0] as { id: string }).id;
+      const replacement = core.recordEvent({
+        ...eventFor("expired-replacement", content),
+        event_type: "session_end",
+        ts: "2026-05-21T00:00:00.000Z",
+      });
+      expect(replacement.ok).toBe(true);
+      expect((replacement.meta as Record<string, unknown>).deduped).toBeFalsy();
+      const replacementId = (replacement.items[0] as { id: string }).id;
+      expect(replacementId).not.toBe(oldId);
+
+      const oldArchive = core.getRawDb().query<{
+        archive_id: string;
+        archive_state: string;
+        payload_json: string;
+      }, [string]>(`
+        SELECT s.archive_id, s.archive_state, f.payload_json
+        FROM mem_archive_stubs s
+        JOIN mem_archive_full f ON f.archive_id = s.archive_id
+        WHERE s.observation_id = ? AND s.archive_state = 'archived'
+      `).get(oldId);
+      expect(oldArchive?.archive_state).toBe("archived");
+      expect(oldArchive?.payload_json).toContain(oldId);
+
+      const restoreOld = core.adminForgetRestore({
+        archive_id: oldArchive?.archive_id,
+        reason: "restore expired canonical",
+        execute: true,
+      });
+      expect(restoreOld.ok).toBe(true);
+      expect(restoreOld.items[0]?.observation_id).toBe(oldId);
+      const active = core.getRawDb().query<{ id: string }, [string]>(`
+        SELECT id FROM mem_observations
+        WHERE content_dedupe_hash = (
+          SELECT content_dedupe_hash FROM mem_observations WHERE id = ?
+        ) AND archived_at IS NULL
+      `).all(oldId);
+      expect(active).toEqual([{ id: oldId }]);
+
+      const replacementArchive = core.getRawDb().query<{ archive_id: string; payload_json: string }, [string]>(`
+        SELECT s.archive_id, f.payload_json
+        FROM mem_archive_stubs s
+        JOIN mem_archive_full f ON f.archive_id = s.archive_id
+        WHERE s.observation_id = ? AND s.archive_state = 'archived'
+      `).get(replacementId);
+      expect(replacementArchive?.payload_json).toContain(replacementId);
+
+      const restoreReplacement = core.adminForgetRestore({
+        archive_id: replacementArchive?.archive_id,
+        reason: "restore successor canonical",
+        execute: true,
+      });
+      expect(restoreReplacement.ok).toBe(true);
+      expect(restoreReplacement.items[0]?.observation_id).toBe(replacementId);
+      const activeAfterReverse = core.getRawDb().query<{ id: string }, [string]>(`
+        SELECT id FROM mem_observations
+        WHERE content_dedupe_hash = (
+          SELECT content_dedupe_hash FROM mem_observations WHERE id = ?
+        ) AND archived_at IS NULL
+      `).all(replacementId);
+      expect(activeAfterReverse).toEqual([{ id: replacementId }]);
+      expect(countRows(core, "mem_archive_stubs", "observation_id = ? AND archive_state = 'archived'", [oldId]))
+        .toBeGreaterThanOrEqual(1);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("restore refuses to auto-archive a protected active successor and rolls back the swap", () => {
+    const core = new HarnessMemCore(createConfig("protected-successor-restore"));
+    try {
+      const content = "protected successor restore rollback content";
+      const first = core.recordEvent({
+        ...eventFor("protected-successor-old", content),
+        event_type: "session_end",
+        expires_at: "2020-01-01T00:00:00.000Z",
+      });
+      const oldId = (first.items[0] as { id: string }).id;
+      const second = core.recordEvent({
+        ...eventFor("protected-successor-new", content),
+        event_type: "session_end",
+        ts: "2026-05-21T00:00:00.000Z",
+      });
+      const successorId = (second.items[0] as { id: string }).id;
+      core.getRawDb().query(`UPDATE mem_observations SET tags_json = ? WHERE id = ?`)
+        .run(JSON.stringify(["legal_hold"]), successorId);
+      const oldArchive = core.getRawDb().query<{ archive_id: string }, [string]>(`
+        SELECT archive_id FROM mem_archive_stubs
+        WHERE observation_id = ? AND archive_state = 'archived'
+      `).get(oldId);
+      const archiveCountBefore = countRows(core, "mem_archive_stubs");
+
+      const restore = core.adminForgetRestore({
+        archive_id: oldArchive?.archive_id,
+        reason: "protected successor must remain active",
+        execute: true,
+      });
+      expect(restore.ok).toBe(false);
+      expect(restore.error).toContain("privacy-protected");
+      expect(countRows(core, "mem_archive_stubs")).toBe(archiveCountBefore);
+      const states = core.getRawDb().query<{ id: string; archived_at: string | null }, [string, string]>(`
+        SELECT id, archived_at FROM mem_observations WHERE id IN (?, ?) ORDER BY id
+      `).all(oldId, successorId);
+      expect(states.find((row) => row.id === oldId)?.archived_at).not.toBeNull();
+      expect(states.find((row) => row.id === successorId)?.archived_at).toBeNull();
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
   test("archive writes stub/full atomically, hides normal search, and restore rehydrates lifecycle rows", () => {
     const core = new HarnessMemCore(createConfig("archive-restore"));
     try {

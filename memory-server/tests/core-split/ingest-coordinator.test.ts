@@ -19,8 +19,12 @@ import {
   IngestCoordinator,
   type IngestCoordinatorDeps,
 } from "../../src/core/ingest-coordinator";
-import type { ApiResponse } from "../../src/core/types";
-import { createTestDb, createTestConfig } from "./test-helpers";
+import type { ApiResponse, EventEnvelope } from "../../src/core/types";
+import { createTestDb, createTestConfig, makeEvent } from "./test-helpers";
+import {
+  recordSessionEnsuredForCurrentTick,
+  shouldEnsureSessionForCurrentTick,
+} from "../../src/core/sqlite-performance-telemetry";
 
 // ---------------------------------------------------------------------------
 // ヘルパー
@@ -81,6 +85,90 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
   beforeEach(() => {
     deps = makeDeps();
     coordinator = new IngestCoordinator(deps);
+  });
+
+  test("one periodic tick scopes the per-session ensure cache", () => {
+    const decisions: boolean[] = [];
+    deps = makeDeps({
+      recordEvent: mock((event) => {
+        const state = {
+          platform: event.platform,
+          project: event.project,
+          startedAt: event.ts,
+          correlationId: event.correlation_id ?? null,
+          userId: event.user_id ?? "default",
+          teamId: event.team_id ?? null,
+        };
+        const decision = shouldEnsureSessionForCurrentTick(event.session_id, state);
+        decisions.push(decision);
+        if (decision) recordSessionEnsuredForCurrentTick(event.session_id, state);
+        return makeOkResponse();
+      }),
+    });
+    coordinator = new IngestCoordinator(deps);
+    const internals = coordinator as unknown as {
+      runTick: (label: string, fn: () => void) => void;
+    };
+    const event = makeEvent({ session_id: "same-session" });
+
+    internals.runTick("codex", () => {
+      deps.recordEvent(event);
+      deps.recordEvent({ ...event, event_id: "second-event", dedupe_hash: "second-hash" });
+    });
+
+    expect(decisions).toEqual([true, false]);
+
+    deps.recordEvent({ ...event, event_id: "explicit-event", dedupe_hash: "explicit-hash" });
+    expect(decisions).toEqual([true, false, true]);
+  });
+
+  test("Codex rollout and legacy lanes share one periodic budget", () => {
+    const previous = process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
+    process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = "20";
+    deps = makeDeps({ config: createTestConfig({ codexHistoryEnabled: true }) });
+    coordinator = new IngestCoordinator(deps);
+    const seen: number[] = [];
+    const internals = coordinator as unknown as {
+      ingestCodexHistoryTick: () => void;
+      ingestCodexSessionsRollouts: (options: { budgetMs: number }) => unknown;
+      ingestLegacyCodexHistoryFile: (options: { budgetMs: number }) => unknown;
+    };
+    internals.ingestCodexSessionsRollouts = (options) => {
+      seen.push(options.budgetMs);
+      const until = Date.now() + 25;
+      while (Date.now() < until) { /* consume first lane budget */ }
+      return {};
+    };
+    internals.ingestLegacyCodexHistoryFile = (options) => {
+      seen.push(options.budgetMs);
+      return {};
+    };
+    try {
+      internals.ingestCodexHistoryTick();
+    } finally {
+      if (previous === undefined) delete process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
+      else process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = previous;
+    }
+    expect(seen).toEqual([20]);
+  });
+
+  test("periodic fairness cursor and Codex lane survive worker restart", () => {
+    const sharedDb = createTestDb();
+    const first = new IngestCoordinator(makeDeps({ db: sharedDb }));
+    const firstInternals = first as unknown as {
+      setScanCursor: (key: string, value: number) => void;
+      writeSchedulerInt: (key: string, value: number) => void;
+    };
+    firstInternals.setScanCursor("cursor_files", 17);
+    firstInternals.writeSchedulerInt("codex_legacy_first", 1);
+
+    const restarted = new IngestCoordinator(makeDeps({ db: sharedDb }));
+    const restartedInternals = restarted as unknown as {
+      getScanCursor: (key: string) => number;
+      codexLegacyFirst: boolean;
+    };
+    expect(restartedInternals.getScanCursor("cursor_files")).toBe(17);
+    expect(restartedInternals.codexLegacyFirst).toBe(true);
   });
 
   test("正常応答を返す（実データなしでも ok=true）", () => {
@@ -1788,6 +1876,49 @@ describe("ingest-coordinator: ingestAntigravityWorkspace (§160-007)", () => {
 });
 
 describe("ingest-coordinator: Claude Code timer startup", () => {
+  test("routes all six periodic sources through the injected worker scheduler", () => {
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalClearTimeout = globalThis.clearTimeout;
+    const originalSetInterval = globalThis.setInterval;
+    const originalClearInterval = globalThis.clearInterval;
+    const scheduled: string[] = [];
+    try {
+      globalThis.setTimeout = (((fn: (...args: unknown[]) => void) => {
+        fn();
+        return 1 as unknown as ReturnType<typeof setTimeout>;
+      }) as typeof setTimeout);
+      globalThis.clearTimeout = ((() => undefined) as typeof clearTimeout);
+      globalThis.setInterval = (((fn: (...args: unknown[]) => void) => {
+        fn();
+        return 1 as unknown as ReturnType<typeof setInterval>;
+      }) as typeof setInterval);
+      globalThis.clearInterval = ((() => undefined) as typeof clearInterval);
+      const deps = makeDeps({
+        config: createTestConfig({
+          codexHistoryEnabled: true,
+          opencodeIngestEnabled: true,
+          cursorIngestEnabled: true,
+          antigravityIngestEnabled: true,
+          geminiIngestEnabled: true,
+          claudeCodeIngestEnabled: true,
+          consolidationEnabled: false,
+        }),
+        schedulePeriodicIngest: (source) => { scheduled.push(source); },
+      });
+      const coordinator = new IngestCoordinator(deps);
+      coordinator.startTimers();
+      expect([...new Set(scheduled)]).toEqual([
+        "codex", "opencode", "cursor", "antigravity", "gemini", "claude_code",
+      ]);
+      coordinator.stopTimers();
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+      globalThis.clearTimeout = originalClearTimeout;
+      globalThis.setInterval = originalSetInterval;
+      globalThis.clearInterval = originalClearInterval;
+    }
+  });
+
   test("delays Claude Code ingest startup until the configured interval", () => {
     const originalSetTimeout = globalThis.setTimeout;
     const originalClearTimeout = globalThis.clearTimeout;

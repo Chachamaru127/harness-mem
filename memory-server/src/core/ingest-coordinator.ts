@@ -66,6 +66,12 @@ import { ingestHermesStateDbQueued, type HermesStateIngestRequest } from "../ing
 import { parseGitHubIssues } from "../connectors/github-issues";
 import { parseDecisionsMd, parseAdrFile, type AdrObservation } from "../connectors/adr-decisions";
 import { recordRecallTelemetry } from "../telemetry/otel";
+import {
+  beginIngestTickTelemetry,
+  endIngestTickTelemetry,
+  recordSqliteError,
+  recordWalCheckpointCompleted,
+} from "./sqlite-performance-telemetry.js";
 
 // ---------------------------------------------------------------------------
 // モジュールレベルのヘルパー
@@ -566,7 +572,18 @@ export interface IngestCoordinatorDeps {
   isShuttingDown: () => boolean;
   processRetryQueue: (force?: boolean) => void;
   runConsolidation: (opts: { reason: string; limit: number }) => Promise<void>;
+  schedulePeriodicIngest?: (source: PeriodicIngestSource) => void;
 }
+
+export const PERIODIC_INGEST_SOURCES = [
+  "codex",
+  "opencode",
+  "cursor",
+  "antigravity",
+  "gemini",
+  "claude_code",
+] as const;
+export type PeriodicIngestSource = (typeof PERIODIC_INGEST_SOURCES)[number];
 
 // ---------------------------------------------------------------------------
 // IngestCoordinator クラス
@@ -600,14 +617,53 @@ export class IngestCoordinator {
   private readonly registeredIngesters: PlatformIngester[] = [];
   private readonly ingesterTimers = new Map<string, ReturnType<typeof setInterval>>();
 
-  /**
-   * §159-003f: 走査を budget で打ち切ったときの再開位置 (source 種別 → 次に見るファイルの index)。
-   * 打ち切りっぱなしだと末尾のファイルが永久に処理されないため、次 tick は続きから走査する。
-   * 永続化しない (restart 後は先頭から) — 公平性のための順序であって状態ではないため。
-   */
+  /** §159-003f: budget 中断後の再開位置。persistent worker 再起動にも耐える。 */
   private readonly scanCursors = new Map<string, number>();
+  private readonly schedulerMetaAvailable: boolean;
+  private codexLegacyFirst: boolean;
 
-  constructor(private readonly deps: IngestCoordinatorDeps) {}
+  constructor(private readonly deps: IngestCoordinatorDeps) {
+    this.schedulerMetaAvailable = Boolean(this.deps.db
+      .query("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'mem_meta'")
+      .get());
+    this.codexLegacyFirst = this.readSchedulerInt("codex_legacy_first") === 1;
+  }
+
+  private schedulerMetaKey(key: string): string {
+    return `ingest.scheduler.${key}`;
+  }
+
+  private readSchedulerInt(key: string): number | null {
+    if (!this.schedulerMetaAvailable) return null;
+    const row = this.deps.db
+      .query<{ value: string }, [string]>("SELECT value FROM mem_meta WHERE key = ?")
+      .get(this.schedulerMetaKey(key));
+    if (!row || !/^-?\d+$/.test(row.value)) return null;
+    const value = Number(row.value);
+    return Number.isSafeInteger(value) ? value : null;
+  }
+
+  private writeSchedulerInt(key: string, value: number): void {
+    if (!this.schedulerMetaAvailable) return;
+    this.deps.db.query(`
+      INSERT INTO mem_meta(key, value, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `).run(this.schedulerMetaKey(key), String(value), nowIso());
+  }
+
+  private getScanCursor(key: string): number {
+    const cached = this.scanCursors.get(key);
+    if (cached !== undefined) return cached;
+    const persisted = Math.max(0, this.readSchedulerInt(`scan_cursor.${key}`) ?? 0);
+    this.scanCursors.set(key, persisted);
+    return persisted;
+  }
+
+  private setScanCursor(key: string, value: number): void {
+    const normalized = Math.max(0, Math.floor(value));
+    this.scanCursors.set(key, normalized);
+    this.writeSchedulerInt(`scan_cursor.${key}`, normalized);
+  }
 
   /**
    * §159-003c: 同期 tick の所要時間を測り、閾値超過だけを記録する。
@@ -618,16 +674,39 @@ export class IngestCoordinator {
    */
   private runTick(label: string, fn: () => void): void {
     const startedAt = Date.now();
+    const telemetry = beginIngestTickTelemetry(label);
     try {
       fn();
-    } catch {
+    } catch (error) {
+      recordSqliteError(error);
       /* ignore post-shutdown DB errors */
     } finally {
       const elapsed = Date.now() - startedAt;
+      endIngestTickTelemetry(telemetry, this.deps.db, elapsed, resolveSlowTickLogMs());
       if (elapsed >= resolveSlowTickLogMs()) {
         console.warn(`[ingest] slow tick: ${label} blocked the event loop for ${elapsed}ms`);
       }
     }
+  }
+
+  runPeriodicIngestTickLocal(source: PeriodicIngestSource): void {
+    const jobs: Record<PeriodicIngestSource, () => void> = {
+      codex: () => this.ingestCodexHistoryTick(),
+      opencode: () => this.ingestOpencodeHistoryTick(),
+      cursor: () => this.ingestCursorHistoryTick(),
+      antigravity: () => this.ingestAntigravityHistoryTick(),
+      gemini: () => this.ingestGeminiHistoryTick(),
+      claude_code: () => this.ingestClaudeCodeSessions(),
+    };
+    this.runTick(source, jobs[source]);
+  }
+
+  private schedulePeriodicIngest(source: PeriodicIngestSource): void {
+    if (this.deps.schedulePeriodicIngest) {
+      this.deps.schedulePeriodicIngest(source);
+      return;
+    }
+    this.runPeriodicIngestTickLocal(source);
   }
 
   // ---------------------------------------------------------------------------
@@ -646,35 +725,35 @@ export class IngestCoordinator {
     if (config.codexHistoryEnabled) {
       this.ingestTimer = setInterval(() => {
         if (this.deps.isShuttingDown()) return;
-        this.runTick("codex", () => this.ingestCodexHistoryTick());
+        this.schedulePeriodicIngest("codex");
       }, config.codexIngestIntervalMs);
     }
 
     if (config.opencodeIngestEnabled !== false) {
       this.opencodeIngestTimer = setInterval(() => {
         if (this.deps.isShuttingDown()) return;
-        this.runTick("opencode", () => this.ingestOpencodeHistoryTick());
+        this.schedulePeriodicIngest("opencode");
       }, clampLimit(Number(config.opencodeIngestIntervalMs || DEFAULT_OPENCODE_INGEST_INTERVAL_MS), DEFAULT_OPENCODE_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
     if (config.cursorIngestEnabled !== false) {
       this.cursorIngestTimer = setInterval(() => {
         if (this.deps.isShuttingDown()) return;
-        this.runTick("cursor", () => this.ingestCursorHistoryTick());
+        this.schedulePeriodicIngest("cursor");
       }, clampLimit(Number(config.cursorIngestIntervalMs || DEFAULT_CURSOR_INGEST_INTERVAL_MS), DEFAULT_CURSOR_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
     if (config.antigravityIngestEnabled !== false) {
       this.antigravityIngestTimer = setInterval(() => {
         if (this.deps.isShuttingDown()) return;
-        this.runTick("antigravity", () => this.ingestAntigravityHistoryTick());
+        this.schedulePeriodicIngest("antigravity");
       }, clampLimit(Number(config.antigravityIngestIntervalMs || DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS), DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
     if (config.geminiIngestEnabled !== false) {
       this.geminiIngestTimer = setInterval(() => {
         if (this.deps.isShuttingDown()) return;
-        this.runTick("gemini", () => this.ingestGeminiHistoryTick());
+        this.schedulePeriodicIngest("gemini");
       }, clampLimit(Number(config.geminiIngestIntervalMs || DEFAULT_GEMINI_INGEST_INTERVAL_MS), DEFAULT_GEMINI_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
@@ -682,7 +761,7 @@ export class IngestCoordinator {
       const ccInterval = clampLimit(Number(config.claudeCodeIngestIntervalMs || DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS), DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS, 1000, 300000);
       const runClaudeCodeIngest = () => {
         if (this.deps.isShuttingDown()) return;
-        this.runTick("claude_code", () => this.ingestClaudeCodeSessions());
+        this.schedulePeriodicIngest("claude_code");
       };
       // S115-003: 大規模履歴では起動直後の同期 scan が readiness/search を塞ぐため、
       // 最初の取り込みも通常 interval まで遅らせる。
@@ -741,7 +820,10 @@ export class IngestCoordinator {
     this.checkpointTimer = setInterval(() => {
       if (this.deps.isShuttingDown()) return;
       this.runTick("wal_checkpoint", () => {
-        this.deps.db.exec("PRAGMA wal_checkpoint(PASSIVE);");
+        const result = this.deps.db.query<{ busy: number; log: number; checkpointed: number }, []>(
+          "PRAGMA wal_checkpoint(PASSIVE)",
+        ).get();
+        if (result) recordWalCheckpointCompleted(this.deps.db, result);
       });
     }, resolveWalCheckpointIntervalMs());
 
@@ -1305,7 +1387,7 @@ export class IngestCoordinator {
     // 打ち切ると末尾のファイルが永久に処理されないので、次 tick は前回の続きから
     // 走査する round-robin にして公平性を保つ。
     const scanCursorKey = "codex_rollout";
-    const startIndex = files.length > 0 ? (this.scanCursors.get(scanCursorKey) ?? 0) % files.length : 0;
+    const startIndex = files.length > 0 ? this.getScanCursor(scanCursorKey) % files.length : 0;
     let filesVisited = 0;
 
     for (let step = 0; step < files.length; step += 1) {
@@ -1516,7 +1598,7 @@ export class IngestCoordinator {
     }
 
     if (files.length > 0) {
-      this.scanCursors.set(scanCursorKey, (startIndex + filesVisited) % files.length);
+      this.setScanCursor(scanCursorKey, (startIndex + filesVisited) % files.length);
     }
 
     return summary;
@@ -1690,8 +1772,20 @@ export class IngestCoordinator {
    */
   private ingestCodexHistoryTick(): void {
     if (!this.deps.config.codexHistoryEnabled) return;
-    this.ingestCodexSessionsRollouts();
-    this.ingestLegacyCodexHistoryFile();
+    const startedAtMs = Date.now();
+    const budgetMs = resolveIngestTickBudgetMs();
+    const runRollout = (laneBudgetMs: number) => this.ingestCodexSessionsRollouts({ budgetMs: laneBudgetMs });
+    const runLegacy = (laneBudgetMs: number) => this.ingestLegacyCodexHistoryFile({ budgetMs: laneBudgetMs });
+    const first = this.codexLegacyFirst ? runLegacy : runRollout;
+    const second = this.codexLegacyFirst ? runRollout : runLegacy;
+    this.codexLegacyFirst = !this.codexLegacyFirst;
+    this.writeSchedulerInt("codex_legacy_first", this.codexLegacyFirst ? 1 : 0);
+
+    first(budgetMs);
+    const remainingMs = Number.isFinite(budgetMs) ? budgetMs - (Date.now() - startedAtMs) : Infinity;
+    // Both lanes share one deadline. Never start a second indivisible recordEvent
+    // after the first lane has exhausted it; alternating first lane prevents starvation.
+    if (remainingMs > 0) second(remainingMs);
   }
 
   ingestCodexHistory(): ApiResponse {
@@ -1963,7 +2057,7 @@ export class IngestCoordinator {
     // 多い場合に打ち切ると末尾のファイルが永久に処理されないため、次 tick は前回の
     // 続きから走査する round-robin にして公平性を保つ。
     const scanCursorKey = "opencode_storage_message";
-    const startIndex = files.length > 0 ? (this.scanCursors.get(scanCursorKey) ?? 0) % files.length : 0;
+    const startIndex = files.length > 0 ? this.getScanCursor(scanCursorKey) % files.length : 0;
     let filesVisited = 0;
     let stopTick = false;
 
@@ -2151,7 +2245,7 @@ export class IngestCoordinator {
     }
 
     if (files.length > 0) {
-      this.scanCursors.set(scanCursorKey, (startIndex + filesVisited) % files.length);
+      this.setScanCursor(scanCursorKey, (startIndex + filesVisited) % files.length);
     }
 
     return summary;
@@ -2554,7 +2648,7 @@ export class IngestCoordinator {
     // 永久に処理されないので、次 tick は前回の続きから走査する round-robin にする。
     const scanCursorKey = `antigravity_workspace:${resolve(rootDir)}`;
     const startIndex =
-      uniqueFiles.length > 0 ? (this.scanCursors.get(scanCursorKey) ?? 0) % uniqueFiles.length : 0;
+      uniqueFiles.length > 0 ? this.getScanCursor(scanCursorKey) % uniqueFiles.length : 0;
     let filesVisited = 0;
 
     for (let step = 0; step < uniqueFiles.length; step += 1) {
@@ -2676,7 +2770,7 @@ export class IngestCoordinator {
     }
 
     if (uniqueFiles.length > 0) {
-      this.scanCursors.set(scanCursorKey, (startIndex + filesVisited) % uniqueFiles.length);
+      this.setScanCursor(scanCursorKey, (startIndex + filesVisited) % uniqueFiles.length);
     }
 
     return summary;
@@ -2711,7 +2805,7 @@ export class IngestCoordinator {
     // §159-003f と同型: 走査そのものを budget の対象にする。打ち切ると末尾のファイルが
     // 永久に処理されないので、次 tick は前回の続きから走査する round-robin にする。
     const scanCursorKey = `antigravity_log_scan:${resolve(logsRoot)}`;
-    const startIndex = logFiles.length > 0 ? (this.scanCursors.get(scanCursorKey) ?? 0) % logFiles.length : 0;
+    const startIndex = logFiles.length > 0 ? this.getScanCursor(scanCursorKey) % logFiles.length : 0;
     let filesVisited = 0;
     let slicesProcessed = 0;
     let stopTick = false;
@@ -2893,7 +2987,7 @@ export class IngestCoordinator {
     }
 
     if (logFiles.length > 0) {
-      this.scanCursors.set(scanCursorKey, (startIndex + filesVisited) % logFiles.length);
+      this.setScanCursor(scanCursorKey, (startIndex + filesVisited) % logFiles.length);
     }
 
     return summary;
@@ -2924,7 +3018,7 @@ export class IngestCoordinator {
     // round-robin を root の並びにも掛ける (§159-003f と同型)。
     const roots = this.getAntigravityWorkspaceRoots();
     const rootCursorKey = "antigravity_root_scan";
-    const startIndex = roots.length > 0 ? (this.scanCursors.get(rootCursorKey) ?? 0) % roots.length : 0;
+    const startIndex = roots.length > 0 ? this.getScanCursor(rootCursorKey) % roots.length : 0;
     let rootsVisited = 0;
     for (let step = 0; step < roots.length; step += 1) {
       // 進捗保証: 1 root 目は budget を使い切っていても必ず見る。さもないと
@@ -2936,7 +3030,7 @@ export class IngestCoordinator {
       });
     }
     if (roots.length > 0) {
-      this.scanCursors.set(rootCursorKey, (startIndex + rootsVisited) % roots.length);
+      this.setScanCursor(rootCursorKey, (startIndex + rootsVisited) % roots.length);
     }
     // log 経路は budget を使い切った状態で呼ばれうるが、内部に「1 ファイル目は
     // 必ず見る」進捗保証と round-robin cursor があるため、tick あたり最低 1 件は
@@ -3379,7 +3473,7 @@ export class IngestCoordinator {
     const scanCursorKey = "claude_code";
     const startIndex =
       !replayFromStart && files.length > 0
-        ? (this.scanCursors.get(scanCursorKey) ?? 0) % files.length
+        ? this.getScanCursor(scanCursorKey) % files.length
         : 0;
     let filesVisited = 0;
 
@@ -3566,7 +3660,7 @@ export class IngestCoordinator {
     }
 
     if (!replayFromStart && files.length > 0) {
-      this.scanCursors.set(scanCursorKey, (startIndex + filesVisited) % files.length);
+      this.setScanCursor(scanCursorKey, (startIndex + filesVisited) % files.length);
     }
 
     return summary;

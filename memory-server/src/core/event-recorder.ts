@@ -22,7 +22,6 @@ import { splitIntoNuggets } from "./nugget-splitter.js";
 import {
   clampLimit,
   ensureSession,
-  expiredFilterSql,
   generateEventId,
   isPrivateTag,
   makeResponse,
@@ -49,6 +48,17 @@ import { extractCodeProvenance } from "./provenance-extractor.js";
 import { stripPrivateBlocks } from "./privacy-tags.js";
 import { extractEntitiesAndRelations } from "./entity-extractor.js";
 import { resolveSlowTickLogMs } from "./ingest-coordinator.js";
+import {
+  getCurrentIngestTickTelemetry,
+  recordSessionEnsuredForCurrentTick,
+  recordSessionActivityPersistedForCurrentTick,
+  recordSqliteError,
+  recordSqlitePhase,
+  readProcessIoCounters,
+  recordTransactionIoDelta,
+  shouldEnsureSessionForCurrentTick,
+  shouldPersistSessionActivityForCurrentTick,
+} from "./sqlite-performance-telemetry.js";
 
 // ---------------------------------------------------------------------------
 // §160-001: recordEvent 内訳計測フック（bench 専用、既定は no-op）
@@ -522,6 +532,8 @@ export interface EventRecorderDeps {
   getVectorModelVersion: () => string;
   /** 埋め込みヘルスを更新 */
   refreshEmbeddingHealth: () => void;
+  /** expired content collision を復元可能な標準 archive として退避する。呼び出し元 transaction 内で実行。 */
+  archiveExpiredObservation: (observationId: string) => void;
 }
 
 export interface RecordEventOptions {
@@ -564,8 +576,12 @@ export class EventRecorder {
     const startedAt = performance.now();
     try {
       return fn();
+    } catch (error) {
+      recordSqliteError(error, performance.now() - startedAt);
+      throw error;
     } finally {
       const elapsed = performance.now() - startedAt;
+      recordSqlitePhase(label, elapsed);
       eventRecorderSegmentSink?.(label, elapsed);
       if (elapsed >= resolveSlowTickLogMs()) {
         console.warn(`[event] slow sync segment: ${label} blocked the event loop for ${elapsed.toFixed(1)}ms`);
@@ -1325,10 +1341,27 @@ export class EventRecorder {
     };
 
     try {
+      const sessionState = {
+        platform: event.platform,
+        project: normalizedProject,
+        startedAt: timestamp,
+        correlationId: event.correlation_id ?? null,
+        userId,
+        teamId,
+      };
+      const ensureSessionRequired = shouldEnsureSessionForCurrentTick(event.session_id, sessionState);
+      const activityUpdateRequired = shouldPersistSessionActivityForCurrentTick(event.session_id);
+      let transactionBodyMs = 0;
       const transaction = this.deps.db.transaction(() => {
-        this.measureSyncSegment("ensure_session", () =>
-          ensureSession(this.deps.db, event.session_id, event.platform, normalizedProject, timestamp, event.correlation_id, userId, teamId)
-        );
+        const transactionBodyStartedAt = performance.now();
+        try {
+          if (ensureSessionRequired) {
+            this.measureSyncSegment("ensure_session", () =>
+              ensureSession(this.deps.db, event.session_id, event.platform, normalizedProject, timestamp, event.correlation_id, userId, teamId)
+            );
+          } else if (getCurrentIngestTickTelemetry()) {
+            recordSqlitePhase("ensure_session_skipped", 0);
+          }
 
         const eventInsert = this.measureSyncSegment("event_insert", () =>
           this.deps.db
@@ -1364,32 +1397,6 @@ export class EventRecorder {
           return { duplicated: true, dedupeBasis: "event" };
         }
 
-        if (contentDedupeHash) {
-          const existingObservation = this.measureSyncSegment("dedupe_lookup", () =>
-            this.deps.db
-              .query(`
-                SELECT id
-                FROM mem_observations
-                WHERE content_dedupe_hash = ?
-                  AND archived_at IS NULL
-                  ${expiredFilterSql("mem_observations")}
-                LIMIT 1
-              `)
-              .get(contentDedupeHash) as { id: string } | null
-          );
-          if (existingObservation?.id) {
-            this.deps.db
-              .query(`UPDATE mem_events SET observation_id = ? WHERE event_id = ?`)
-              .run(existingObservation.id, eventId);
-            return {
-              duplicated: true,
-              observationId: existingObservation.id,
-              dedupeBasis: "content",
-              contentDedupeHash,
-            };
-          }
-        }
-
         // S78-B02: thread_id / topic はイベントエンベロープから取得
         const threadId = typeof event.thread_id === "string" && event.thread_id.trim()
           ? event.thread_id.trim()
@@ -1412,7 +1419,7 @@ export class EventRecorder {
         const titleFts = observationBase.title ? segmentJapaneseForFts(observationBase.title) : null;
         const contentFts = segmentJapaneseForFts(redactedContent);
 
-        this.measureSyncSegment("observation_insert", () =>
+        let observationInsert = this.measureSyncSegment("observation_insert", () =>
           this.deps.db
             .query(`
               INSERT INTO mem_observations(
@@ -1425,30 +1432,7 @@ export class EventRecorder {
                 title_fts, content_fts,
                 created_at, updated_at
               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              ON CONFLICT(id) DO UPDATE SET
-                title = excluded.title,
-                content = excluded.content,
-                content_redacted = excluded.content_redacted,
-                title_fts = excluded.title_fts,
-                content_fts = excluded.content_fts,
-                content_dedupe_hash = excluded.content_dedupe_hash,
-                raw_text = excluded.raw_text,
-                observation_type = excluded.observation_type,
-                memory_type = excluded.memory_type,
-                tags_json = excluded.tags_json,
-                privacy_tags_json = excluded.privacy_tags_json,
-                signal_score = excluded.signal_score,
-                event_time = excluded.event_time,
-                observed_at = excluded.observed_at,
-                valid_from = excluded.valid_from,
-                valid_to = excluded.valid_to,
-                supersedes = excluded.supersedes,
-                invalidated_at = excluded.invalidated_at,
-                thread_id = excluded.thread_id,
-                topic = excluded.topic,
-                expires_at = excluded.expires_at,
-                branch = excluded.branch,
-                updated_at = excluded.updated_at
+              ON CONFLICT DO NOTHING
             `)
             .run(
               observationId,
@@ -1484,6 +1468,68 @@ export class EventRecorder {
               current
             )
         );
+
+        if (Number((observationInsert as { changes?: number }).changes ?? 0) === 0 && contentDedupeHash) {
+          const conflicting = this.measureSyncSegment("dedupe_conflict_lookup", () =>
+            this.deps.db.query<{ id: string; expires_at: string | null; privacy_tags_json: string; tags_json: string }, [string]>(`
+              SELECT id, expires_at, privacy_tags_json, tags_json FROM mem_observations
+              WHERE content_dedupe_hash = ? AND archived_at IS NULL
+              LIMIT 1
+            `).get(contentDedupeHash)
+          );
+          const protectedTags = conflicting
+            ? normalizeTags([...parseJsonArray(conflicting.privacy_tags_json), ...parseJsonArray(conflicting.tags_json)])
+            : [];
+          const privacyProtected = protectedTags.some((tag) => ["private", "secret", "sensitive", "legal_hold"].includes(tag));
+          const expired = conflicting?.expires_at && Date.parse(conflicting.expires_at) <= Date.now();
+          if (conflicting?.id && expired && !privacyProtected) {
+            this.measureSyncSegment("dedupe_expired_archive", () =>
+              this.deps.archiveExpiredObservation(conflicting.id)
+            );
+            observationInsert = this.measureSyncSegment("observation_insert_retry", () =>
+              this.deps.db.query(`
+                INSERT INTO mem_observations(
+                  id, event_id, platform, project, session_id, title, content, content_redacted,
+                  content_dedupe_hash, raw_text, observation_type, memory_type, tags_json, privacy_tags_json,
+                  signal_score, user_id, team_id, event_time, observed_at, valid_from, valid_to,
+                  supersedes, invalidated_at, thread_id, topic, expires_at, branch, title_fts, content_fts,
+                  created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT DO NOTHING
+              `).run(
+                observationId, eventId, event.platform, normalizedProject, event.session_id,
+                observationBase.title, observationBase.content, redactedContent, contentDedupeHash, rawText,
+                observationType, memoryType, JSON.stringify(tags), JSON.stringify(privacyTags), signalScore,
+                userId, teamId, temporalAnchors.event_time, temporalAnchors.observed_at,
+                temporalAnchors.valid_from, temporalAnchors.valid_to, temporalAnchors.supersedes,
+                temporalAnchors.invalidated_at, threadId, topic, expiresAt, branch, titleFts, contentFts,
+                timestamp, current,
+              )
+            );
+          } else if (conflicting?.id && expired && privacyProtected) {
+            throw new Error("expired privacy-protected dedupe row requires policy resolution");
+          } else if (conflicting?.id) {
+            this.deps.db.query(`UPDATE mem_events SET observation_id = ? WHERE event_id = ?`)
+              .run(conflicting.id, eventId);
+            if (activityUpdateRequired) {
+              this.measureSyncSegment("session_activity_update", () =>
+                this.deps.db.query("UPDATE mem_sessions SET updated_at = ? WHERE session_id = ? AND updated_at < ?")
+                  .run(current, event.session_id, current)
+              );
+            }
+            return {
+              duplicated: true,
+              observationId: conflicting.id,
+              dedupeBasis: "content",
+              contentDedupeHash,
+              activityPersisted: activityUpdateRequired,
+            };
+          }
+        }
+
+        if (Number((observationInsert as { changes?: number }).changes ?? 0) === 0) {
+          throw new Error("observation atomic insert did not create a row");
+        }
 
         this.measureSyncSegment("tags_insert", () => {
           for (const tag of tags) {
@@ -1587,19 +1633,53 @@ export class EventRecorder {
           );
         }
 
-        return { duplicated: false, observationId, contentDedupeHash };
+        if (activityUpdateRequired) {
+          this.measureSyncSegment("session_activity_update", () =>
+            this.deps.db.query("UPDATE mem_sessions SET updated_at = ? WHERE session_id = ? AND updated_at < ?")
+              .run(current, event.session_id, current)
+          );
+        }
+
+        return { duplicated: false, observationId, contentDedupeHash, activityPersisted: activityUpdateRequired };
+        } finally {
+          transactionBodyMs = performance.now() - transactionBodyStartedAt;
+        }
       });
 
-      const result = transaction() as {
+      const transactionStartedAt = performance.now();
+      const transactionIoBefore = getCurrentIngestTickTelemetry() ? readProcessIoCounters() : null;
+      let result: {
         duplicated: boolean;
         observationId?: string;
         dedupeBasis?: string;
         contentDedupeHash?: string | null;
+        activityPersisted?: boolean;
       };
+      try {
+        result = transaction() as typeof result;
+      } finally {
+        const transactionTotalMs = performance.now() - transactionStartedAt;
+        // Bun exposes no COMMIT-only hook. This is callback-external residual
+        // (BEGIN + COMMIT + wrapper overhead), not proven pure COMMIT time.
+        recordSqlitePhase("record_event_transaction_total", transactionTotalMs);
+        recordSqlitePhase("record_event_commit_residual", Math.max(0, transactionTotalMs - transactionBodyMs));
+        if (transactionIoBefore) {
+          recordTransactionIoDelta(transactionIoBefore, readProcessIoCounters());
+        }
+      }
+      if (ensureSessionRequired) {
+        recordSessionEnsuredForCurrentTick(event.session_id, sessionState);
+      }
+      if (result.activityPersisted) {
+        recordSessionActivityPersistedForCurrentTick(event.session_id);
+      }
       if (result.duplicated) {
+        const canonicalItems = result.dedupeBasis === "content" && result.observationId
+          ? [{ id: result.observationId, observation_id: result.observationId }]
+          : [];
         return makeResponse(
           startedAt,
-          [],
+          canonicalItems,
           { dedupe_hash: dedupeHash, content_dedupe_hash: result.contentDedupeHash ?? contentDedupeHash ?? undefined },
           { deduped: true, dedupe_basis: result.dedupeBasis ?? "event" }
         );
@@ -1688,6 +1768,7 @@ export class EventRecorder {
         }
       );
     } catch (error) {
+      recordSqliteError(error);
       if (options.allowQueue) {
         this.enqueueRetry(event, error instanceof Error ? error.message : String(error));
       }

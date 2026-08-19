@@ -78,7 +78,12 @@ import {
 } from "./external-channel-policy";
 import { verifyObservation as verifyObservationTrace } from "./verify.js";
 import { SqliteObservationRepository } from "../db/repositories/SqliteObservationRepository.js";
-import { IngestCoordinator, resolveSlowTickLogMs } from "./ingest-coordinator";
+import {
+  IngestCoordinator,
+  resolveSlowTickLogMs,
+  type PeriodicIngestSource,
+} from "./ingest-coordinator";
+import { PeriodicIngestWorkerClient } from "./periodic-ingest-worker-client";
 import {
   ConfigManager,
   EMBEDDING_DEFAULT_MODEL_KEY,
@@ -1787,6 +1792,7 @@ export function isLightweightChildProcess(): boolean {
   return (
     process.env.HARNESS_MEM_SEARCH_CHILD_PROCESS === "1" ||
     process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS === "1" ||
+    process.env.HARNESS_MEM_INGEST_WORKER_PROCESS === "1" ||
     process.env.HARNESS_MEM_CHECKPOINT_CHILD_PROCESS === "1" ||
     process.env.HARNESS_MEM_EVENT_CHILD_PROCESS === "1" ||
     process.env.HARNESS_MEM_RETRY_CHILD_PROCESS === "1" ||
@@ -1845,6 +1851,7 @@ export class HarnessMemCore {
   private forgetMaintenanceBackoffUntilMs = 0;
   /** S127-002: warm persistent worker for normal vector search. */
   private searchWorker: PersistentSearchWorkerClient | null = null;
+  private periodicIngestWorker: PeriodicIngestWorkerClient | null = null;
   private searchChildPending = 0;
   private cachedObservationCount: { value: number; checkedAtMs: number } | null = null;
   private eventChildPending = 0;
@@ -1917,6 +1924,10 @@ export class HarnessMemCore {
       getEmbeddingHealthStatus: () => this.embeddingHealth.status,
       getVectorModelVersion: () => this.vectorModelVersion,
       refreshEmbeddingHealth: () => this.refreshEmbeddingHealth(),
+      archiveExpiredObservation: (observationId) => this.archiveObservationForReplacement(
+        observationId,
+        "expired content dedupe replacement",
+      ),
     });
 
     this.sessionMgr = new SessionManager({
@@ -1975,6 +1986,7 @@ export class HarnessMemCore {
       processRetryQueue: (force) => this.processRetryQueue(force),
       runConsolidation: ({ reason, limit }) =>
         this.runConsolidation({ reason, limit }).then(() => undefined),
+      schedulePeriodicIngest: (source) => this.schedulePeriodicIngest(source),
     });
 
     this.cfgMgr = new ConfigManager({
@@ -3638,12 +3650,38 @@ export class HarnessMemCore {
   }
 
   private startBackgroundWorkers(): void {
+    this.getOrCreatePeriodicIngestWorker();
     this.ingestCoord.startTimers();
     // §91-002: start partial-finalize scheduler (no-op when enabled=false)
     this.partialFinalizeScheduler.start();
     // S89-003: start reindex backfill scheduler (no-op when enabled=false)
     this.reindexVectorsScheduler.start();
     this.startForgetMaintenanceScheduler();
+  }
+
+  private getOrCreatePeriodicIngestWorker(): PeriodicIngestWorkerClient {
+    if (!this.periodicIngestWorker) {
+      this.periodicIngestWorker = new PeriodicIngestWorkerClient({
+        scriptPath: fileURLToPath(new URL("../tools/periodic-ingest-worker.ts", import.meta.url)),
+        cwd: process.cwd(),
+        env: { ...process.env, HARNESS_MEM_DB_PATH: this.config.dbPath },
+        busyLogMs: clampLimit(
+          Number(process.env.HARNESS_MEM_INGEST_WORKER_BUSY_LOG_MS || 30_000),
+          30_000,
+          1_000,
+          300_000,
+        ),
+        onError: (source, reason) => {
+          console.warn(`[ingest-worker] ${source} tick ${reason}`);
+        },
+      });
+    }
+    return this.periodicIngestWorker;
+  }
+
+  private schedulePeriodicIngest(source: PeriodicIngestSource): void {
+    if (this.shuttingDown) return;
+    this.getOrCreatePeriodicIngestWorker().schedule(source);
   }
 
   private startForgetMaintenanceScheduler(): void {
@@ -4263,6 +4301,14 @@ export class HarnessMemCore {
     return privacyTags.includes("legal_hold") || tags.includes("legal_hold");
   }
 
+  private hasAutomaticArchiveProtection(row: Pick<ArchiveCandidateRow, "privacy_tags_json" | "tags_json">): boolean {
+    const tags = [
+      ...parseJsonStringArray(row.privacy_tags_json),
+      ...parseJsonStringArray(row.tags_json),
+    ];
+    return tags.some((tag) => ["private", "secret", "sensitive", "legal_hold"].includes(tag));
+  }
+
   private collectArchivePayloadRows(row: Pick<ArchiveCandidateRow, "id" | "session_id">): ArchivePayload["rows"] {
     const observationRows = this.selectArchiveRows("mem_observations", "WHERE id = ?", [row.id]);
     const observation = observationRows[0] ?? {};
@@ -4320,6 +4366,93 @@ export class HarnessMemCore {
     const payloadJson = stableJson(payload);
     const payloadSha256 = sha256Hex(payloadJson);
     return { payload, contentSha256, payloadJson, payloadSha256 };
+  }
+
+  private archiveObservationWithinTransaction(
+    row: ArchiveCandidateRow,
+    manifest: ArchiveManifest,
+    reason: string,
+    createdAt: string,
+    archiveIdSalt = "",
+  ): string {
+    const archiveIdBasis = archiveIdSalt
+      ? `${row.id}:${manifest.manifest_sha256}:${archiveIdSalt}`
+      : `${row.id}:${manifest.manifest_sha256}`;
+    const archiveId = `archive_${sha256Hex(archiveIdBasis).slice(0, 32)}`;
+    const archiveFullRef = `sqlite:${archiveId}`;
+    const { contentSha256, payloadJson, payloadSha256 } = this.buildArchivePayload(
+      row,
+      archiveId,
+      reason,
+      manifest,
+      createdAt,
+    );
+    const archiveStub = stableJson({
+      schema_version: "s129-archive-stub-v1",
+      archive_id: archiveId,
+      observation_id: row.id,
+      project: row.project,
+      session_id: row.session_id,
+      user_id: row.user_id,
+      team_id: row.team_id,
+      observation_type: row.observation_type,
+      memory_type: row.memory_type,
+      content_sha256: contentSha256,
+      manifest_sha256: manifest.manifest_sha256,
+      created_at: createdAt,
+    });
+    const metadataJson = stableJson({
+      schema_version: "s129-archive-stub-metadata-v1",
+      impact: manifest.cross_store_impact,
+      payload_sha256: payloadSha256,
+    });
+    this.db.query(`
+      INSERT INTO mem_archive_stubs(
+        archive_id, observation_id, project, session_id, user_id, team_id,
+        archive_stub, archive_full_ref, archive_state, reason, legal_hold_snapshot,
+        content_sha256, manifest_sha256, created_at, metadata_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'archived', ?, 0, ?, ?, ?, ?)
+    `).run(
+      archiveId, row.id, row.project, row.session_id, row.user_id, row.team_id,
+      archiveStub, archiveFullRef, reason, contentSha256, manifest.manifest_sha256,
+      createdAt, metadataJson,
+    );
+    this.db.query(`
+      INSERT INTO mem_archive_full(archive_full_ref, archive_id, payload_json, payload_sha256, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(archiveFullRef, archiveId, payloadJson, payloadSha256, createdAt);
+    this.db.query(`UPDATE mem_observations SET archived_at = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL`)
+      .run(createdAt, createdAt, row.id);
+    return archiveId;
+  }
+
+  private archiveObservationForReplacement(observationId: string, reason: string): string {
+    const prepared = this.prepareArchiveManifest({ candidate_ids: [observationId] });
+    if (!prepared.ok || prepared.rows.length !== 1) {
+      throw new Error(prepared.ok ? "expired dedupe archive candidate is missing" : prepared.error);
+    }
+    const row = prepared.rows[0];
+    if (this.hasAutomaticArchiveProtection(row)) {
+      throw new Error("expired privacy-protected dedupe row requires policy resolution");
+    }
+    const createdAt = nowIso();
+    const archiveId = this.archiveObservationWithinTransaction(
+      row,
+      prepared.manifest,
+      reason,
+      createdAt,
+      randomUUID(),
+    );
+    this.writeAuditLog("admin.archive.create", "archive", archiveId, {
+      manifest_sha256: prepared.manifest.manifest_sha256,
+      candidate_count: 1,
+      archived_count: 1,
+      candidate_ids: [observationId],
+      archived_ids: [observationId],
+      archive_ids: [archiveId],
+      reason,
+    });
+    return archiveId;
   }
 
   private restoreArchivePayloadRows(payload: ArchivePayload): void {
@@ -6091,68 +6224,12 @@ export class HarnessMemCore {
           continue;
         }
 
-        const archiveId = `archive_${sha256Hex(`${row.id}:${current.manifest.manifest_sha256}`).slice(0, 32)}`;
-        const archiveFullRef = `sqlite:${archiveId}`;
-        const { contentSha256, payloadJson, payloadSha256 } = this.buildArchivePayload(
+        const archiveId = this.archiveObservationWithinTransaction(
           row,
-          archiveId,
-          reason,
           current.manifest,
+          reason,
           createdAt,
         );
-        const archiveStub = stableJson({
-          schema_version: "s129-archive-stub-v1",
-          archive_id: archiveId,
-          observation_id: row.id,
-          project: row.project,
-          session_id: row.session_id,
-          user_id: row.user_id,
-          team_id: row.team_id,
-          observation_type: row.observation_type,
-          memory_type: row.memory_type,
-          content_sha256: contentSha256,
-          manifest_sha256: current.manifest.manifest_sha256,
-          created_at: createdAt,
-        });
-        const metadataJson = stableJson({
-          schema_version: "s129-archive-stub-metadata-v1",
-          impact: current.manifest.cross_store_impact,
-          payload_sha256: payloadSha256,
-        });
-
-        this.db
-          .query(`
-            INSERT INTO mem_archive_stubs(
-              archive_id, observation_id, project, session_id, user_id, team_id,
-              archive_stub, archive_full_ref, archive_state, reason, legal_hold_snapshot,
-              content_sha256, manifest_sha256, created_at, metadata_json
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'archived', ?, 0, ?, ?, ?, ?)
-          `)
-          .run(
-            archiveId,
-            row.id,
-            row.project,
-            row.session_id,
-            row.user_id,
-            row.team_id,
-            archiveStub,
-            archiveFullRef,
-            reason,
-            contentSha256,
-            current.manifest.manifest_sha256,
-            createdAt,
-            metadataJson,
-          );
-        this.db
-          .query(`
-            INSERT INTO mem_archive_full(archive_full_ref, archive_id, payload_json, payload_sha256, created_at)
-            VALUES (?, ?, ?, ?, ?)
-          `)
-          .run(archiveFullRef, archiveId, payloadJson, payloadSha256, createdAt);
-        this.db
-          .query(`UPDATE mem_observations SET archived_at = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL`)
-          .run(createdAt, createdAt, row.id);
         archivedIds.push(row.id);
         archiveIds.push(archiveId);
       }
@@ -7008,6 +7085,23 @@ export class HarnessMemCore {
       const current = validateArchive();
       if (!current.ok) {
         throw new Error(current.error);
+      }
+      const archivedObservation = current.payload.rows.mem_observations?.[0];
+      const contentDedupeHash = typeof archivedObservation?.content_dedupe_hash === "string"
+        ? archivedObservation.content_dedupe_hash
+        : null;
+      if (contentDedupeHash) {
+        const activeConflict = this.db.query<{ id: string }, [string, string]>(`
+          SELECT id FROM mem_observations
+          WHERE content_dedupe_hash = ? AND archived_at IS NULL AND id <> ?
+          LIMIT 1
+        `).get(contentDedupeHash, current.row.observation_id);
+        if (activeConflict?.id) {
+          this.archiveObservationForReplacement(
+            activeConflict.id,
+            "archive restore canonical content swap",
+          );
+        }
       }
       this.restoreArchivePayloadRows(current.payload);
       const restoredAt = nowIso();
@@ -9559,6 +9653,11 @@ export class HarnessMemCore {
     return this.ingestCoord.ingestClaudeCodeHistory();
   }
 
+  /** Local worker entrypoint. Timer callbacks use the persistent child instead. */
+  runPeriodicIngestTickLocal(source: PeriodicIngestSource): void {
+    this.ingestCoord.runPeriodicIngestTickLocal(source);
+  }
+
   ingestHermesState(request: HermesStateIngestRequest): Promise<ApiResponse> {
     return this.ingestCoord.ingestHermesState(request);
   }
@@ -9628,6 +9727,8 @@ export class HarnessMemCore {
     const lightweightChild = isLightweightChildProcess();
     let searchWorkerStop: Promise<void> = Promise.resolve();
     let hadSearchWorker = false;
+    let periodicIngestWorkerStop: Promise<void> = Promise.resolve();
+    let hadPeriodicIngestWorker = false;
 
     for (const timer of this.recallProjectionRefreshTimers.values()) {
       clearTimeout(timer);
@@ -9637,6 +9738,11 @@ export class HarnessMemCore {
     if (this.searchWorker) {
       hadSearchWorker = true;
       searchWorkerStop = this.searchWorker.stop("core shutdown");
+    }
+    if (this.periodicIngestWorker) {
+      hadPeriodicIngestWorker = true;
+      periodicIngestWorkerStop = this.periodicIngestWorker.stop();
+      this.periodicIngestWorker = null;
     }
 
     // §91-002: stop partial-finalize scheduler before stopping ingest timers
@@ -9694,11 +9800,11 @@ export class HarnessMemCore {
       }
     };
 
-    if (!hadSearchWorker) {
+    if (!hadSearchWorker && !hadPeriodicIngestWorker) {
       finishShutdown();
       this.shutdownPromise = Promise.resolve();
     } else {
-      this.shutdownPromise = searchWorkerStop.then(finishShutdown);
+      this.shutdownPromise = Promise.all([searchWorkerStop, periodicIngestWorkerStop]).then(finishShutdown);
     }
     return this.shutdownPromise;
   }
