@@ -201,23 +201,33 @@ async function main(): Promise<void> {
     backgroundWorkersEnabled: false,
   });
   let shuttingDown = false;
-  const shutdown = async (reason: string): Promise<void> => {
-    if (shuttingDown) {
-      return;
-    }
+  let shutdownPromise: Promise<void> | null = null;
+  const shutdown = (reason: string): Promise<void> => {
+    if (shutdownPromise) return shutdownPromise;
     shuttingDown = true;
-    try {
-      core.shutdown(reason);
-    } finally {
-      const telemetry = await shutdownTelemetry(reason);
-      if (telemetry.exporter.last_flush_ok === false) {
-        console.error(`telemetry flush failed: ${telemetry.exporter.last_flush_error}`);
+    shutdownPromise = (async () => {
+      try {
+        if (process.env.NODE_ENV === "test") {
+          const delayMs = Number(process.env.HARNESS_MEM_TEST_SEARCH_WORKER_SHUTDOWN_DELAY_MS || 0);
+          if (Number.isFinite(delayMs) && delayMs > 0) {
+            await Bun.sleep(Math.min(5_000, Math.floor(delayMs)));
+          }
+        }
+        await core.shutdown(reason);
+      } finally {
+        const telemetry = await shutdownTelemetry(reason);
+        if (telemetry.exporter.last_flush_ok === false) {
+          console.error(`telemetry flush failed: ${telemetry.exporter.last_flush_error}`);
+        }
       }
-      process.exit(0);
-    }
+    })();
+    return shutdownPromise;
   };
-  process.once("SIGTERM", () => { void shutdown("SIGTERM"); });
-  process.once("SIGINT", () => { void shutdown("SIGINT"); });
+  const exitAfterShutdown = (reason: string): void => {
+    void shutdown(reason).finally(() => process.exit(0));
+  };
+  process.once("SIGTERM", () => exitAfterShutdown("SIGTERM"));
+  process.once("SIGINT", () => exitAfterShutdown("SIGINT"));
 
   const warmupState: SearchWorkerWarmupState = {
     done: false,
@@ -261,11 +271,7 @@ async function main(): Promise<void> {
       }
     }
   } finally {
-    core.shutdown("search-worker-eof");
-    const telemetry = await shutdownTelemetry("search-worker-eof");
-    if (telemetry.exporter.last_flush_ok === false) {
-      console.error(`telemetry flush failed: ${telemetry.exporter.last_flush_error}`);
-    }
+    await shutdown("search-worker-eof");
   }
 }
 

@@ -1,6 +1,6 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { spawn as spawnChildProcess } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -90,6 +90,10 @@ import {
   type RepairSqliteVecMapOptions,
 } from "./config-manager";
 import { AnalyticsService } from "./analytics";
+import {
+  buildSearchWorkerIdentityArgs,
+  stopOwnedSearchWorkerProcess,
+} from "./search-worker-lifecycle";
 import { createPartialFinalizeScheduler, type PartialFinalizeScheduler } from "./partial-finalize-scheduler";
 import { createReindexVectorsScheduler, type ReindexVectorsScheduler } from "./reindex-vectors-scheduler";
 import {
@@ -739,6 +743,17 @@ function envFalsy(raw: string | undefined): boolean {
   return normalized === "0" || normalized === "false" || normalized === "off" || normalized === "no";
 }
 
+export function resolveBackgroundWorkersEnabled(
+  explicit: boolean | undefined,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  if (explicit !== undefined) return explicit;
+  if (env.HARNESS_MEM_BACKGROUND_WORKERS_ENABLED !== undefined) {
+    return envTruthy(env.HARNESS_MEM_BACKGROUND_WORKERS_ENABLED);
+  }
+  return env.NODE_ENV !== "test";
+}
+
 export function shouldRunSearchOutOfProcess(
   request: SearchRequest,
   options: {
@@ -1083,7 +1098,7 @@ function writeJsonToNodeChildStdin(
   stdinWriter.end(`${JSON.stringify(payload)}\n`);
 }
 
-class PersistentSearchWorkerClient {
+export class PersistentSearchWorkerClient {
   private proc: SearchWorkerProcess | null = null;
   private stdinWriter: SearchWorkerStdin | null = null;
   private readonly pending = new Map<string, PendingSearchWorkerRequest>();
@@ -1094,6 +1109,10 @@ class PersistentSearchWorkerClient {
   private workerPid: number | null = null;
   private warmupMs: number | null = null;
   private stderrTail = "";
+  private workerToken: string | null = null;
+  private stoppingPromise: Promise<void> | null = null;
+  private permanentlyStopped = false;
+  private workerCleanupFailed = false;
 
   constructor(
     private readonly options: {
@@ -1101,6 +1120,7 @@ class PersistentSearchWorkerClient {
       cwd: string;
       env: Record<string, string | undefined>;
       maxPending: number;
+      dbPath: string;
     },
   ) {}
 
@@ -1116,12 +1136,23 @@ class PersistentSearchWorkerClient {
     return this.pending.size;
   }
 
+  hasLiveProcess(): boolean {
+    return this.proc !== null;
+  }
+
   ensureStarted(): void {
+    if (this.permanentlyStopped || this.stoppingPromise || this.workerCleanupFailed) {
+      throw new SearchOffloadUnavailableError("search worker", "stopping");
+    }
     if (this.proc && this.stdinWriter) {
       return;
     }
+    const workerToken = randomUUID();
     const proc = Bun.spawn({
-      cmd: buildSearchWorkerCommand(this.options.scriptPath),
+      cmd: [
+        ...buildSearchWorkerCommand(this.options.scriptPath),
+        ...buildSearchWorkerIdentityArgs(this.options.dbPath, process.pid, workerToken),
+      ],
       cwd: this.options.cwd,
       env: {
         ...this.options.env,
@@ -1133,6 +1164,7 @@ class PersistentSearchWorkerClient {
       stderr: "pipe",
     });
     this.proc = proc;
+    this.workerToken = workerToken;
     this.ready = false;
     this.warmupComplete = false;
     this.workerPid = typeof proc.pid === "number" ? proc.pid : null;
@@ -1202,8 +1234,9 @@ class PersistentSearchWorkerClient {
     return promise;
   }
 
-  stop(reason = "shutdown"): void {
-    this.killCurrentWorker(reason);
+  stop(reason = "shutdown"): Promise<void> {
+    this.permanentlyStopped = true;
+    return this.stopCurrentWorker(reason);
   }
 
   private async readStdout(proc: SearchWorkerProcess): Promise<void> {
@@ -1328,6 +1361,7 @@ class PersistentSearchWorkerClient {
     this.ready = false;
     this.warmupComplete = false;
     this.workerPid = null;
+    this.workerToken = null;
     this.rejectAllPending(
       new Error(`search worker stopped (${detail})${stderr ? `: ${stderr}` : ""}`),
     );
@@ -1342,34 +1376,68 @@ class PersistentSearchWorkerClient {
   }
 
   private killCurrentWorker(reason: string): void {
+    void this.stopCurrentWorker(reason).catch(() => {});
+  }
+
+  private async waitForOwnedWorkerExit(proc: SearchWorkerProcess): Promise<void> {
+    for (;;) {
+      const exited = await Promise.race([
+        proc.exited.then(() => true, () => true),
+        Bun.sleep(250).then(() => false),
+      ]);
+      if (exited) return;
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        // Keep the parent alive and retry through the authoritative handle.
+      }
+    }
+  }
+
+  private stopCurrentWorker(reason: string): Promise<void> {
+    if (this.stoppingPromise) {
+      return this.stoppingPromise;
+    }
     const proc = this.proc;
     const stdinWriter = this.stdinWriter;
-    this.proc = null;
-    this.stdinWriter = null;
+    const workerToken = this.workerToken;
     this.ready = false;
     this.workerPid = null;
     this.rejectAllPending(new Error(`search worker stopped: ${reason}`));
-    if (!proc) {
-      return;
+    if (!proc || !workerToken) {
+      return Promise.resolve();
     }
-    try {
-      try {
-        stdinWriter?.end?.();
-      } catch {
-        // best effort
-      }
-      proc.kill("SIGTERM");
-      const forceKill = setTimeout(() => {
+    this.stoppingPromise = (async () => {
+      const result = await stopOwnedSearchWorkerProcess({
+        proc,
+      });
+      if (result.status === "terminated" || result.status === "killed") {
         try {
-          proc.kill("SIGKILL");
+          stdinWriter?.end?.();
         } catch {
-          // best effort
+          // best effort after the worker has disappeared
         }
-      }, 1_000);
-      void proc.exited.finally(() => clearTimeout(forceKill));
-    } catch {
-      // best effort
-    }
+      } else {
+        this.workerCleanupFailed = true;
+        try {
+          stdinWriter?.end?.();
+        } catch {
+          // EOF is the last safe owned-handle fallback after signals failed.
+        }
+        // Do not let core shutdown/checkpoint/daemon exit report completion
+        // while the authoritative child handle still says it is alive.
+        await this.waitForOwnedWorkerExit(proc);
+      }
+      if (this.proc === proc) {
+        this.proc = null;
+        this.stdinWriter = null;
+        this.workerToken = null;
+      }
+      this.workerCleanupFailed = false;
+    })().finally(() => {
+      this.stoppingPromise = null;
+    });
+    return this.stoppingPromise;
   }
 }
 
@@ -1787,6 +1855,7 @@ export class HarnessMemCore {
   private recallProjectionRefreshChildPending = 0;
   private readonly recallProjectionRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly recallProjectionRefreshInFlight = new Set<string>();
+  private shutdownPromise: Promise<void> | null = null;
 
   constructor(private readonly config: Config) {
     const dbPath = resolveHomePath(config.dbPath);
@@ -1821,7 +1890,7 @@ export class HarnessMemCore {
 
     this.initManagedBackend();
     this.initModules();
-    const shouldStartWorkers = this.config.backgroundWorkersEnabled ?? (process.env.NODE_ENV !== "test");
+    const shouldStartWorkers = resolveBackgroundWorkersEnabled(this.config.backgroundWorkersEnabled);
     if (shouldStartWorkers) {
       this.startBackgroundWorkers();
       this.startSearchWorkerIfNeeded();
@@ -2216,6 +2285,9 @@ export class HarnessMemCore {
   }
 
   private getOrCreateSearchWorker(): PersistentSearchWorkerClient {
+    if (this.shuttingDown) {
+      throw new SearchOffloadUnavailableError("search worker", "core shutting down");
+    }
     if (!this.searchWorker) {
       this.searchWorker = new PersistentSearchWorkerClient({
         scriptPath: this.getSearchWorkerScriptPath(),
@@ -2225,6 +2297,7 @@ export class HarnessMemCore {
           HARNESS_MEM_DB_PATH: this.config.dbPath,
         },
         maxPending: this.getSearchWorkerMaxPending(),
+        dbPath: this.config.dbPath,
       });
     }
     return this.searchWorker;
@@ -9547,12 +9620,14 @@ export class HarnessMemCore {
     });
   }
 
-  shutdown(signal: string): void {
+  shutdown(signal: string): Promise<void> {
     if (this.shuttingDown) {
-      return;
+      return this.shutdownPromise ?? Promise.resolve();
     }
     this.shuttingDown = true;
     const lightweightChild = isLightweightChildProcess();
+    let searchWorkerStop: Promise<void> = Promise.resolve();
+    let hadSearchWorker = false;
 
     for (const timer of this.recallProjectionRefreshTimers.values()) {
       clearTimeout(timer);
@@ -9560,8 +9635,8 @@ export class HarnessMemCore {
     this.recallProjectionRefreshTimers.clear();
 
     if (this.searchWorker) {
-      this.searchWorker.stop("core shutdown");
-      this.searchWorker = null;
+      hadSearchWorker = true;
+      searchWorkerStop = this.searchWorker.stop("core shutdown");
     }
 
     // §91-002: stop partial-finalize scheduler before stopping ingest timers
@@ -9577,45 +9652,59 @@ export class HarnessMemCore {
     }
     this.ingestCoord.stopTimers();
 
-    if (!lightweightChild) {
-      // §159-004: ここで throw すると WAL checkpoint と db.close() が丸ごとスキップされ、
-      // DB ハンドルを掴んだまま停止できない daemon が残る。retry queue の失敗は
-      // shutdown を止める理由にならないので、ログだけ残して後続へ進む。
-      try {
-        this.processRetryQueue(true);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error(`[harness-mem] shutdown: processRetryQueue failed (continuing): ${message}`);
+    const finishShutdown = (): void => {
+      if (!lightweightChild) {
+        // §159-004: ここで throw すると WAL checkpoint と db.close() が丸ごとスキップされ、
+        // DB ハンドルを掴んだまま停止できない daemon が残る。retry queue の失敗は
+        // shutdown を止める理由にならないので、ログだけ残して後続へ進む。
+        try {
+          this.processRetryQueue(true);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`[harness-mem] shutdown: processRetryQueue failed (continuing): ${message}`);
+        }
       }
-    }
 
-    // Shutdown managed backend (fire-and-forget, best effort)
-    if (this.managedBackend) {
-      this.managedBackend.shutdown().catch(() => {});
-      this.managedBackend = null;
-    }
+      // Shutdown managed backend (fire-and-forget, best effort)
+      if (this.managedBackend) {
+        this.managedBackend.shutdown().catch(() => {});
+        this.managedBackend = null;
+      }
 
-    if (!lightweightChild) {
+      if (!lightweightChild) {
+        try {
+          this.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+        } catch {
+          // best effort
+        }
+      }
+
       try {
-        this.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+        this.db.close(process.platform === "win32");
       } catch {
-        // best effort
+        // ignore close errors
       }
-    }
 
-    try {
-      this.db.close(process.platform === "win32");
-    } catch {
-      // ignore close errors
-    }
-
-    if (!lightweightChild) {
-      try {
-        writeFileSync(this.heartbeatPath, JSON.stringify({ pid: process.pid, ts: nowIso(), state: `stopped:${signal}` }));
-      } catch {
-        // best effort
+      if (!lightweightChild) {
+        try {
+          writeFileSync(this.heartbeatPath, JSON.stringify({ pid: process.pid, ts: nowIso(), state: `stopped:${signal}` }));
+        } catch {
+          // best effort
+        }
       }
+    };
+
+    if (!hadSearchWorker) {
+      finishShutdown();
+      this.shutdownPromise = Promise.resolve();
+    } else {
+      this.shutdownPromise = searchWorkerStop.then(finishShutdown);
     }
+    return this.shutdownPromise;
+  }
+
+  hasUnconfirmedSearchWorker(): boolean {
+    return this.shuttingDown && this.searchWorker?.hasLiveProcess() === true;
   }
 
   /**

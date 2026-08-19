@@ -1,8 +1,18 @@
 import { HarnessMemCore, getConfig } from "./core/harness-mem-core";
 import { checkRemoteBindSafety, startHarnessMemServer } from "./server";
 import { shutdownTelemetry } from "./telemetry/otel";
+import { recoverOrphanedSearchWorkers } from "./core/search-worker-lifecycle";
+import { fileURLToPath } from "node:url";
 
 const config = getConfig();
+
+// A daemon killed with SIGKILL cannot reap its persistent search worker. Only
+// workers whose command, orphan PPID, PID-start identity, and canonical DB
+// fingerprint all match are eligible; uncertain candidates are left alive.
+await recoverOrphanedSearchWorkers({
+  dbPath: config.dbPath,
+  scriptPath: fileURLToPath(new URL("./tools/search-worker.ts", import.meta.url)),
+});
 
 // リモートバインド安全チェック: 127.0.0.1/localhost 以外でトークン未設定はエラー終了
 const remoteBindError = checkRemoteBindSafety(config.bindHost);
@@ -57,13 +67,20 @@ const gracefulShutdown = async (signal: string): Promise<void> => {
   // event loop が native 処理で塞がれている場合は timer 自体が発火しないので、
   // その経路は scripts/harness-memd の SIGTERM → SIGKILL escalation が担う。
   // watchdog は unref しない: event loop が空になっても確実に発火させる。
-  const watchdog = setTimeout(() => {
+  let watchdog: ReturnType<typeof setTimeout>;
+  const enforceShutdownDeadline = (): void => {
+    if (core.hasUnconfirmedSearchWorker()) {
+      console.error("[harness-memd] shutdown deadline reached; waiting for owned search worker exit");
+      watchdog = setTimeout(enforceShutdownDeadline, shutdownTimeoutMs);
+      return;
+    }
     console.error(`[harness-memd] graceful shutdown did not finish in ${shutdownTimeoutMs}ms; forcing exit`);
     process.exit(1);
-  }, shutdownTimeoutMs);
+  };
+  watchdog = setTimeout(enforceShutdownDeadline, shutdownTimeoutMs);
   server.stop(true);
   try {
-    core.shutdown(signal);
+    await core.shutdown(signal);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[harness-memd] core.shutdown threw (continuing to exit): ${message}`);
