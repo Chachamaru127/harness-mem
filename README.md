@@ -174,6 +174,20 @@ observation or schema drift, run the explicit audited repair:
 harness-mem admin-rebuild-dedupe-claims --execute
 ```
 
+Scheduled consolidation and the five-minute PASSIVE WAL checkpoint share one
+persistent maintenance child, so their synchronous SQLite work does not run on
+the daemon HTTP event loop or overlap each other. Manual consolidation still
+waits for a complete response. Operational bounds are configurable with
+`HARNESS_MEM_CONSOLIDATION_WORKER_TIMEOUT_MS` (default 120000),
+`HARNESS_MEM_WAL_AUTOCHECKPOINT_PAGES` (default 1000), and
+`HARNESS_MEM_WAL_MAX_BYTES` (default 512 MiB, soft telemetry). Explicit cores
+whose maintenance/provider configuration differs from the daemon environment
+keep maintenance local so the child cannot silently replace caller settings.
+Busy/error/active-frame checkpoint retries use exponential backoff controlled
+by `HARNESS_MEM_WAL_CHECKPOINT_RETRY_BASE_MS` (default 10000) and stop after
+`HARNESS_MEM_WAL_CHECKPOINT_RETRY_MAX_ATTEMPTS` (default 3) until the next
+normal checkpoint timer.
+
 ### Claude-harness companion mode
 
 Claude-harness can manage harness-mem as an external companion instead of embedding memory internals. In that mode Claude-harness may call:

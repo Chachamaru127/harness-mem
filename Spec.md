@@ -444,6 +444,37 @@ Explicit ingest — an API or command a user or agent invokes directly to force
 a full catch-up — is exempt from this budget and may run to completion
 unbounded, since the caller is intentionally waiting for a definitive result.
 
+## Background SQLite Maintenance Isolation
+
+Timer-driven consolidation and explicit `PRAGMA wal_checkpoint(PASSIVE)` must
+run in one daemon-owned persistent maintenance process, never on the HTTP
+daemon event loop. The two operations are serialized so they cannot add a
+second concurrent maintenance I/O lane against search.
+
+- Scheduler consolidation and checkpoint ticks coalesce independently. Manual
+  consolidation requests remain FIFO and wait for a complete response. A
+  checkpoint queued during consolidation runs before the next manual request.
+- A core explicitly constructed with maintenance/provider settings that differ
+  from the daemon environment keeps these operations local. The child must not
+  reconstruct different settings or receive provider secrets over task IPC.
+- Consolidation has a configurable bounded worker timeout whose default exceeds
+  the observed 83.8 second total runtime. Timeout and shutdown use `SIGTERM`, a
+  wait of at most one second, `SIGKILL`, and confirmed child disappearance.
+- A worker restart marks a queue row left `running` as `failed` with an
+  abandoned reason. It does not silently retry partially committed work or
+  alter pending/completed rows.
+- SQLite commit-time `wal_autocheckpoint` remains enabled at 1000 pages and is
+  the primary WAL bound. The periodic PASSIVE checkpoint is a secondary
+  backstop. Its result records busy/log/checkpointed counts and WAL bytes before
+  and after. Only busy, error, or active uncheckpointed frames schedule finite,
+  coalesced exponential-backoff retries (three attempts by default); physical
+  WAL allocation above the byte ceiling is soft telemetry and cannot create a
+  permanent retry loop. The next normal checkpoint timer starts a fresh retry
+  budget.
+- Progress telemetry is counts, durations, error codes, and WAL sizes only. It
+  must not contain content, project, session, correlation identifiers, secrets,
+  or filesystem/database paths.
+
 ### Content dedupe ownership projection
 
 `mem_content_dedupe_claims` is a rebuildable, derived ownership projection of

@@ -93,6 +93,13 @@ import {
 } from "./ingest-coordinator";
 import { PeriodicIngestWorkerClient } from "./periodic-ingest-worker-client";
 import {
+  BackgroundMaintenanceWorkerClient,
+  shouldRetryWalCheckpoint,
+  type MaintenanceProgress,
+  type MaintenanceTask,
+} from "./background-maintenance-worker-client";
+import { recordWalCheckpointCompleted } from "./sqlite-performance-telemetry";
+import {
   ConfigManager,
   EMBEDDING_DEFAULT_MODEL_KEY,
   INCUMBENT_EMBEDDING_MODEL,
@@ -149,6 +156,7 @@ import {
   parseArrayJson,
   parseJsonSafe,
   parseBackendMode,
+  getConfig,
   resolveHomePath,
   resolveWorkspaceRootFromWorkspaceFile,
   resolveWorkspaceRootFromWorkspaceJson,
@@ -1458,6 +1466,34 @@ export class PersistentSearchWorkerClient {
 // getConfig は core-utils.ts から re-export
 export { getConfig } from "./core-utils.js";
 
+const MAINTENANCE_CONFIG_KEYS = [
+  "vectorDimension",
+  "embeddingProvider",
+  "embeddingModel",
+  "openaiApiKey",
+  "openaiEmbedModel",
+  "ollamaBaseUrl",
+  "ollamaEmbedModel",
+  "localModelsDir",
+  "proApiKey",
+  "proApiUrl",
+  "proApiModel",
+  "proApiZdrEnforced",
+  "adaptiveJaThreshold",
+  "adaptiveCodeThreshold",
+  "consolidationEnabled",
+  "backendMode",
+  "managedEndpoint",
+  "managedApiKey",
+  "userId",
+  "teamId",
+] as const satisfies readonly (keyof Config)[];
+
+function hasEnvironmentCompatibleMaintenanceConfig(config: Config): boolean {
+  const environmentConfig = getConfig();
+  return MAINTENANCE_CONFIG_KEYS.every((key) => config[key] === environmentConfig[key]);
+}
+
 export function parseChildApiResponse(stdout: string, stderr = "", label = "child"): ApiResponse {
   const lines = stdout
     .split(/\r?\n/)
@@ -1789,7 +1825,7 @@ function computeAntigravityWorkspaceRoots(config: {
 /**
  * 現在のプロセスが「軽量 child」かどうか。
  *
- * search / checkpoint / event / retry / stats / recall / vector / materialize の
+ * search / ingest / maintenance / checkpoint / event / retry / stats / recall / vector / materialize の
  * 各 child は、親と同じ DB に対して `HarnessMemCore` を生成する。したがって
  * child でも `initSchema()` や `shutdown()` が走る。**親 daemon の状態を書き換える
  * 処理は child で実行してはならない** (例: 実行中 consolidation job の回収、
@@ -1802,6 +1838,7 @@ export function isLightweightChildProcess(): boolean {
     process.env.HARNESS_MEM_SEARCH_CHILD_PROCESS === "1" ||
     process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS === "1" ||
     process.env.HARNESS_MEM_INGEST_WORKER_PROCESS === "1" ||
+    process.env.HARNESS_MEM_BACKGROUND_MAINTENANCE_WORKER_PROCESS === "1" ||
     process.env.HARNESS_MEM_CHECKPOINT_CHILD_PROCESS === "1" ||
     process.env.HARNESS_MEM_EVENT_CHILD_PROCESS === "1" ||
     process.env.HARNESS_MEM_RETRY_CHILD_PROCESS === "1" ||
@@ -1861,6 +1898,12 @@ export class HarnessMemCore {
   /** S127-002: warm persistent worker for normal vector search. */
   private searchWorker: PersistentSearchWorkerClient | null = null;
   private periodicIngestWorker: PeriodicIngestWorkerClient | null = null;
+  private backgroundMaintenanceWorker: BackgroundMaintenanceWorkerClient | null = null;
+  private readonly backgroundWorkersActive: boolean;
+  private readonly maintenanceWorkerConfigCompatible: boolean;
+  private localSchedulerConsolidationRunning = false;
+  private walCheckpointRetryAttempt = 0;
+  private walCheckpointRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private searchChildPending = 0;
   private cachedObservationCount: { value: number; checkedAtMs: number } | null = null;
   private eventChildPending = 0;
@@ -1907,6 +1950,11 @@ export class HarnessMemCore {
     this.initManagedBackend();
     this.initModules();
     const shouldStartWorkers = resolveBackgroundWorkersEnabled(this.config.backgroundWorkersEnabled);
+    this.backgroundWorkersActive = shouldStartWorkers;
+    // The maintenance child reconstructs configuration from its environment.
+    // Explicitly constructed cores may carry provider, vector, or consolidation
+    // overrides that cannot safely be serialized to child IPC (including secrets).
+    this.maintenanceWorkerConfigCompatible = hasEnvironmentCompatibleMaintenanceConfig(this.config);
     if (shouldStartWorkers) {
       this.startBackgroundWorkers();
       this.startSearchWorkerIfNeeded();
@@ -1993,9 +2041,8 @@ export class HarnessMemCore {
       heartbeatPath: this.heartbeatPath,
       isShuttingDown: () => this.shuttingDown,
       processRetryQueue: (force) => this.processRetryQueue(force),
-      runConsolidation: ({ reason, limit }) =>
-        this.runConsolidation({ reason, limit }).then(() => undefined),
       schedulePeriodicIngest: (source) => this.schedulePeriodicIngest(source),
+      scheduleMaintenance: (task) => this.scheduleMaintenance(task),
     });
 
     this.cfgMgr = new ConfigManager({
@@ -2754,7 +2801,7 @@ export class HarnessMemCore {
    * 理由を残す。単一プロセス設計 (lock file で多重起動を防いでいる) が前提。
    */
   private reconcileAbandonedConsolidationJobs(): void {
-    // 子プロセス (search / checkpoint / event / retry / stats / recall / vector /
+    // 子プロセス (search / ingest / maintenance / checkpoint / event / retry / stats / recall / vector /
     // materialize) も同じ DB に対して HarnessMemCore を作るため initSchema が走る。
     // そこで回収すると、**親 daemon が実行中の job を failed に誤更新する**。
     // 回収は daemon 本体の起動時だけに限定する (2026-07-28 review 指摘)。
@@ -3662,6 +3709,9 @@ export class HarnessMemCore {
 
   private startBackgroundWorkers(): void {
     this.getOrCreatePeriodicIngestWorker();
+    if (this.maintenanceWorkerConfigCompatible) {
+      this.getOrCreateBackgroundMaintenanceWorker();
+    }
     this.ingestCoord.startTimers();
     // §91-002: start partial-finalize scheduler (no-op when enabled=false)
     this.partialFinalizeScheduler.start();
@@ -3698,6 +3748,119 @@ export class HarnessMemCore {
   private schedulePeriodicIngest(source: PeriodicIngestSource): void {
     if (this.shuttingDown) return;
     this.getOrCreatePeriodicIngestWorker().schedule(source);
+  }
+
+  private getOrCreateBackgroundMaintenanceWorker(): BackgroundMaintenanceWorkerClient {
+    if (!this.backgroundMaintenanceWorker) {
+      this.backgroundMaintenanceWorker = new BackgroundMaintenanceWorkerClient({
+        scriptPath: fileURLToPath(new URL("../tools/background-maintenance-worker.ts", import.meta.url)),
+        cwd: process.cwd(),
+        env: { ...process.env, HARNESS_MEM_DB_PATH: this.config.dbPath },
+        dbPath: this.config.dbPath,
+        busyLogMs: clampLimit(
+          Number(process.env.HARNESS_MEM_MAINTENANCE_WORKER_BUSY_LOG_MS || 30_000),
+          30_000,
+          1_000,
+          300_000,
+        ),
+        consolidationTimeoutMs: clampLimit(
+          Number(process.env.HARNESS_MEM_CONSOLIDATION_WORKER_TIMEOUT_MS || 120_000),
+          120_000,
+          90_000,
+          30 * 60_000,
+        ),
+        onProgress: (event) => this.logMaintenanceProgress(event),
+      });
+    }
+    return this.backgroundMaintenanceWorker;
+  }
+
+  private scheduleMaintenance(task: MaintenanceTask, isWalRetry = false): void {
+    if (this.shuttingDown) return;
+    if (task === "consolidation" && this.vectorBackfillWorker?.isRunning() === true) return;
+    if (task === "wal_checkpoint" && !isWalRetry) this.resetWalCheckpointRetry();
+    if (!this.maintenanceWorkerConfigCompatible) {
+      if (task === "consolidation") {
+        if (this.localSchedulerConsolidationRunning) return;
+        this.localSchedulerConsolidationRunning = true;
+        void this.runConsolidationLocal({ reason: "scheduler", limit: 10 }).catch(() => {
+          this.logMaintenanceProgress({
+            kind: "failed",
+            task: "consolidation",
+            queue_depth: 0,
+            error_code: "maintenance_failed",
+          });
+        }).finally(() => {
+          this.localSchedulerConsolidationRunning = false;
+        });
+      } else {
+        const startedAt = performance.now();
+        try {
+          const result = this.runMaintenanceWalCheckpoint();
+          this.logMaintenanceProgress({
+            kind: "completed",
+            task: "wal_checkpoint",
+            elapsed_ms: Math.round(performance.now() - startedAt),
+            queue_depth: 0,
+            busy: Number(result.busy ?? 0),
+            log: Number(result.log ?? 0),
+            checkpointed: Number(result.checkpointed ?? 0),
+            wal_bytes_before: typeof result.wal_bytes_before === "number" ? result.wal_bytes_before : null,
+            wal_bytes_after: typeof result.wal_bytes_after === "number" ? result.wal_bytes_after : null,
+            wal_limit_bytes: Number(result.wal_limit_bytes ?? 0),
+            wal_above_limit: result.wal_above_limit === true,
+          });
+        } catch {
+          this.logMaintenanceProgress({
+            kind: "failed",
+            task: "wal_checkpoint",
+            elapsed_ms: Math.round(performance.now() - startedAt),
+            queue_depth: 0,
+            error_code: "maintenance_failed",
+          });
+        }
+      }
+      return;
+    }
+    this.getOrCreateBackgroundMaintenanceWorker().schedule(task);
+  }
+
+  private logMaintenanceProgress(event: MaintenanceProgress): void {
+    // The event schema contains counts/timing only. Never forward worker stderr,
+    // request bodies, DB paths, projects, sessions, or correlation identifiers.
+    console.warn(`[maintenance-worker] ${JSON.stringify(event)}`);
+    if (event.task !== "wal_checkpoint") return;
+    if (shouldRetryWalCheckpoint(event)) this.scheduleWalCheckpointRetry();
+    else this.resetWalCheckpointRetry();
+  }
+
+  private scheduleWalCheckpointRetry(): void {
+    if (this.shuttingDown || this.walCheckpointRetryTimer) return;
+    const maxAttempts = clampLimit(
+      Number(process.env.HARNESS_MEM_WAL_CHECKPOINT_RETRY_MAX_ATTEMPTS || 3),
+      3,
+      0,
+      10,
+    );
+    if (this.walCheckpointRetryAttempt >= maxAttempts) return;
+    const baseMs = clampLimit(
+      Number(process.env.HARNESS_MEM_WAL_CHECKPOINT_RETRY_BASE_MS || 10_000),
+      10_000,
+      1,
+      300_000,
+    );
+    const delayMs = Math.min(300_000, baseMs * (2 ** this.walCheckpointRetryAttempt));
+    this.walCheckpointRetryAttempt += 1;
+    this.walCheckpointRetryTimer = setTimeout(() => {
+      this.walCheckpointRetryTimer = null;
+      this.scheduleMaintenance("wal_checkpoint", true);
+    }, delayMs);
+  }
+
+  private resetWalCheckpointRetry(): void {
+    if (this.walCheckpointRetryTimer) clearTimeout(this.walCheckpointRetryTimer);
+    this.walCheckpointRetryTimer = null;
+    this.walCheckpointRetryAttempt = 0;
   }
 
   private startForgetMaintenanceScheduler(): void {
@@ -9166,6 +9329,14 @@ export class HarnessMemCore {
   }
 
   async runConsolidation(request: ConsolidationRunRequest = {}): Promise<ApiResponse> {
+    if (this.backgroundWorkersActive && this.maintenanceWorkerConfigCompatible && !this.shuttingDown) {
+      return this.getOrCreateBackgroundMaintenanceWorker().runConsolidation(request);
+    }
+    return this.runConsolidationLocal(request);
+  }
+
+  /** Execute inside the dedicated maintenance process (or explicit test core). */
+  private async runConsolidationLocal(request: ConsolidationRunRequest = {}): Promise<ApiResponse> {
     const startedAt = performance.now();
     if (this.config.consolidationEnabled === false) {
       return makeResponse(startedAt, [], request as unknown as Record<string, unknown>, {
@@ -9303,6 +9474,49 @@ export class HarnessMemCore {
       request as unknown as Record<string, unknown>,
       { ranking: "consolidation_v1" }
     );
+  }
+
+  /**
+   * The maintenance worker is the sole consolidation executor. A respawn occurs
+   * only after the old child handle has exited, so any `running` row at this
+   * point is abandoned. Preserve §160-004's failed-state contract: partial
+   * effects are not proven exactly-once, so an interrupted row is never
+   * silently reset to pending.
+   */
+  recoverMaintenanceConsolidationJobs(): number {
+    if (process.env.HARNESS_MEM_BACKGROUND_MAINTENANCE_WORKER_PROCESS !== "1") return 0;
+    const result = this.db.query(`
+      UPDATE mem_consolidation_queue
+      SET status = 'failed', finished_at = ?,
+          error = 'abandoned: maintenance worker restarted while job was running'
+      WHERE status = 'running'
+    `).run(nowIso());
+    return Number((result as { changes?: number }).changes ?? 0);
+  }
+
+  runMaintenanceWalCheckpoint(): Record<string, number | boolean | null> {
+    const limitRaw = Number(process.env.HARNESS_MEM_WAL_MAX_BYTES || 536_870_912);
+    const walLimitBytes = Number.isFinite(limitRaw) && limitRaw > 0
+      ? Math.floor(limitRaw)
+      : 536_870_912;
+    const filename = (this.db as unknown as { filename?: string }).filename;
+    const readWalBytes = (): number | null => {
+      if (!filename || filename === ":memory:") return null;
+      try { return statSync(`${filename}-wal`).size; } catch { return 0; }
+    };
+    const walBytesBefore = readWalBytes();
+    const result = this.db.query<{ busy: number; log: number; checkpointed: number }, []>(
+      "PRAGMA wal_checkpoint(PASSIVE)",
+    ).get() ?? { busy: 0, log: 0, checkpointed: 0 };
+    recordWalCheckpointCompleted(this.db, result);
+    const walBytesAfter = readWalBytes();
+    return {
+      ...result,
+      wal_bytes_before: walBytesBefore,
+      wal_bytes_after: walBytesAfter,
+      wal_limit_bytes: walLimitBytes,
+      wal_above_limit: walBytesAfter !== null && walBytesAfter > walLimitBytes,
+    };
   }
 
   /**
@@ -9883,11 +10097,14 @@ export class HarnessMemCore {
     let hadSearchWorker = false;
     let periodicIngestWorkerStop: Promise<void> = Promise.resolve();
     let hadPeriodicIngestWorker = false;
+    let backgroundMaintenanceWorkerStop: Promise<void> = Promise.resolve();
+    let hadBackgroundMaintenanceWorker = false;
 
     for (const timer of this.recallProjectionRefreshTimers.values()) {
       clearTimeout(timer);
     }
     this.recallProjectionRefreshTimers.clear();
+    this.resetWalCheckpointRetry();
 
     if (this.searchWorker) {
       hadSearchWorker = true;
@@ -9898,6 +10115,15 @@ export class HarnessMemCore {
       const periodicIngestWorker = this.periodicIngestWorker;
       periodicIngestWorkerStop = periodicIngestWorker.stop().finally(() => {
         if (this.periodicIngestWorker === periodicIngestWorker) this.periodicIngestWorker = null;
+      });
+    }
+    if (this.backgroundMaintenanceWorker) {
+      hadBackgroundMaintenanceWorker = true;
+      const backgroundMaintenanceWorker = this.backgroundMaintenanceWorker;
+      backgroundMaintenanceWorkerStop = backgroundMaintenanceWorker.stop().finally(() => {
+        if (this.backgroundMaintenanceWorker === backgroundMaintenanceWorker) {
+          this.backgroundMaintenanceWorker = null;
+        }
       });
     }
 
@@ -9956,11 +10182,15 @@ export class HarnessMemCore {
       }
     };
 
-    if (!hadSearchWorker && !hadPeriodicIngestWorker) {
+    if (!hadSearchWorker && !hadPeriodicIngestWorker && !hadBackgroundMaintenanceWorker) {
       finishShutdown();
       this.shutdownPromise = Promise.resolve();
     } else {
-      this.shutdownPromise = Promise.all([searchWorkerStop, periodicIngestWorkerStop]).then(finishShutdown);
+      this.shutdownPromise = Promise.all([
+        searchWorkerStop,
+        periodicIngestWorkerStop,
+        backgroundMaintenanceWorkerStop,
+      ]).then(finishShutdown);
     }
     return this.shutdownPromise;
   }
@@ -9969,6 +10199,7 @@ export class HarnessMemCore {
     return this.shuttingDown && (
       this.searchWorker?.hasLiveProcess() === true ||
       this.periodicIngestWorker?.hasLiveProcess() === true
+      || this.backgroundMaintenanceWorker?.hasLiveProcess() === true
     );
   }
 

@@ -184,6 +184,19 @@ drift を解消した後、監査対象の明示 repair を実行します。
 harness-mem admin-rebuild-dedupe-claims --execute
 ```
 
+定期 consolidation と5分周期の PASSIVE WAL checkpoint は、1つの persistent
+maintenance child で直列実行します。同期 SQLite 処理を daemon の HTTP event loop
+から外し、互いにも重ねません。手動 consolidation は従来どおり完了まで待ちます。
+運用上限は `HARNESS_MEM_CONSOLIDATION_WORKER_TIMEOUT_MS`（既定120000）、
+`HARNESS_MEM_WAL_AUTOCHECKPOINT_PAGES`（既定1000）、
+`HARNESS_MEM_WAL_MAX_BYTES`（既定512 MiB、soft telemetry）で調整できます。
+daemon環境と異なるmaintenance/provider設定を明示したcoreは、子プロセスが設定を
+黙って置き換えないようmaintenanceを親local経路に保ちます。
+busy/error/active frame時のcheckpoint retryは指数backoffとし、
+`HARNESS_MEM_WAL_CHECKPOINT_RETRY_BASE_MS`（既定10000）を基準に、
+`HARNESS_MEM_WAL_CHECKPOINT_RETRY_MAX_ATTEMPTS`（既定3）で停止します。
+次の通常checkpoint timerでretry予算を再開します。
+
 ### Claude-harness companion mode
 
 Claude-harness は、記憶の内部実装を埋め込まず、harness-mem を外部 companion として管理できます。この場合、Claude-harness は次のコマンドを呼び出します。

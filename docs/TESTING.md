@@ -158,6 +158,7 @@ bun test memory-server/tests/unit/postgres-adapter.test.ts
 | `mem-links-relation.test.ts` | リンク関係 |
 | `derives-links.test.ts` | derives リンク推論 |
 | `audn-consolidation.test.ts` | 統合処理 |
+| `background-maintenance-worker.test.ts` | consolidation / WAL checkpoint の子プロセス隔離、FIFO/coalesce、timeout、停止・回収 |
 | `external-connectors.test.ts` | 外部コネクタ |
 | `knowledge-connector.test.ts` | ナレッジコネクタ |
 | `codex-sessions-ingest.test.ts` | Codex セッションパーサー |

@@ -6,12 +6,16 @@ import { fileURLToPath } from "node:url";
 
 const config = getConfig();
 
-// A daemon killed with SIGKILL cannot reap its persistent search worker. Only
-// workers whose command, orphan PPID, PID-start identity, and canonical DB
-// fingerprint all match are eligible; uncertain candidates are left alive.
+// A daemon killed with SIGKILL cannot reap its persistent children. Only a
+// worker whose script, orphan PPID, PID-start identity, canonical DB fingerprint,
+// and token all match is eligible; uncertain candidates are left alive.
 await recoverOrphanedSearchWorkers({
   dbPath: config.dbPath,
   scriptPath: fileURLToPath(new URL("./tools/search-worker.ts", import.meta.url)),
+});
+await recoverOrphanedSearchWorkers({
+  dbPath: config.dbPath,
+  scriptPath: fileURLToPath(new URL("./tools/background-maintenance-worker.ts", import.meta.url)),
 });
 
 // リモートバインド安全チェック: 127.0.0.1/localhost 以外でトークン未設定はエラー終了

@@ -71,9 +71,9 @@ import {
   beginIngestTickTelemetry,
   endIngestTickTelemetry,
   recordSqliteError,
-  recordWalCheckpointCompleted,
   sqliteErrorCodes,
 } from "./sqlite-performance-telemetry.js";
+import type { MaintenanceTask } from "./background-maintenance-worker-client.js";
 
 // ---------------------------------------------------------------------------
 // モジュールレベルのヘルパー
@@ -580,8 +580,8 @@ export interface IngestCoordinatorDeps {
   heartbeatPath: string;
   isShuttingDown: () => boolean;
   processRetryQueue: (force?: boolean) => void;
-  runConsolidation: (opts: { reason: string; limit: number }) => Promise<void>;
   schedulePeriodicIngest?: (source: PeriodicIngestSource) => void;
+  scheduleMaintenance?: (task: MaintenanceTask) => void;
 }
 
 export const PERIODIC_INGEST_SOURCES = [
@@ -857,34 +857,9 @@ export class IngestCoordinator {
     }
 
     if (config.consolidationEnabled !== false) {
-      let consolidationRunning = false;
       this.consolidationTimer = setInterval(() => {
         if (this.deps.isShuttingDown()) return;
-        if (consolidationRunning) return;
-        consolidationRunning = true;
-        // §155-A04: 元コードは .catch() を持たず、SQLITE_BUSY 等の rejection が
-        // Bun の uncaughtException 扱いで daemon プロセスを殺し、launchd が
-        // 再起動を繰り返す crashloop を引き起こしていた。次サイクル (60s 後) で
-        // 自然に再試行されるので、ここでは WARN ログだけ残して swallow する。
-        // §159-003c: consolidation は async だが、内部の同期 DB 処理が event loop を
-        // 占有する。所要時間 (await 込み) を測っておき、閾値超過だけ記録する。
-        const consolidationStartedAt = Date.now();
-        void this.deps
-          .runConsolidation({ reason: "scheduler", limit: 10 })
-          .catch((err: unknown) => {
-            const code = (err as { code?: string } | null)?.code;
-            const message = err instanceof Error ? err.message : String(err);
-            console.warn(
-              `[consolidation-scheduler] swallowed error (code=${code ?? "n/a"}): ${message} — will retry on next interval`,
-            );
-          })
-          .finally(() => {
-            consolidationRunning = false;
-            const elapsed = Date.now() - consolidationStartedAt;
-            if (elapsed >= resolveSlowTickLogMs()) {
-              console.warn(`[ingest] slow tick: consolidation took ${elapsed}ms`);
-            }
-          });
+        this.deps.scheduleMaintenance?.("consolidation");
       }, clampLimit(Number(config.consolidationIntervalMs || 60000), 60000, 5000, 600000));
     }
 
@@ -902,12 +877,7 @@ export class IngestCoordinator {
     // 間隔を env で緩められるようにして、大きい DB での占有頻度を下げられるようにする。
     this.checkpointTimer = setInterval(() => {
       if (this.deps.isShuttingDown()) return;
-      this.runTick("wal_checkpoint", () => {
-        const result = this.deps.db.query<{ busy: number; log: number; checkpointed: number }, []>(
-          "PRAGMA wal_checkpoint(PASSIVE)",
-        ).get();
-        if (result) recordWalCheckpointCompleted(this.deps.db, result);
-      });
+      this.deps.scheduleMaintenance?.("wal_checkpoint");
     }, resolveWalCheckpointIntervalMs());
 
     this.writeHeartbeat();

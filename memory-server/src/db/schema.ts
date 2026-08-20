@@ -392,6 +392,11 @@ export function configureDatabase(
   db.exec("PRAGMA journal_mode=WAL;");
   db.exec("PRAGMA synchronous=NORMAL;");
   db.exec("PRAGMA foreign_keys=ON;");
+  // SQLite's commit-time autocheckpoint is the primary WAL bound. The
+  // maintenance worker's PASSIVE checkpoint is a secondary backstop and never
+  // replaces this per-connection responsibility.
+  const autoCheckpointPages = parsePragmaInt(env.HARNESS_MEM_WAL_AUTOCHECKPOINT_PAGES) ?? 1000;
+  db.exec(`PRAGMA wal_autocheckpoint=${autoCheckpointPages > 0 ? autoCheckpointPages : 1000};`);
   // §155-A01: consolidation worker と search-worker の SQLITE_BUSY 衝突で
   // daemon が SIGTERM サイクルに入る事象に対応。busy_timeout を 5s → 30s に拡大し、
   // env で override 可能に。consolidation の長い transaction (~数秒) 中の search を
