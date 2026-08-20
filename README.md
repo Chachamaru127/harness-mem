@@ -201,6 +201,14 @@ and audit-flush overlap attribution. These fields contain no request-derived
 identifiers and do not change durability behavior. A worker timeout preserves
 the completed retrieval time and marks the reported spool elapsed time as
 incomplete instead of discarding the phase evidence.
+Retrieval timing is further split into scope resolution, latest interaction,
+lexical candidates (including bounded-recent/FTS strategy, SQL fallback, and
+rows examined), vector, load/hydration, facts/tags, route, ranking/rerank,
+privacy/boundary, audit-intent build, and an explicit unattributed remainder.
+Repeat-recall cache watermarks use transactionally maintained project, session,
+and global retrieval-auxiliary generations. Ready databases read three primary
+keys instead of scanning observations; a missing marker or trigger falls back
+to the legacy watermark scan until one atomic migration repairs readiness.
 Scheduled consolidation processes one durable queue job per tick by default to
 bound same-database contention with search. Set
 `HARNESS_MEM_CONSOLIDATION_SCHEDULER_BATCH_SIZE` to 1–10 only after measuring

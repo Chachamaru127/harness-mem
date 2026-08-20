@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { hasPrivateVisibilityTag, nowIso, parseArrayJson, parseJsonSafe } from "../core/core-utils.js";
+import { recallGenerationsReady } from "../db/schema.js";
 
 export type RecallProjectionMode = "dry_run" | "write";
 
@@ -107,6 +108,22 @@ function isAdrProjection(row: ObservationRow, metadata: Record<string, unknown>,
 }
 
 export function readRecallDataWatermark(db: Database, request: { project?: string; sessionId?: string }): string {
+  if (recallGenerationsReady(db)) {
+    const project = request.project ?? "";
+    const rows = db.query<{ scope_type: string; generation: number }, [string, string]>(`
+      SELECT scope_type, generation
+      FROM mem_recall_generations
+      WHERE (scope_type = 'retrieval_aux' AND project = '' AND session_id = '')
+         OR (scope_type = 'project' AND project = ? AND session_id = '')
+         OR (scope_type = 'session' AND project = '' AND session_id = ?)
+    `).all(project, request.sessionId ?? "");
+    const generations = new Map(rows.map((row) => [row.scope_type, Number(row.generation)]));
+    return [
+      `p${generations.get("project") ?? 0}`,
+      `s${request.sessionId ? generations.get("session") ?? 0 : 0}`,
+      `a${generations.get("retrieval_aux") ?? 0}`,
+    ].join(":");
+  }
   const filters = ["archived_at IS NULL"];
   const params: SQLQueryBindings[] = [];
   if (request.project) {

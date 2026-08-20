@@ -206,6 +206,12 @@ cache miss応答の`search_phase_timing`はwatermark/cache lookup、retrieval、
 append/commit、worker、total、audit flush overlapを固定scalarだけで示します。request由来の
 識別子は含めず、耐久性の挙動も変更しません。
 worker timeoutでも完了済みretrievalと処理中spoolの経過を残し、未完了flagを明示します。
+retrievalはscope解決、latest interaction、lexical候補（bounded-recent/FTS、SQL fallback、
+走査行数）、vector、load/hydrate、facts/tags、route、ranking/rerank、privacy/boundary、
+audit-intent build、未帰属の残り時間へさらに分解します。
+repeat-recall cacheのwatermarkはtransaction内で更新するproject、session、global retrieval-aux
+generationを使います。readyなDBは観察全走査ではなく主キー3件を読みます。markerまたはtriggerが
+欠けた場合は、原子的なmigrationでreadinessを修復するまで従来scanへfallbackします。
 定期consolidationは、searchとの同一DB競合時間を区切るため、既定で1 tickにつき
 durable queue 1件だけ進めます。`HARNESS_MEM_CONSOLIDATION_SCHEDULER_BATCH_SIZE`
 は1〜10で変更できますが、本番search latencyを実測した場合だけ引き上げます。

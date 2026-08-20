@@ -657,10 +657,29 @@ describe("background maintenance persistent workers", () => {
       expect(Object.keys(timing).sort()).toEqual([
         "audit_flush_active_at_search_start",
         "audit_flush_overlap_elapsed_ms",
+        "audit_intent_build_ms",
+        "facts_tags_ms",
+        "latest_interaction_ms",
+        "lexical_candidate_ms",
+        "lexical_fallback_executed",
+        "lexical_rows_examined",
+        "lexical_score_ms",
+        "lexical_sql_fallback_ms",
+        "lexical_sql_primary_ms",
+        "lexical_strategy",
+        "lexical_tokenize_ms",
+        "load_hydrate_ms",
+        "privacy_boundary_ms",
+        "ranking_rerank_ms",
         "retrieval_total_ms",
+        "retrieval_unattributed_ms",
+        "route_ms",
+        "scope_resolution_ms",
         "spool_append_commit_complete",
         "spool_append_commit_ms",
         "total_ms",
+        "vector_executed",
+        "vector_ms",
         "watermark_cache_lookup_ms",
         "worker_total_ms",
       ]);
@@ -723,6 +742,29 @@ describe("background maintenance persistent workers", () => {
       const payload = await response.json() as { meta: { search_phase_timing?: Record<string, unknown> } };
       const timing = payload.meta.search_phase_timing!;
       expect(typeof timing.retrieval_total_ms).toBe("number");
+      const retrievalBreakdownKeys = [
+        "scope_resolution_ms",
+        "latest_interaction_ms",
+        "lexical_candidate_ms",
+        "vector_ms",
+        "load_hydrate_ms",
+        "facts_tags_ms",
+        "route_ms",
+        "ranking_rerank_ms",
+        "privacy_boundary_ms",
+        "audit_intent_build_ms",
+      ] as const;
+      for (const key of retrievalBreakdownKeys) {
+        expect(timing[key]).toEqual(expect.any(Number));
+      }
+      expect(timing.lexical_strategy).toBe("bounded_recent");
+      expect(timing.lexical_rows_examined).toEqual(expect.any(Number));
+      expect(timing.lexical_fallback_executed).toBe(false);
+      expect(timing.vector_executed).toBe(false);
+      const attributedMs = retrievalBreakdownKeys.reduce((sum, key) => sum + Number(timing[key]), 0);
+      expect(attributedMs + Number(timing.retrieval_unattributed_ms))
+        .toBeGreaterThanOrEqual(Number(timing.retrieval_total_ms) - 0.1);
+      expect(attributedMs).toBeLessThanOrEqual(Number(timing.retrieval_total_ms) + 0.1);
       expect(typeof timing.spool_append_commit_ms).toBe("number");
       expect(timing.spool_append_commit_complete).toBe(false);
       expect(timing.worker_total_ms).toBeNull();
@@ -734,6 +776,9 @@ describe("background maintenance persistent workers", () => {
       expect(totalElapsedMs).toBeGreaterThanOrEqual(spoolElapsedMs);
       expect(JSON.stringify(timing)).not.toContain(privateQuery);
       expect(JSON.stringify(timing)).not.toContain(dir);
+      expect(Object.keys(timing).some((key) =>
+        /(query|project|path|session|hash|correlation)/i.test(key)
+      )).toBe(false);
     } finally {
       server.stop(true);
       await core.shutdown("test");

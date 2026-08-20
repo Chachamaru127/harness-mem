@@ -1021,12 +1021,97 @@ interface SearchWorkerResponseEnvelope {
   side_effect_intents_pending?: number;
   phase?: "retrieval_complete" | "spool_complete";
   elapsed_ms?: number;
+  timing?: Partial<SearchWorkerPhaseTiming>;
 }
 
 interface SearchWorkerPhaseTiming {
   retrieval_total_ms: number | null;
+  retrieval_unattributed_ms: number | null;
+  scope_resolution_ms: number | null;
+  latest_interaction_ms: number | null;
+  lexical_candidate_ms: number | null;
+  lexical_strategy: "bounded_recent" | "fts" | null;
+  lexical_tokenize_ms: number | null;
+  lexical_sql_primary_ms: number | null;
+  lexical_sql_fallback_ms: number | null;
+  lexical_score_ms: number | null;
+  lexical_rows_examined: number | null;
+  lexical_fallback_executed: boolean | null;
+  vector_ms: number | null;
+  vector_executed: boolean | null;
+  load_hydrate_ms: number | null;
+  facts_tags_ms: number | null;
+  route_ms: number | null;
+  ranking_rerank_ms: number | null;
+  privacy_boundary_ms: number | null;
+  audit_intent_build_ms: number | null;
   spool_append_commit_ms: number | null;
   spool_append_commit_complete: boolean | null;
+}
+
+function emptySearchWorkerPhaseTiming(): SearchWorkerPhaseTiming {
+  return {
+    retrieval_total_ms: null,
+    retrieval_unattributed_ms: null,
+    scope_resolution_ms: null,
+    latest_interaction_ms: null,
+    lexical_candidate_ms: null,
+    lexical_strategy: null,
+    lexical_tokenize_ms: null,
+    lexical_sql_primary_ms: null,
+    lexical_sql_fallback_ms: null,
+    lexical_score_ms: null,
+    lexical_rows_examined: null,
+    lexical_fallback_executed: null,
+    vector_ms: null,
+    vector_executed: null,
+    load_hydrate_ms: null,
+    facts_tags_ms: null,
+    route_ms: null,
+    ranking_rerank_ms: null,
+    privacy_boundary_ms: null,
+    audit_intent_build_ms: null,
+    spool_append_commit_ms: null,
+    spool_append_commit_complete: null,
+  };
+}
+
+const SEARCH_RETRIEVAL_NUMERIC_PHASE_KEYS = [
+  "retrieval_total_ms",
+  "retrieval_unattributed_ms",
+  "scope_resolution_ms",
+  "latest_interaction_ms",
+  "lexical_candidate_ms",
+  "lexical_tokenize_ms",
+  "lexical_sql_primary_ms",
+  "lexical_sql_fallback_ms",
+  "lexical_score_ms",
+  "lexical_rows_examined",
+  "vector_ms",
+  "load_hydrate_ms",
+  "facts_tags_ms",
+  "route_ms",
+  "ranking_rerank_ms",
+  "privacy_boundary_ms",
+  "audit_intent_build_ms",
+] as const;
+
+function applySearchWorkerRetrievalTiming(
+  target: SearchWorkerPhaseTiming,
+  raw: Partial<SearchWorkerPhaseTiming> | undefined,
+): void {
+  if (!raw) return;
+  for (const key of SEARCH_RETRIEVAL_NUMERIC_PHASE_KEYS) {
+    const value = raw[key];
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) target[key] = value;
+  }
+  if (raw.lexical_strategy === "bounded_recent" || raw.lexical_strategy === "fts") {
+    target.lexical_strategy = raw.lexical_strategy;
+  }
+  if (typeof raw.lexical_fallback_executed === "boolean") {
+    target.lexical_fallback_executed = raw.lexical_fallback_executed;
+  }
+  if (typeof raw.vector_executed === "boolean") target.vector_executed = raw.vector_executed;
 }
 
 interface SearchWorkerResult {
@@ -1262,11 +1347,7 @@ export class PersistentSearchWorkerClient {
         reject,
         timer,
         readyAtStart,
-        phaseTiming: {
-          retrieval_total_ms: null,
-          spool_append_commit_ms: null,
-          spool_append_commit_complete: null,
-        },
+        phaseTiming: emptySearchWorkerPhaseTiming(),
         spoolPhaseReceivedAtMs: null,
       });
     });
@@ -1390,6 +1471,7 @@ export class PersistentSearchWorkerClient {
       const pending = this.pending.get(message.id);
       if (!pending || typeof message.elapsed_ms !== "number" || !Number.isFinite(message.elapsed_ms)) return;
       if (message.phase === "retrieval_complete") {
+        applySearchWorkerRetrievalTiming(pending.phaseTiming, message.timing);
         pending.phaseTiming.retrieval_total_ms = Math.max(0, message.elapsed_ms);
         pending.phaseTiming.spool_append_commit_complete = false;
         pending.spoolPhaseReceivedAtMs = performance.now();
@@ -1930,6 +2012,7 @@ export class HarnessMemCore {
   private searchPhaseProgressObserver: ((event: {
     phase: "retrieval_complete" | "spool_complete";
     elapsed_ms: number;
+    timing?: Partial<SearchWorkerPhaseTiming>;
   }) => void) | null = null;
 
   // ---------------------------------------------------------------------------
@@ -6243,6 +6326,25 @@ export class HarnessMemCore {
       cacheLookup.response.meta.search_phase_timing = {
         watermark_cache_lookup_ms: watermarkCacheLookupMs,
         retrieval_total_ms: null,
+        retrieval_unattributed_ms: null,
+        scope_resolution_ms: null,
+        latest_interaction_ms: null,
+        lexical_candidate_ms: null,
+        lexical_strategy: null,
+        lexical_tokenize_ms: null,
+        lexical_sql_primary_ms: null,
+        lexical_sql_fallback_ms: null,
+        lexical_score_ms: null,
+        lexical_rows_examined: null,
+        lexical_fallback_executed: null,
+        vector_ms: null,
+        vector_executed: null,
+        load_hydrate_ms: null,
+        facts_tags_ms: null,
+        route_ms: null,
+        ranking_rerank_ms: null,
+        privacy_boundary_ms: null,
+        audit_intent_build_ms: null,
         spool_append_commit_ms: null,
         spool_append_commit_complete: null,
         worker_total_ms: null,
@@ -6293,9 +6395,7 @@ export class HarnessMemCore {
         ) {
           response = await this.searchWithSafeFallback(effectiveRequest, error.message, offloadMode);
           response.meta.search_phase_timing = {
-            retrieval_total_ms: error.phaseTiming.retrieval_total_ms,
-            spool_append_commit_ms: error.phaseTiming.spool_append_commit_ms,
-            spool_append_commit_complete: error.phaseTiming.spool_append_commit_complete,
+            ...error.phaseTiming,
             worker_total_ms: null,
           };
         } else if (
@@ -6408,6 +6508,29 @@ export class HarnessMemCore {
     finalResponse.meta.search_phase_timing = {
       watermark_cache_lookup_ms: watermarkCacheLookupMs,
       retrieval_total_ms: typeof phaseTiming.retrieval_total_ms === "number" ? phaseTiming.retrieval_total_ms : null,
+      retrieval_unattributed_ms: typeof phaseTiming.retrieval_unattributed_ms === "number" ? phaseTiming.retrieval_unattributed_ms : null,
+      scope_resolution_ms: typeof phaseTiming.scope_resolution_ms === "number" ? phaseTiming.scope_resolution_ms : null,
+      latest_interaction_ms: typeof phaseTiming.latest_interaction_ms === "number" ? phaseTiming.latest_interaction_ms : null,
+      lexical_candidate_ms: typeof phaseTiming.lexical_candidate_ms === "number" ? phaseTiming.lexical_candidate_ms : null,
+      lexical_strategy: phaseTiming.lexical_strategy === "bounded_recent" || phaseTiming.lexical_strategy === "fts"
+        ? phaseTiming.lexical_strategy
+        : null,
+      lexical_tokenize_ms: typeof phaseTiming.lexical_tokenize_ms === "number" ? phaseTiming.lexical_tokenize_ms : null,
+      lexical_sql_primary_ms: typeof phaseTiming.lexical_sql_primary_ms === "number" ? phaseTiming.lexical_sql_primary_ms : null,
+      lexical_sql_fallback_ms: typeof phaseTiming.lexical_sql_fallback_ms === "number" ? phaseTiming.lexical_sql_fallback_ms : null,
+      lexical_score_ms: typeof phaseTiming.lexical_score_ms === "number" ? phaseTiming.lexical_score_ms : null,
+      lexical_rows_examined: typeof phaseTiming.lexical_rows_examined === "number" ? phaseTiming.lexical_rows_examined : null,
+      lexical_fallback_executed: typeof phaseTiming.lexical_fallback_executed === "boolean"
+        ? phaseTiming.lexical_fallback_executed
+        : null,
+      vector_ms: typeof phaseTiming.vector_ms === "number" ? phaseTiming.vector_ms : null,
+      vector_executed: typeof phaseTiming.vector_executed === "boolean" ? phaseTiming.vector_executed : null,
+      load_hydrate_ms: typeof phaseTiming.load_hydrate_ms === "number" ? phaseTiming.load_hydrate_ms : null,
+      facts_tags_ms: typeof phaseTiming.facts_tags_ms === "number" ? phaseTiming.facts_tags_ms : null,
+      route_ms: typeof phaseTiming.route_ms === "number" ? phaseTiming.route_ms : null,
+      ranking_rerank_ms: typeof phaseTiming.ranking_rerank_ms === "number" ? phaseTiming.ranking_rerank_ms : null,
+      privacy_boundary_ms: typeof phaseTiming.privacy_boundary_ms === "number" ? phaseTiming.privacy_boundary_ms : null,
+      audit_intent_build_ms: typeof phaseTiming.audit_intent_build_ms === "number" ? phaseTiming.audit_intent_build_ms : null,
       spool_append_commit_ms: typeof phaseTiming.spool_append_commit_ms === "number" ? phaseTiming.spool_append_commit_ms : null,
       spool_append_commit_complete: typeof phaseTiming.spool_append_commit_complete === "boolean"
         ? phaseTiming.spool_append_commit_complete
@@ -9691,6 +9814,7 @@ export class HarnessMemCore {
   setSearchPhaseProgressObserver(observer: ((event: {
     phase: "retrieval_complete" | "spool_complete";
     elapsed_ms: number;
+    timing?: Partial<SearchWorkerPhaseTiming>;
   }) => void) | null): void {
     this.searchPhaseProgressObserver = observer;
   }

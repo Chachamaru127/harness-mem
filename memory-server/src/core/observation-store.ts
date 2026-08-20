@@ -101,6 +101,39 @@ const DEFAULT_SQLITE_VEC_K_MAX = 240;
 const DEFAULT_SQLITE_VEC_VARIANT_MAX = 1;
 const VECTOR_MIGRATION_PROGRESS_CACHE_TTL_MS = 600_000;
 
+interface LexicalSearchPhaseTiming {
+  strategy: "bounded_recent" | "fts";
+  tokenize_ms: number;
+  sql_primary_ms: number;
+  sql_fallback_ms: number;
+  score_ms: number;
+  rows_examined: number;
+  fallback_executed: boolean;
+}
+
+interface RetrievalPhaseTiming {
+  retrieval_total_ms: number;
+  retrieval_unattributed_ms: number;
+  scope_resolution_ms: number;
+  latest_interaction_ms: number;
+  lexical_candidate_ms: number;
+  lexical_strategy: "bounded_recent" | "fts";
+  lexical_tokenize_ms: number;
+  lexical_sql_primary_ms: number;
+  lexical_sql_fallback_ms: number;
+  lexical_score_ms: number;
+  lexical_rows_examined: number;
+  lexical_fallback_executed: boolean;
+  vector_ms: number;
+  vector_executed: boolean;
+  load_hydrate_ms: number;
+  facts_tags_ms: number;
+  route_ms: number;
+  ranking_rerank_ms: number;
+  privacy_boundary_ms: number;
+  audit_intent_build_ms: number;
+}
+
 // ---------------------------------------------------------------------------
 // ObservationStoreDeps: HarnessMemCore から渡される内部依存
 // ---------------------------------------------------------------------------
@@ -130,6 +163,7 @@ export interface ObservationStoreDeps {
   onSearchPhaseProgress?: (event: {
     phase: "retrieval_complete" | "spool_complete";
     elapsed_ms: number;
+    timing?: RetrievalPhaseTiming;
   }) => void;
   // ---- vector 検索に必要な依存 ----
   getVectorEngine: () => VectorEngine;
@@ -1818,8 +1852,11 @@ export class ObservationStore {
     request: SearchRequest,
     internalLimit: number,
     recentRowLimit?: number,
+    timing?: LexicalSearchPhaseTiming,
   ): Map<string, number> {
+    const tokenizeStartedAt = performance.now();
     const tokens = buildSearchTokens(request.query);
+    if (timing) timing.tokenize_ms += performance.now() - tokenizeStartedAt;
     if (tokens.length === 0) return new Map<string, number>();
 
     const params: SQLQueryBindings[] = [];
@@ -1836,10 +1873,16 @@ export class ObservationStore {
     sql += " ORDER BY o.created_at DESC, o.id DESC LIMIT ?";
     params.push(recentRowLimit ?? Math.max(internalLimit * 4, 200));
 
+    const sqlStartedAt = performance.now();
     const rows = this.deps.db
       .query(sql)
       .all(...(params as any[])) as Array<{ id: string; title: string; content: string }>;
+    if (timing) {
+      timing.sql_primary_ms += performance.now() - sqlStartedAt;
+      timing.rows_examined += rows.length;
+    }
 
+    const scoreStartedAt = performance.now();
     const raw = new Map<string, number>();
     for (const row of rows) {
       const title = (row.title || "").toLowerCase();
@@ -1852,7 +1895,9 @@ export class ObservationStore {
       if (score > 0) raw.set(row.id, score);
     }
 
-    return normalizeScoreMap(raw);
+    const result = normalizeScoreMap(raw);
+    if (timing) timing.score_ms += performance.now() - scoreStartedAt;
+    return result;
   }
 
   private boundedRecentRowsOnly(
@@ -1881,15 +1926,22 @@ export class ObservationStore {
     return normalizeScoreMap(raw);
   }
 
-  private lexicalSearch(request: SearchRequest, internalLimit: number): Map<string, number> {
+  private lexicalSearch(
+    request: SearchRequest,
+    internalLimit: number,
+    timing?: LexicalSearchPhaseTiming,
+  ): Map<string, number> {
     if (
       request.safe_mode === true ||
       !this.deps.ftsEnabled ||
       internalLimit <= 25 ||
       this.isBroadShortLexicalQuery(request.query)
     ) {
-      return this.boundedRecentLexicalScan(request, internalLimit);
+      if (timing) timing.strategy = "bounded_recent";
+      return this.boundedRecentLexicalScan(request, internalLimit, undefined, timing);
     }
+
+    if (timing) timing.strategy = "fts";
 
     const runFtsQuery = (ftsQuery: string): Array<{ id: string; bm25: number }> => {
       const params: unknown[] = [];
@@ -1912,17 +1964,37 @@ export class ObservationStore {
         .all(...(params as any[])) as Array<{ id: string; bm25: number }>;
     };
 
-    let rows = runFtsQuery(buildFtsQuery(request.query, "and"));
+    let tokenizeStartedAt = performance.now();
+    const primaryQuery = buildFtsQuery(request.query, "and");
+    if (timing) timing.tokenize_ms += performance.now() - tokenizeStartedAt;
+    const primarySqlStartedAt = performance.now();
+    let rows = runFtsQuery(primaryQuery);
+    if (timing) {
+      timing.sql_primary_ms += performance.now() - primarySqlStartedAt;
+      timing.rows_examined += rows.length;
+    }
     if (rows.length === 0) {
-      rows = runFtsQuery(buildFtsQuery(request.query));
+      if (timing) timing.fallback_executed = true;
+      tokenizeStartedAt = performance.now();
+      const fallbackQuery = buildFtsQuery(request.query);
+      if (timing) timing.tokenize_ms += performance.now() - tokenizeStartedAt;
+      const fallbackSqlStartedAt = performance.now();
+      rows = runFtsQuery(fallbackQuery);
+      if (timing) {
+        timing.sql_fallback_ms += performance.now() - fallbackSqlStartedAt;
+        timing.rows_examined += rows.length;
+      }
     }
 
+    const scoreStartedAt = performance.now();
     const raw = new Map<string, number>();
     for (const row of rows) {
       raw.set(row.id, -Number(row.bm25));
     }
 
-    return normalizeScoreMap(raw);
+    const result = normalizeScoreMap(raw);
+    if (timing) timing.score_ms += performance.now() - scoreStartedAt;
+    return result;
   }
 
   private isBroadShortLexicalQuery(query: string): boolean {
@@ -4126,6 +4198,26 @@ export class ObservationStore {
 
   search(request: SearchRequest): ApiResponse {
     const startedAt = performance.now();
+    let projectScopeMsRaw = 0;
+    let latestInteractionMsRaw = 0;
+    let lexicalCandidateMsRaw = 0;
+    let vectorMsRaw = 0;
+    let loadHydrateMsRaw = 0;
+    let factsTagsMsRaw = 0;
+    let routeMsRaw = 0;
+    let rankingRerankMsRaw = 0;
+    let privacyBoundaryMsRaw = 0;
+    let auditIntentBuildMsRaw = 0;
+    let vectorExecuted = false;
+    const lexicalPhaseTiming: LexicalSearchPhaseTiming = {
+      strategy: "bounded_recent",
+      tokenize_ms: 0,
+      sql_primary_ms: 0,
+      sql_fallback_ms: 0,
+      score_ms: 0,
+      rows_examined: 0,
+      fallback_executed: false,
+    };
 
     if (!this.deps.config.retrievalEnabled) {
       return makeResponse(startedAt, [], request as unknown as Record<string, unknown>, {
@@ -4161,6 +4253,7 @@ export class ObservationStore {
     const strictProject = request.strict_project !== false;
     const expandLinks =
       !latencySafeMode && this.deps.searchExpandLinks !== false && request.expand_links !== false;
+    const projectScopeStartedAt = performance.now();
     const normalizedProject = request.project
       ? this.deps.normalizeProject(request.project)
       : request.project;
@@ -4190,6 +4283,8 @@ export class ObservationStore {
         ? { ...request.scope, project: normalizedScopeProject ?? request.scope.project }
         : undefined,
     };
+    projectScopeMsRaw = performance.now() - projectScopeStartedAt;
+    const latestInteractionStartedAt = performance.now();
     const hasLatestInteractionIntent = isLatestInteractionIntent(request.query);
     // COMP-003: as_of が指定されている場合、latest interaction は時点外の結果を混入させるためスキップ
     const latestInteraction = request.as_of
@@ -4199,12 +4294,17 @@ export class ObservationStore {
           hasLatestInteractionIntent ? 400 : 20,
         );
     const prioritizeLatestInteraction = Boolean(latestInteraction) && hasLatestInteractionIntent;
+    latestInteractionMsRaw = performance.now() - latestInteractionStartedAt;
 
-    const lexical = this.lexicalSearch(normalizedRequest, internalLimit);
+    const lexicalCandidateStartedAt = performance.now();
+    const lexical = this.lexicalSearch(normalizedRequest, internalLimit, lexicalPhaseTiming);
+    lexicalCandidateMsRaw = performance.now() - lexicalCandidateStartedAt;
     const vectorSearchEnabled = normalizedRequest.vector_search !== false;
     const lexicalCandidateIdsForVector = [...lexical.entries()]
       .sort((lhs, rhs) => rhs[1] - lhs[1])
       .map(([id]) => id);
+    const vectorStartedAt = performance.now();
+    vectorExecuted = vectorSearchEnabled;
     const vectorResult = vectorSearchEnabled
       ? this.vectorSearch(normalizedRequest, internalLimit, lexicalCandidateIdsForVector)
       : { scores: new Map<string, number>(), coverage: 0 };
@@ -4218,6 +4318,7 @@ export class ObservationStore {
     const nuggetScores = vectorSearchEnabled
       ? this.nuggetSearch(normalizedRequest.query, candidateIds)
       : new Map<string, number>();
+    vectorMsRaw = performance.now() - vectorStartedAt;
     if (prioritizeLatestInteraction) {
       if (latestInteraction?.prompt?.id) candidateIds.add(latestInteraction.prompt.id);
       if (latestInteraction?.response?.id) candidateIds.add(latestInteraction.response.id);
@@ -4346,41 +4447,61 @@ export class ObservationStore {
       }
     }
 
+    const loadObservationsStartedAt = performance.now();
     const observations = loadObservations(this.deps.db, [...candidateIds]);
+    loadHydrateMsRaw += performance.now() - loadObservationsStartedAt;
+    const factsTagsStartedAt = performance.now();
     const queryTokens = buildSearchTokens(request.query);
+    factsTagsMsRaw += performance.now() - factsTagsStartedAt;
+    const routeStartedAt = performance.now();
     const routeDecision: RouteDecision = routeQuery(request.query, request.question_kind);
+    routeMsRaw = performance.now() - routeStartedAt;
+    const activeFactsStartedAt = performance.now();
     const activeFactsByObservation = this.loadActiveFactsByObservation(projectMembers || [], [...candidateIds]);
+    factsTagsMsRaw += performance.now() - activeFactsStartedAt;
 
     const ranked: SearchCandidate[] = [];
     let vectorCandidateCount = 0;
     let privacyExcludedCount = 0;
     let boundaryExcludedCount = 0;
     for (const id of candidateIds) {
+      const privacyBoundaryStartedAt = performance.now();
       const observation = observations.get(id);
-      if (!observation) continue;
+      if (!observation) {
+        privacyBoundaryMsRaw += performance.now() - privacyBoundaryStartedAt;
+        continue;
+      }
 
       // IMP-002: updatesリンクで上書きされた旧観察を除外（FQ-013: デフォルト有効）
-      if (excludeUpdated && updatedObsIds.has(id)) continue;
+      if (excludeUpdated && updatedObsIds.has(id)) {
+        privacyBoundaryMsRaw += performance.now() - privacyBoundaryStartedAt;
+        continue;
+      }
 
       const observationProject =
         typeof observation.project === "string" ? observation.project : "";
       if (strictProject && normalizedProject && observationProject !== normalizedProject) {
         boundaryExcludedCount++;
+        privacyBoundaryMsRaw += performance.now() - privacyBoundaryStartedAt;
         continue;
       }
 
       const privacyTags = parseArrayJson(observation.privacy_tags_json);
       if (!includePrivate && hasPrivateVisibilityTag(privacyTags)) {
         privacyExcludedCount++;
+        privacyBoundaryMsRaw += performance.now() - privacyBoundaryStartedAt;
         continue;
       }
+      privacyBoundaryMsRaw += performance.now() - privacyBoundaryStartedAt;
 
+      const candidateRankingStartedAt = performance.now();
       const createdAt =
         typeof observation.created_at === "string" ? observation.created_at : nowIso();
       const lexicalScore = lexical.get(id) ?? 0;
       const vectorScore = vector.get(id) ?? 0;
       if (vector.has(id)) vectorCandidateCount += 1;
       const recency = recencyScore(createdAt);
+      const candidateFactsTagsStartedAt = performance.now();
       const tagBoost = this.tagMatchScore(observation.tags_json, queryTokens);
       const eventType =
         typeof observation.event_type === "string" ? observation.event_type : "";
@@ -4399,6 +4520,8 @@ export class ObservationStore {
             routeDecision.answerHints,
             activeFactsByObservation.get(id) ?? []
           );
+      const candidateFactsTagsMs = performance.now() - candidateFactsTagsStartedAt;
+      factsTagsMsRaw += candidateFactsTagsMs;
       const precisionBoost = latencySafeMode
         ? 0
         : this.computePrecisionBoost(request.query, routeDecision.answerHints, observation);
@@ -4417,8 +4540,10 @@ export class ObservationStore {
         rerank: 0,
         created_at: createdAt,
       });
+      rankingRerankMsRaw += performance.now() - candidateRankingStartedAt - candidateFactsTagsMs;
     }
 
+    const rankingRerankStartedAt = performance.now();
     // アクセス頻度による importance 加点（mem_audit_log の search_hit を一括集計）
     if (ranked.length > 0) {
       const ids = ranked.map((r) => r.id);
@@ -4679,6 +4804,8 @@ export class ObservationStore {
       }
     }
 
+    rankingRerankMsRaw += performance.now() - rankingRerankStartedAt;
+    const hydrateItemsStartedAt = performance.now();
     const items = finalRanked.slice(0, limit).map((entry, index) => {
       const observation = observations.get(entry.id) ?? {};
       const tags = parseArrayJson(observation.tags_json);
@@ -4759,6 +4886,7 @@ export class ObservationStore {
 
       return item;
     });
+    loadHydrateMsRaw += performance.now() - hydrateItemsStartedAt;
 
     const meta: Record<string, unknown> = {
       ranking: this.deps.searchRanking,
@@ -4829,6 +4957,7 @@ export class ObservationStore {
       };
     }
 
+    const auditIntentBuildStartedAt = performance.now();
     const auditDetails = {
       query: request.query,
       limit,
@@ -4841,9 +4970,7 @@ export class ObservationStore {
       .map((item) => item.id as string)
       .filter((id): id is string => Boolean(id));
     const skipSearchHitSideEffects = latencySafeMode || request.skip_search_hit === true;
-    const retrievalTotalMs = Number((performance.now() - startedAt).toFixed(2));
-    let spoolAppendCommitMs: number | null = null;
-    this.deps.onSearchPhaseProgress?.({ phase: "retrieval_complete", elapsed_ms: retrievalTotalMs });
+    let searchSideEffectIntent: SearchSideEffectIntent | null = null;
     if (this.deps.persistSearchSideEffectIntent) {
       const createdAt = nowIso();
       const audits: SearchSideEffectIntent["audits"] = [{
@@ -4889,12 +5016,60 @@ export class ObservationStore {
           });
         }
       }
-      const spoolStartedAt = performance.now();
-      this.deps.persistSearchSideEffectIntent({
+      searchSideEffectIntent = {
         audits,
         access_count_ids: skipSearchHitSideEffects ? [] : hitIds,
         created_at: createdAt,
-      });
+      };
+    }
+    auditIntentBuildMsRaw = performance.now() - auditIntentBuildStartedAt;
+    const retrievalTotalMs = Number((performance.now() - startedAt).toFixed(2));
+    const retrievalPhaseMs = (value: number): number =>
+      Math.max(0, Math.floor(value * 100) / 100);
+    const scopeResolutionMs = retrievalPhaseMs(projectScopeMsRaw);
+    const latestInteractionMs = retrievalPhaseMs(latestInteractionMsRaw);
+    const lexicalCandidateMs = retrievalPhaseMs(lexicalCandidateMsRaw);
+    const vectorMs = retrievalPhaseMs(vectorMsRaw);
+    const loadHydrateMs = retrievalPhaseMs(loadHydrateMsRaw);
+    const factsTagsMs = retrievalPhaseMs(factsTagsMsRaw);
+    const routeMs = retrievalPhaseMs(routeMsRaw);
+    const rankingRerankMs = retrievalPhaseMs(rankingRerankMsRaw);
+    const privacyBoundaryMs = retrievalPhaseMs(privacyBoundaryMsRaw);
+    const auditIntentBuildMs = retrievalPhaseMs(auditIntentBuildMsRaw);
+    const retrievalAttributedMs = scopeResolutionMs + latestInteractionMs + lexicalCandidateMs +
+      vectorMs + loadHydrateMs + factsTagsMs + routeMs + rankingRerankMs +
+      privacyBoundaryMs + auditIntentBuildMs;
+    const retrievalPhaseTiming: RetrievalPhaseTiming = {
+      retrieval_total_ms: retrievalTotalMs,
+      retrieval_unattributed_ms: retrievalPhaseMs(Math.max(0, retrievalTotalMs - retrievalAttributedMs)),
+      scope_resolution_ms: scopeResolutionMs,
+      latest_interaction_ms: latestInteractionMs,
+      lexical_candidate_ms: lexicalCandidateMs,
+      lexical_strategy: lexicalPhaseTiming.strategy,
+      lexical_tokenize_ms: retrievalPhaseMs(lexicalPhaseTiming.tokenize_ms),
+      lexical_sql_primary_ms: retrievalPhaseMs(lexicalPhaseTiming.sql_primary_ms),
+      lexical_sql_fallback_ms: retrievalPhaseMs(lexicalPhaseTiming.sql_fallback_ms),
+      lexical_score_ms: retrievalPhaseMs(lexicalPhaseTiming.score_ms),
+      lexical_rows_examined: lexicalPhaseTiming.rows_examined,
+      lexical_fallback_executed: lexicalPhaseTiming.fallback_executed,
+      vector_ms: vectorMs,
+      vector_executed: vectorExecuted,
+      load_hydrate_ms: loadHydrateMs,
+      facts_tags_ms: factsTagsMs,
+      route_ms: routeMs,
+      ranking_rerank_ms: rankingRerankMs,
+      privacy_boundary_ms: privacyBoundaryMs,
+      audit_intent_build_ms: auditIntentBuildMs,
+    };
+    let spoolAppendCommitMs: number | null = null;
+    this.deps.onSearchPhaseProgress?.({
+      phase: "retrieval_complete",
+      elapsed_ms: retrievalTotalMs,
+      timing: retrievalPhaseTiming,
+    });
+    if (this.deps.persistSearchSideEffectIntent && searchSideEffectIntent) {
+      const spoolStartedAt = performance.now();
+      this.deps.persistSearchSideEffectIntent(searchSideEffectIntent);
       spoolAppendCommitMs = Number((performance.now() - spoolStartedAt).toFixed(2));
       this.deps.onSearchPhaseProgress?.({ phase: "spool_complete", elapsed_ms: spoolAppendCommitMs });
     } else {
@@ -4954,7 +5129,7 @@ export class ObservationStore {
       }
     }
     meta.search_phase_timing = {
-      retrieval_total_ms: retrievalTotalMs,
+      ...retrievalPhaseTiming,
       spool_append_commit_ms: spoolAppendCommitMs,
       spool_append_commit_complete: spoolAppendCommitMs === null ? null : true,
       worker_total_ms: null,

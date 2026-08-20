@@ -160,6 +160,20 @@ Invalidation requirements:
 - Cache metadata may expose hit/miss and a safe key hash.
 - Cache metadata must not expose raw prompt text or raw observation content.
 
+The SQLite data watermark is backed by `mem_recall_generations`, not by a
+`COUNT/MAX` scan or `PRAGMA data_version`. Project and session generations are
+advanced by observation inserts, deletes, and changes to retrieval-visible
+columns. Access bookkeeping (`access_count`, `last_accessed_at`) does not
+advance them. A global `retrieval_aux` generation covers mutations to the
+event, fact, link, vector, nugget, tag, entity, and relation tables that can
+change a cached result without changing an observation row. Because the cache
+is process-local and empty at startup, migration publishes a zero scoped
+baseline, the global auxiliary row, triggers, schema version, and ready marker
+in one transaction without scanning existing observations. Until the ready
+marker and complete trigger set are present,
+watermark reads use the legacy scoped observation scan; readiness is never
+inferred from TTL expiry or process-local cache age.
+
 ## Retrieval Flow
 
 Normal recall flow:

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -137,6 +138,35 @@ describe("repeat recall query cache", () => {
     }
   });
 
+  test("retrieval auxiliary mutation invalidates a cached scoped search", async () => {
+    const { core, dir } = makeCore("aux-invalidation");
+    try {
+      core.recordEvent(event({ event_id: "evt-aux-invalidation" }));
+      const request = {
+        query: "projection cache sentinel alpha",
+        project: "proj-cache",
+        limit: 5,
+        safe_mode: true,
+      } as const;
+      expect((await core.searchPrepared(request)).meta.recall_cache_hit).toBe(false);
+      expect((await core.searchPrepared(request)).meta.recall_cache_hit).toBe(true);
+
+      const db = new Database(join(dir, "harness-mem.db"));
+      try {
+        const observation = db.query("SELECT id FROM mem_observations WHERE project = ? LIMIT 1")
+          .get("proj-cache") as { id: string };
+        db.query(`INSERT INTO mem_tags(observation_id, tag, tag_type, created_at)
+          VALUES (?, 'phase5-aux', 'topic', '2026-08-20T00:00:00.000Z')`).run(observation.id);
+      } finally {
+        db.close();
+      }
+
+      expect((await core.searchPrepared(request)).meta.recall_cache_hit).toBe(false);
+    } finally {
+      await core.shutdown("test");
+    }
+  });
+
   test("local cache miss attributes a synchronous spool stall without identifiers", async () => {
     const previousWorkerMarker = process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS;
     const previousDelay = process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS;
@@ -158,6 +188,38 @@ describe("repeat recall query cache", () => {
         strict_project: true,
       });
       const timing = response.meta.search_phase_timing as Record<string, unknown>;
+      const retrievalBreakdownKeys = [
+        "scope_resolution_ms",
+        "latest_interaction_ms",
+        "lexical_candidate_ms",
+        "vector_ms",
+        "load_hydrate_ms",
+        "facts_tags_ms",
+        "route_ms",
+        "ranking_rerank_ms",
+        "privacy_boundary_ms",
+        "audit_intent_build_ms",
+      ] as const;
+      for (const key of retrievalBreakdownKeys) {
+        expect(timing[key]).toEqual(expect.any(Number));
+        expect(timing[key]).toBeGreaterThanOrEqual(0);
+      }
+      expect(timing.vector_executed).toBe(false);
+      expect(timing.lexical_strategy).toBe("bounded_recent");
+      expect(timing.lexical_tokenize_ms).toEqual(expect.any(Number));
+      expect(timing.lexical_sql_primary_ms).toEqual(expect.any(Number));
+      expect(timing.lexical_sql_fallback_ms).toBe(0);
+      expect(timing.lexical_score_ms).toEqual(expect.any(Number));
+      expect(timing.lexical_rows_examined).toEqual(expect.any(Number));
+      expect(timing.lexical_fallback_executed).toBe(false);
+      const retrievalBreakdownTotal = retrievalBreakdownKeys.reduce(
+        (sum, key) => sum + Number(timing[key]),
+        0,
+      );
+      expect(retrievalBreakdownTotal).toBeLessThanOrEqual(Number(timing.retrieval_total_ms) + 0.1);
+      expect(timing.retrieval_unattributed_ms).toEqual(expect.any(Number));
+      expect(retrievalBreakdownTotal + Number(timing.retrieval_unattributed_ms))
+        .toBeGreaterThanOrEqual(Number(timing.retrieval_total_ms) - 0.1);
       expect(timing.spool_append_commit_ms).toBeGreaterThanOrEqual(80);
       expect(timing.retrieval_total_ms).toBeLessThan(100);
       expect(timing.worker_total_ms).toBeNull();
@@ -165,12 +227,41 @@ describe("repeat recall query cache", () => {
       expect(JSON.stringify(timing)).not.toContain("private local phase target");
       expect(JSON.stringify(timing)).not.toContain(dir);
       expect(JSON.stringify(timing)).not.toContain("private-phase-session");
+      expect(Object.keys(timing).some((key) =>
+        /(query|project|path|session|hash|correlation)/i.test(key)
+      )).toBe(false);
     } finally {
       await core.shutdown("test");
       if (previousWorkerMarker === undefined) delete process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS;
       else process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS = previousWorkerMarker;
       if (previousDelay === undefined) delete process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS;
       else process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS = previousDelay;
+    }
+  });
+
+  test("FTS no-match reports bounded primary and fallback work without request identifiers", async () => {
+    const { core } = makeCore("phase-fts");
+    try {
+      core.recordEvent(event({ event_id: "evt-phase-fts" }));
+      const response = await core.searchPrepared({
+        query: "zirconium platypus nebula unmatched",
+        project: "proj-cache",
+        limit: 20,
+        vector_search: false,
+        strict_project: true,
+      });
+      const timing = response.meta.search_phase_timing as Record<string, unknown>;
+      expect(timing.lexical_strategy).toBe("fts");
+      expect(timing.lexical_fallback_executed).toBe(true);
+      expect(timing.lexical_rows_examined).toBe(0);
+      expect(timing.lexical_tokenize_ms).toEqual(expect.any(Number));
+      expect(timing.lexical_sql_primary_ms).toEqual(expect.any(Number));
+      expect(timing.lexical_sql_fallback_ms).toEqual(expect.any(Number));
+      expect(timing.lexical_score_ms).toEqual(expect.any(Number));
+      expect(JSON.stringify(timing)).not.toContain("zirconium platypus nebula unmatched");
+      expect(JSON.stringify(timing)).not.toContain("proj-cache");
+    } finally {
+      await core.shutdown("test");
     }
   });
 });

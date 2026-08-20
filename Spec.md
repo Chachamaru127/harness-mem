@@ -508,6 +508,23 @@ second concurrent maintenance I/O lane against search.
   completion flag. They must not contain query, project, path,
   session, hash, correlation identifier, or other request-derived values.
   These measurements do not weaken the pre-response durable-intent contract.
+- Retrieval diagnostics split the existing retrieval total into fixed scalar
+  scope resolution, latest interaction, lexical candidate, vector,
+  load/hydration, facts/tags, route, ranking/rerank, privacy/boundary, and
+  audit-intent-build durations. Lexical diagnostics additionally expose only a
+  fixed `bounded_recent`/`fts` strategy enum, tokenize/primary SQL/fallback SQL/
+  score durations, rows examined, and a fallback boolean. An explicit
+  unattributed duration keeps the sum reconcilable with retrieval total.
+- A ready repeat-recall watermark is the tuple of project, session, and global
+  retrieval-auxiliary generations. Observation insert/delete and updates to
+  retrieval-relevant columns bump affected scopes in the same transaction;
+  access-count/last-accessed bookkeeping alone does not. Retrieval-affecting
+  event, link, fact, vector, nugget, tag, entity, and relation mutations bump
+  the conservative global auxiliary generation. Missing readiness metadata,
+  schema, or triggers uses the legacy observation scan until an atomic
+  migration publishes a zero scoped baseline, the global auxiliary row,
+  triggers, and readiness without scanning existing observations. This is safe
+  because the repeat-recall cache is process-local and empty at startup.
 
 ### Content dedupe ownership projection
 

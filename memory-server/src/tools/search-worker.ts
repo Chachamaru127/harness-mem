@@ -155,6 +155,29 @@ async function runSearch(
       : {};
     response.meta.search_phase_timing = {
       retrieval_total_ms: typeof phaseTiming.retrieval_total_ms === "number" ? phaseTiming.retrieval_total_ms : null,
+      retrieval_unattributed_ms: typeof phaseTiming.retrieval_unattributed_ms === "number" ? phaseTiming.retrieval_unattributed_ms : null,
+      scope_resolution_ms: typeof phaseTiming.scope_resolution_ms === "number" ? phaseTiming.scope_resolution_ms : null,
+      latest_interaction_ms: typeof phaseTiming.latest_interaction_ms === "number" ? phaseTiming.latest_interaction_ms : null,
+      lexical_candidate_ms: typeof phaseTiming.lexical_candidate_ms === "number" ? phaseTiming.lexical_candidate_ms : null,
+      lexical_strategy: phaseTiming.lexical_strategy === "bounded_recent" || phaseTiming.lexical_strategy === "fts"
+        ? phaseTiming.lexical_strategy
+        : null,
+      lexical_tokenize_ms: typeof phaseTiming.lexical_tokenize_ms === "number" ? phaseTiming.lexical_tokenize_ms : null,
+      lexical_sql_primary_ms: typeof phaseTiming.lexical_sql_primary_ms === "number" ? phaseTiming.lexical_sql_primary_ms : null,
+      lexical_sql_fallback_ms: typeof phaseTiming.lexical_sql_fallback_ms === "number" ? phaseTiming.lexical_sql_fallback_ms : null,
+      lexical_score_ms: typeof phaseTiming.lexical_score_ms === "number" ? phaseTiming.lexical_score_ms : null,
+      lexical_rows_examined: typeof phaseTiming.lexical_rows_examined === "number" ? phaseTiming.lexical_rows_examined : null,
+      lexical_fallback_executed: typeof phaseTiming.lexical_fallback_executed === "boolean"
+        ? phaseTiming.lexical_fallback_executed
+        : null,
+      vector_ms: typeof phaseTiming.vector_ms === "number" ? phaseTiming.vector_ms : null,
+      vector_executed: typeof phaseTiming.vector_executed === "boolean" ? phaseTiming.vector_executed : null,
+      load_hydrate_ms: typeof phaseTiming.load_hydrate_ms === "number" ? phaseTiming.load_hydrate_ms : null,
+      facts_tags_ms: typeof phaseTiming.facts_tags_ms === "number" ? phaseTiming.facts_tags_ms : null,
+      route_ms: typeof phaseTiming.route_ms === "number" ? phaseTiming.route_ms : null,
+      ranking_rerank_ms: typeof phaseTiming.ranking_rerank_ms === "number" ? phaseTiming.ranking_rerank_ms : null,
+      privacy_boundary_ms: typeof phaseTiming.privacy_boundary_ms === "number" ? phaseTiming.privacy_boundary_ms : null,
+      audit_intent_build_ms: typeof phaseTiming.audit_intent_build_ms === "number" ? phaseTiming.audit_intent_build_ms : null,
       spool_append_commit_ms: typeof phaseTiming.spool_append_commit_ms === "number" ? phaseTiming.spool_append_commit_ms : null,
       spool_append_commit_complete: typeof phaseTiming.spool_append_commit_complete === "boolean"
         ? phaseTiming.spool_append_commit_complete

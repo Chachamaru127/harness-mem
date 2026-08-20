@@ -9,6 +9,28 @@ function parsePragmaInt(raw: string | undefined): number | null {
 const DEDUPE_CLAIMS_VERSION = "1";
 const DEDUPE_CLAIMS_VERSION_KEY = "dedupe_claims.schema_version";
 const DEDUPE_CLAIMS_READINESS_KEY = "dedupe_claims.readiness";
+const RECALL_GENERATIONS_READINESS_KEY = "recall_generations.readiness";
+const RECALL_GENERATIONS_VERSION_KEY = "recall_generations.version";
+const RECALL_GENERATIONS_VERSION = "2";
+const RECALL_GENERATION_TRIGGER_NAMES = [
+  "mem_observations_recall_generation_ai",
+  "mem_observations_recall_generation_ad",
+  "mem_observations_recall_generation_au_old",
+  "mem_observations_recall_generation_au_new",
+  ...[
+    "mem_events",
+    "mem_links",
+    "mem_facts",
+    "mem_vectors",
+    "mem_vectors_vec_map",
+    "mem_nuggets",
+    "mem_nugget_vectors",
+    "mem_tags",
+    "mem_entities",
+    "mem_observation_entities",
+    "mem_relations",
+  ].flatMap((table) => ["ai", "ad", "au"].map((suffix) => `${table}_recall_aux_${suffix}`)),
+] as const;
 const JS_TRIM_SQL_CHARS = [
   9, 10, 11, 12, 13, 32, 160, 5760,
   8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202,
@@ -382,6 +404,154 @@ export function contentDedupeClaimsReady(db: Database): boolean {
 export function assertContentDedupeClaimsReady(db: Database): void {
   if (!contentDedupeClaimsReady(db)) {
     throw new Error("content dedupe claims require rebuild");
+  }
+}
+
+export function recallGenerationsReady(db: Database): boolean {
+  try {
+    const rows = db.query<{ key: string; value: string }, [string, string]>(
+      "SELECT key, value FROM mem_meta WHERE key IN (?, ?)",
+    ).all(RECALL_GENERATIONS_READINESS_KEY, RECALL_GENERATIONS_VERSION_KEY);
+    const values = new Map(rows.map((row) => [row.key, row.value]));
+    if (values.get(RECALL_GENERATIONS_READINESS_KEY) !== "ready"
+      || values.get(RECALL_GENERATIONS_VERSION_KEY) !== RECALL_GENERATIONS_VERSION) {
+      return false;
+    }
+    const table = db.query<{ count: number }, []>(`
+      SELECT COUNT(*) AS count FROM sqlite_master
+      WHERE type = 'table' AND name = 'mem_recall_generations'
+    `).get();
+    if (Number(table?.count ?? 0) !== 1) return false;
+    const placeholders = RECALL_GENERATION_TRIGGER_NAMES.map(() => "?").join(",");
+    const triggers = db.query<{ count: number }, string[]>(`
+      SELECT COUNT(*) AS count FROM sqlite_master
+      WHERE type = 'trigger' AND name IN (${placeholders})
+    `).get(...RECALL_GENERATION_TRIGGER_NAMES);
+    if (Number(triggers?.count ?? 0) !== RECALL_GENERATION_TRIGGER_NAMES.length) return false;
+    const auxiliary = db.query<{ count: number }, []>(`
+      SELECT COUNT(*) AS count FROM mem_recall_generations
+      WHERE scope_type = 'retrieval_aux' AND project = '' AND session_id = ''
+    `).get();
+    return Number(auxiliary?.count ?? 0) === 1;
+  } catch {
+    return false;
+  }
+}
+
+function bumpRecallGenerationSql(scopeType: "project" | "session", row: "OLD" | "NEW"): string {
+  const project = scopeType === "project" ? `${row}.project` : "''";
+  const sessionId = scopeType === "session" ? `${row}.session_id` : "''";
+  return `
+    INSERT INTO mem_recall_generations(scope_type, project, session_id, generation, updated_at)
+    VALUES ('${scopeType}', ${project}, ${sessionId}, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    ON CONFLICT(scope_type, project, session_id) DO UPDATE SET
+      generation = mem_recall_generations.generation + 1,
+      updated_at = excluded.updated_at;
+  `;
+}
+
+const bumpRecallAuxGenerationSql = `
+  INSERT INTO mem_recall_generations(scope_type, project, session_id, generation, updated_at)
+  VALUES ('retrieval_aux', '', '', 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  ON CONFLICT(scope_type, project, session_id) DO UPDATE SET
+    generation = mem_recall_generations.generation + 1,
+    updated_at = excluded.updated_at;
+`;
+
+export function migrateRecallGenerations(db: Database): void {
+  if (recallGenerationsReady(db)) return;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    // Another daemon may have completed the authoritative repair while this
+    // connection waited for the write lock. Recheck under ownership so a
+    // stale pre-lock observation cannot reset a published generation epoch.
+    if (recallGenerationsReady(db)) {
+      db.exec("COMMIT");
+      return;
+    }
+    const now = new Date().toISOString();
+    db.query(`INSERT INTO mem_meta(key, value, updated_at) VALUES (?, 'building', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
+      .run(RECALL_GENERATIONS_READINESS_KEY, now);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mem_recall_generations (
+        scope_type TEXT NOT NULL CHECK(scope_type IN ('project', 'session', 'retrieval_aux')),
+        project TEXT NOT NULL DEFAULT '',
+        session_id TEXT NOT NULL DEFAULT '',
+        generation INTEGER NOT NULL DEFAULT 0 CHECK(generation >= 0),
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(scope_type, project, session_id)
+      );
+      INSERT INTO mem_recall_generations(scope_type, project, session_id, generation, updated_at)
+        VALUES ('retrieval_aux', '', '', 1, '${now}')
+        ON CONFLICT(scope_type, project, session_id) DO UPDATE SET
+          generation = mem_recall_generations.generation + 1,
+          updated_at = excluded.updated_at;
+    `);
+    for (const triggerName of RECALL_GENERATION_TRIGGER_NAMES) {
+      db.exec(`DROP TRIGGER IF EXISTS ${triggerName}`);
+    }
+    const relevantColumns = [
+      "id", "event_id", "platform", "project", "session_id", "title", "content",
+      "content_redacted", "content_dedupe_hash", "raw_text", "observation_type", "memory_type",
+      "tags_json", "privacy_tags_json", "user_id", "team_id", "event_time", "observed_at",
+      "valid_from", "valid_to", "supersedes", "invalidated_at", "archived_at", "expires_at",
+      "created_at", "signal_score", "cognitive_sector", "workspace_uid", "title_fts", "content_fts",
+      "thread_id", "topic", "branch",
+    ];
+    const relevantChanged = relevantColumns.map((column) => `OLD.${column} IS NOT NEW.${column}`).join(" OR ");
+    db.exec(`
+      CREATE TRIGGER mem_observations_recall_generation_ai AFTER INSERT ON mem_observations BEGIN
+        ${bumpRecallGenerationSql("project", "NEW")}
+        ${bumpRecallGenerationSql("session", "NEW")}
+      END;
+      CREATE TRIGGER mem_observations_recall_generation_ad AFTER DELETE ON mem_observations BEGIN
+        ${bumpRecallGenerationSql("project", "OLD")}
+        ${bumpRecallGenerationSql("session", "OLD")}
+      END;
+      CREATE TRIGGER mem_observations_recall_generation_au_old
+      AFTER UPDATE OF ${relevantColumns.join(", ")} ON mem_observations
+      WHEN ${relevantChanged}
+      BEGIN
+        ${bumpRecallGenerationSql("project", "OLD")}
+        ${bumpRecallGenerationSql("session", "OLD")}
+      END;
+      CREATE TRIGGER mem_observations_recall_generation_au_new
+      AFTER UPDATE OF ${relevantColumns.join(", ")} ON mem_observations
+      WHEN (${relevantChanged})
+        AND (OLD.project IS NOT NEW.project OR OLD.session_id IS NOT NEW.session_id)
+      BEGIN
+        ${bumpRecallGenerationSql("project", "NEW")}
+        ${bumpRecallGenerationSql("session", "NEW")}
+      END;
+    `);
+    for (const table of [
+      "mem_events", "mem_links", "mem_facts", "mem_vectors", "mem_vectors_vec_map",
+      "mem_nuggets", "mem_nugget_vectors", "mem_tags", "mem_entities",
+      "mem_observation_entities", "mem_relations",
+    ]) {
+      db.exec(`
+        CREATE TRIGGER ${table}_recall_aux_ai AFTER INSERT ON ${table} BEGIN
+          ${bumpRecallAuxGenerationSql}
+        END;
+        CREATE TRIGGER ${table}_recall_aux_ad AFTER DELETE ON ${table} BEGIN
+          ${bumpRecallAuxGenerationSql}
+        END;
+        CREATE TRIGGER ${table}_recall_aux_au AFTER UPDATE ON ${table} BEGIN
+          ${bumpRecallAuxGenerationSql}
+        END;
+      `);
+    }
+    db.query(`INSERT INTO mem_meta(key, value, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
+      .run(RECALL_GENERATIONS_VERSION_KEY, RECALL_GENERATIONS_VERSION, now);
+    db.query(`INSERT INTO mem_meta(key, value, updated_at) VALUES (?, 'ready', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
+      .run(RECALL_GENERATIONS_READINESS_KEY, now);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
   }
 }
 
@@ -1767,6 +1937,7 @@ export function migrateSchema(
   initRecallProjectionSchema(db);
   initArchiveSchema(db);
   migrateContentDedupeClaims(db, options.authoritativeContentDedupeMigration !== false);
+  migrateRecallGenerations(db);
 }
 
 export function initFtsIndex(db: Database): boolean {
