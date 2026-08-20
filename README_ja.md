@@ -196,6 +196,13 @@ busy/error/active frame時のcheckpoint retryは指数backoffとし、
 `HARNESS_MEM_WAL_CHECKPOINT_RETRY_BASE_MS`（既定10000）を基準に、
 `HARNESS_MEM_WAL_CHECKPOINT_RETRY_MAX_ATTEMPTS`（既定3）で停止します。
 次の通常checkpoint timerでretry予算を再開します。
+定期consolidationは、searchとの同一DB競合時間を区切るため、既定で1 tickにつき
+durable queue 1件だけ進めます。`HARNESS_MEM_CONSOLIDATION_SCHEDULER_BATCH_SIZE`
+は1〜10で変更できますが、本番search latencyを実測した場合だけ引き上げます。
+queueが空ならrecent sessionを再処理せず、SQLite partial UNIQUE制約でprocessを
+跨いだ同じpending workをcoalesceします。変化のないobservationではrelation
+maintenanceとLLM既存facts scanを繰り返さず、minute周期のingestとは開始位相を
+ずらします。手動consolidationのlimitと明示maintenanceは変えません。
 
 ### Claude-harness companion mode
 

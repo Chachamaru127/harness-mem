@@ -94,6 +94,7 @@ import {
 import { PeriodicIngestWorkerClient } from "./periodic-ingest-worker-client";
 import {
   BackgroundMaintenanceWorkerClient,
+  resolveSchedulerConsolidationLimit,
   shouldRetryWalCheckpoint,
   type MaintenanceProgress,
   type MaintenanceTask,
@@ -3783,7 +3784,10 @@ export class HarnessMemCore {
       if (task === "consolidation") {
         if (this.localSchedulerConsolidationRunning) return;
         this.localSchedulerConsolidationRunning = true;
-        void this.runConsolidationLocal({ reason: "scheduler", limit: 10 }).catch(() => {
+        void this.runConsolidationLocal({
+          reason: "scheduler",
+          limit: resolveSchedulerConsolidationLimit(),
+        }).catch(() => {
           this.logMaintenanceProgress({
             kind: "failed",
             task: "consolidation",

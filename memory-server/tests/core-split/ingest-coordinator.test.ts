@@ -2380,6 +2380,54 @@ describe("ingest-coordinator: ingestAntigravityWorkspace (§160-007)", () => {
 });
 
 describe("ingest-coordinator: Claude Code timer startup", () => {
+  test("staggered consolidation starts halfway between minute-phase ingest ticks", () => {
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalClearTimeout = globalThis.clearTimeout;
+    const originalSetInterval = globalThis.setInterval;
+    const originalClearInterval = globalThis.clearInterval;
+    const timeouts: Array<{ callback: () => void; delay: number }> = [];
+    const intervals: number[] = [];
+    const scheduled: string[] = [];
+    try {
+      globalThis.setTimeout = (((callback: () => void, delay?: number) => {
+        timeouts.push({ callback, delay: Number(delay ?? 0) });
+        return timeouts.length as unknown as ReturnType<typeof setTimeout>;
+      }) as typeof setTimeout);
+      globalThis.clearTimeout = ((() => undefined) as typeof clearTimeout);
+      globalThis.setInterval = (((_callback: () => void, delay?: number) => {
+        intervals.push(Number(delay ?? 0));
+        return intervals.length as unknown as ReturnType<typeof setInterval>;
+      }) as typeof setInterval);
+      globalThis.clearInterval = ((() => undefined) as typeof clearInterval);
+      const coordinator = new IngestCoordinator(makeDeps({
+        config: createTestConfig({
+          consolidationEnabled: true,
+          consolidationIntervalMs: 60_000,
+          codexHistoryEnabled: false,
+          opencodeIngestEnabled: false,
+          cursorIngestEnabled: false,
+          antigravityIngestEnabled: false,
+          geminiIngestEnabled: false,
+          claudeCodeIngestEnabled: false,
+        }),
+        scheduleMaintenance: (task) => { scheduled.push(task); },
+      }));
+      coordinator.startTimers();
+      const consolidationStart = timeouts.find((entry) => entry.delay === 90_000);
+      expect(consolidationStart).toBeDefined();
+      expect(scheduled).not.toContain("consolidation");
+      consolidationStart?.callback();
+      expect(scheduled).toContain("consolidation");
+      expect(intervals).toContain(60_000);
+      coordinator.stopTimers();
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+      globalThis.clearTimeout = originalClearTimeout;
+      globalThis.setInterval = originalSetInterval;
+      globalThis.clearInterval = originalClearInterval;
+    }
+  });
+
   test("routes all six periodic sources through the injected worker scheduler", () => {
     const originalSetTimeout = globalThis.setTimeout;
     const originalClearTimeout = globalThis.clearTimeout;

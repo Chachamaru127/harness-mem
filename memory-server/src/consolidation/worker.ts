@@ -14,6 +14,8 @@ export interface ConsolidationRunOptions {
 
 export interface ConsolidationRunStats {
   jobs_processed: number;
+  observations_scanned: number;
+  existing_facts_scanned: number;
   facts_extracted: number;
   facts_merged: number;
   pending_jobs: number;
@@ -424,6 +426,9 @@ function loadPendingJobs(db: Database, options: ConsolidationRunOptions): QueueR
   if (queued.length > 0) {
     return queued;
   }
+  if ((options.reason || "manual") === "scheduler") {
+    return [];
+  }
 
   return db
     .query(
@@ -459,7 +464,15 @@ function loadExistingFacts(db: Database, project: string): ExistingFact[] {
     .all(project) as ExistingFact[];
 }
 
-async function upsertFactsForSession(db: Database, project: string, sessionId: string): Promise<number> {
+async function upsertFactsForSession(
+  db: Database,
+  project: string,
+  sessionId: string,
+  options: { onlyWithoutFacts?: boolean } = {},
+): Promise<{ inserted: number; observations_scanned: number; existing_facts_scanned: number }> {
+  const missingFactsFilter = options.onlyWithoutFacts === true
+    ? `AND NOT EXISTS (SELECT 1 FROM mem_facts existing WHERE existing.observation_id = o.id)`
+    : "";
   const observations = db
     .query(
       `
@@ -468,6 +481,7 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
         FROM mem_observations o
         WHERE o.project = ? AND o.session_id = ?
           AND o.archived_at IS NULL
+          ${missingFactsFilter}
           AND NOT EXISTS (
             SELECT 1
             FROM mem_links l
@@ -494,10 +508,16 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
   }>;
 
   let inserted = 0;
+  let existingFactsScanned = 0;
+
+  if (observations.length === 0) {
+    return { inserted: 0, observations_scanned: 0, existing_facts_scanned: 0 };
+  }
 
   if (isLlmModeEnabled()) {
     // LLM モード: 差分比較を含む抽出
     const existingFacts = loadExistingFacts(db, project);
+    existingFactsScanned = existingFacts.length;
 
     for (const observation of observations) {
       const diffResult = await llmExtractWithDiff(
@@ -720,7 +740,11 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
     }
   }
 
-  return inserted;
+  return {
+    inserted,
+    observations_scanned: observations.length,
+    existing_facts_scanned: existingFactsScanned,
+  };
 }
 
 /**
@@ -1168,6 +1192,8 @@ export async function runConsolidationOnce(
   const jobs = loadPendingJobs(db, options);
   let jobsProcessed = 0;
   let factsExtracted = 0;
+  let observationsScanned = 0;
+  let existingFactsScanned = 0;
   let factsMerged = 0;
   let derivesLinksTotal = 0;
   let dreamingRewritesTotal = 0;
@@ -1185,10 +1211,21 @@ export async function runConsolidationOnce(
     const dreamingRewrites = isDreaming && dreamingProvider
       ? await runDreamingTenseRewrite(db, job.project, job.session_id, dreamingProvider, deps)
       : 0;
-    const extracted = await upsertFactsForSession(db, job.project, job.session_id);
-    const merged = dedupeSessionFacts(db, job.project, job.session_id);
+    const extraction = await upsertFactsForSession(db, job.project, job.session_id, {
+      onlyWithoutFacts: (options.reason || "manual") === "scheduler",
+    });
+    const extracted = extraction.inserted;
+    observationsScanned += extraction.observations_scanned;
+    existingFactsScanned += extraction.existing_facts_scanned;
+    const stateChanged = extracted > 0 || dreamingRewrites > 0;
+    const runExplicitMaintenance = (options.reason || "manual") !== "scheduler";
+    const merged = stateChanged || runExplicitMaintenance
+      ? dedupeSessionFacts(db, job.project, job.session_id)
+      : 0;
     // IMP-011: derives リンクの自動生成（heuristic ベース）
-    const derivesLinks = generateDerivesLinks(db, job.project, job.session_id);
+    const derivesLinks = stateChanged || runExplicitMaintenance
+      ? generateDerivesLinks(db, job.project, job.session_id)
+      : 0;
 
     factsExtracted += extracted;
     factsMerged += merged;
@@ -1249,6 +1286,8 @@ export async function runConsolidationOnce(
 
   return {
     jobs_processed: jobsProcessed,
+    observations_scanned: observationsScanned,
+    existing_facts_scanned: existingFactsScanned,
     facts_extracted: factsExtracted,
     facts_merged: factsMerged,
     pending_jobs: Number(pendingRow?.count ?? 0),
@@ -1260,8 +1299,13 @@ export async function runConsolidationOnce(
 export function enqueueConsolidationJob(db: Database, project: string, sessionId: string, reason: string): void {
   db.query(
     `
-      INSERT INTO mem_consolidation_queue(project, session_id, reason, status, requested_at)
+      INSERT OR IGNORE INTO mem_consolidation_queue(project, session_id, reason, status, requested_at)
       VALUES (?, ?, ?, 'pending', ?)
     `
-  ).run(project, sessionId, reason.slice(0, 255), nowIso());
+  ).run(
+    project,
+    sessionId,
+    reason.slice(0, 255),
+    nowIso(),
+  );
 }

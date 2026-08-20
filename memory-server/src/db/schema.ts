@@ -870,6 +870,24 @@ export function initSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_consolidation_queue_status_requested
       ON mem_consolidation_queue(status, requested_at ASC, id ASC);
 
+    DELETE FROM mem_consolidation_queue
+    WHERE id IN (
+      SELECT id
+      FROM (
+        SELECT id, ROW_NUMBER() OVER (
+          PARTITION BY project, session_id, reason
+          ORDER BY requested_at ASC, id ASC
+        ) AS duplicate_rank
+        FROM mem_consolidation_queue
+        WHERE status = 'pending'
+      )
+      WHERE duplicate_rank > 1
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_consolidation_queue_pending_unique
+      ON mem_consolidation_queue(project, session_id, reason)
+      WHERE status = 'pending';
+
     CREATE TABLE IF NOT EXISTS mem_retry_queue (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       event_json TEXT NOT NULL,

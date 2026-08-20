@@ -12,6 +12,7 @@ import { getConfig, HarnessMemCore } from "../../src/core/harness-mem-core";
 import { createTestConfig } from "./test-helpers";
 import { startHarnessMemServer } from "../../src/server";
 import { configureDatabase, initSchema, migrateSchema } from "../../src/db/schema";
+import { enqueueConsolidationJob, runConsolidationOnce } from "../../src/consolidation/worker";
 
 const clients: BackgroundMaintenanceWorkerClient[] = [];
 const dirs: string[] = [];
@@ -89,6 +90,186 @@ describe("background maintenance persistent workers", () => {
     })).toBe(true);
   });
 
+  test("scheduler is pending-only and duplicate pending session work coalesces", async () => {
+    const db = new Database(":memory:");
+    configureDatabase(db);
+    initSchema(db);
+    migrateSchema(db);
+    const now = new Date().toISOString();
+    db.query(`INSERT INTO mem_sessions(session_id, project, platform, started_at, created_at, updated_at)
+      VALUES ('scheduler-session', 'scheduler-project', 'claude', ?, ?, ?)`).run(now, now, now);
+    enqueueConsolidationJob(db, "scheduler-project", "scheduler-session", "checkpoint");
+    enqueueConsolidationJob(db, "scheduler-project", "scheduler-session", "checkpoint");
+    expect(db.query<{ count: number }, []>(
+      `SELECT COUNT(*) AS count FROM mem_consolidation_queue WHERE status = 'pending'`,
+    ).get()?.count).toBe(1);
+
+    db.exec(`UPDATE mem_consolidation_queue SET status = 'running' WHERE status = 'pending'`);
+    enqueueConsolidationJob(db, "scheduler-project", "scheduler-session", "checkpoint");
+    enqueueConsolidationJob(db, "scheduler-project", "scheduler-session", "checkpoint");
+    enqueueConsolidationJob(db, "scheduler-project", "scheduler-session", "distinct-reason");
+    expect(db.query<{ reason: string; count: number }, []>(
+      `SELECT reason, COUNT(*) AS count FROM mem_consolidation_queue
+       WHERE status = 'pending' GROUP BY reason ORDER BY reason`,
+    ).all()).toEqual([
+      { reason: "checkpoint", count: 1 },
+      { reason: "distinct-reason", count: 1 },
+    ]);
+    db.exec(`DELETE FROM mem_consolidation_queue WHERE status = 'pending' AND reason = 'distinct-reason'`);
+    db.exec(`UPDATE mem_consolidation_queue SET status = 'failed' WHERE status = 'running'`);
+
+    expect((await runConsolidationOnce(db, { reason: "scheduler", limit: 1 })).jobs_processed).toBe(1);
+    expect((await runConsolidationOnce(db, { reason: "scheduler", limit: 1 })).jobs_processed).toBe(0);
+    db.close();
+  });
+
+  test("pending coalesce migration is deterministic and enforced across two connections", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-consolidation-unique-"));
+    dirs.push(dir);
+    const dbPath = join(dir, "unique.db");
+    const first = new Database(dbPath);
+    configureDatabase(first);
+    first.exec(`
+      CREATE TABLE mem_consolidation_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        reason TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'pending',
+        requested_at TEXT NOT NULL,
+        started_at TEXT,
+        finished_at TEXT,
+        error TEXT
+      );
+      INSERT INTO mem_consolidation_queue(project, session_id, reason, status, requested_at)
+      VALUES
+        ('race-project', 'race-session', 'checkpoint', 'pending', '2026-01-01T00:00:00Z'),
+        ('race-project', 'race-session', 'checkpoint', 'pending', '2026-01-02T00:00:00Z'),
+        ('race-project', 'race-session', 'checkpoint', 'completed', '2026-01-03T00:00:00Z');
+    `);
+    initSchema(first);
+    migrateSchema(first);
+    const migrated = first.query<{ id: number; status: string }, []>(
+      `SELECT id, status FROM mem_consolidation_queue ORDER BY id`,
+    ).all();
+    expect(migrated).toEqual([{ id: 1, status: "pending" }, { id: 3, status: "completed" }]);
+    const indexSql = first.query<{ sql: string }, []>(
+      `SELECT sql FROM sqlite_master WHERE name = 'idx_mem_consolidation_queue_pending_unique'`,
+    ).get()?.sql ?? "";
+    expect(indexSql).toContain("UNIQUE INDEX");
+    expect(indexSql).toContain("WHERE status = 'pending'");
+
+    const second = new Database(dbPath);
+    configureDatabase(second);
+    enqueueConsolidationJob(first, "two-connection", "same-session", "checkpoint");
+    enqueueConsolidationJob(second, "two-connection", "same-session", "checkpoint");
+    expect(first.query<{ count: number }, []>(
+      `SELECT COUNT(*) AS count FROM mem_consolidation_queue
+       WHERE project = 'two-connection' AND session_id = 'same-session' AND reason = 'checkpoint' AND status = 'pending'`,
+    ).get()?.count).toBe(1);
+    first.exec(`UPDATE mem_consolidation_queue SET status = 'running'
+      WHERE project = 'two-connection' AND session_id = 'same-session' AND reason = 'checkpoint'`);
+    enqueueConsolidationJob(second, "two-connection", "same-session", "checkpoint");
+    enqueueConsolidationJob(first, "two-connection", "same-session", "checkpoint");
+    expect(first.query<{ status: string; count: number }, []>(
+      `SELECT status, COUNT(*) AS count FROM mem_consolidation_queue
+       WHERE project = 'two-connection' AND session_id = 'same-session' AND reason = 'checkpoint'
+       GROUP BY status ORDER BY status`,
+    ).all()).toEqual([{ status: "pending", count: 1 }, { status: "running", count: 1 }]);
+    second.close();
+    first.close();
+  });
+
+  test("scheduler scans only observations without facts and skips unchanged relation maintenance", async () => {
+    const db = new Database(":memory:");
+    configureDatabase(db);
+    initSchema(db);
+    migrateSchema(db);
+    const now = new Date().toISOString();
+    db.query(`INSERT INTO mem_sessions(session_id, project, platform, started_at, created_at, updated_at)
+      VALUES ('unchanged-session', 'unchanged-project', 'claude', ?, ?, ?)`).run(now, now, now);
+    for (let index = 0; index < 2; index += 1) {
+      const observationId = `unchanged-observation-${index}`;
+      const eventId = `unchanged-event-${index}`;
+      db.query(`INSERT INTO mem_events(event_id, platform, project, session_id, event_type, ts, payload_json, metadata_json, tags_json, privacy_tags_json, dedupe_hash, created_at)
+        VALUES (?, 'claude', 'unchanged-project', 'unchanged-session', 'checkpoint', ?, '{}', '{}', '[]', '[]', ?, ?)`)
+        .run(eventId, now, eventId, now);
+      db.query(`INSERT INTO mem_observations(id, event_id, platform, project, session_id, title, content, content_redacted, observation_type, tags_json, privacy_tags_json, created_at, updated_at)
+        VALUES (?, ?, 'claude', 'unchanged-project', 'unchanged-session', '', 'already materialized', 'already materialized', 'decision', '[]', '[]', ?, ?)`)
+        .run(observationId, eventId, now, now);
+      db.query(`INSERT INTO mem_facts(fact_id, observation_id, project, session_id, fact_type, fact_key, fact_value, created_at, updated_at)
+        VALUES (?, ?, 'unchanged-project', 'unchanged-session', 'decision', ?, ?, ?, ?)`)
+        .run(`unchanged-fact-${index}`, observationId, index === 0 ? "alpha shared" : "beta shared", index === 0 ? "one" : "two", now, now);
+    }
+    enqueueConsolidationJob(db, "unchanged-project", "unchanged-session", "checkpoint");
+
+    const scheduler = await runConsolidationOnce(db, { reason: "scheduler", limit: 1 });
+    expect(scheduler).toMatchObject({ jobs_processed: 1, facts_extracted: 0, observations_scanned: 0 });
+    expect(db.query<{ count: number }, []>(`SELECT COUNT(*) AS count FROM mem_links WHERE relation = 'derives'`).get()?.count).toBe(0);
+
+    const manual = await runConsolidationOnce(db, {
+      reason: "manual",
+      project: "unchanged-project",
+      session_id: "unchanged-session",
+    });
+    expect(manual.observations_scanned).toBe(2);
+    expect(db.query<{ count: number }, []>(`SELECT COUNT(*) AS count FROM mem_links WHERE relation = 'derives'`).get()?.count).toBe(2);
+    db.close();
+  });
+
+  test("indexed unchanged scheduler scan stays bounded at task scale", async () => {
+    const db = new Database(":memory:");
+    configureDatabase(db);
+    initSchema(db);
+    migrateSchema(db);
+    const now = new Date().toISOString();
+    db.query(`INSERT INTO mem_sessions(session_id, project, platform, started_at, created_at, updated_at)
+      VALUES ('scale-session', 'scale-project', 'claude', ?, ?, ?)`).run(now, now, now);
+    db.exec(`
+      WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM n WHERE value < 5000)
+      INSERT INTO mem_observations(
+        id, event_id, platform, project, session_id, title, content, content_redacted,
+        observation_type, tags_json, privacy_tags_json, created_at, updated_at
+      )
+      SELECT 'scale-observation-' || value, NULL, 'claude', 'scale-project', 'scale-session', '',
+             'already materialized', 'already materialized', 'decision', '[]', '[]', '${now}', '${now}'
+      FROM n;
+      INSERT INTO mem_facts(
+        fact_id, observation_id, project, session_id, fact_type, fact_key, fact_value, created_at, updated_at
+      )
+      SELECT 'scale-fact-' || substr(id, length('scale-observation-') + 1), id,
+             'scale-project', 'scale-session', 'decision', 'key', 'value', '${now}', '${now}'
+      FROM mem_observations WHERE project = 'scale-project';
+    `);
+    enqueueConsolidationJob(db, "scale-project", "scale-session", "checkpoint");
+    const previousMode = process.env.HARNESS_MEM_FACT_EXTRACTOR_MODE;
+    process.env.HARNESS_MEM_FACT_EXTRACTOR_MODE = "llm";
+    const startedAt = performance.now();
+    let result: Awaited<ReturnType<typeof runConsolidationOnce>>;
+    try {
+      result = await runConsolidationOnce(db, { reason: "scheduler", limit: 1 });
+    } finally {
+      if (previousMode === undefined) delete process.env.HARNESS_MEM_FACT_EXTRACTOR_MODE;
+      else process.env.HARNESS_MEM_FACT_EXTRACTOR_MODE = previousMode;
+    }
+    const elapsedMs = performance.now() - startedAt;
+    expect(result).toMatchObject({
+      jobs_processed: 1,
+      observations_scanned: 0,
+      existing_facts_scanned: 0,
+      facts_extracted: 0,
+    });
+    expect(elapsedMs).toBeLessThan(250);
+    const plan = db.query<{ detail: string }, []>(`
+      EXPLAIN QUERY PLAN
+      SELECT 1 FROM mem_observations o
+      WHERE o.project = 'scale-project' AND o.session_id = 'scale-session'
+        AND NOT EXISTS (SELECT 1 FROM mem_facts existing WHERE existing.observation_id = o.id)
+    `).all().map((row) => row.detail).join(" ");
+    expect(plan).toContain("idx_mem_facts_observation_active");
+    db.close();
+  });
+
   test("timer scheduler delegates both synchronous maintenance lanes out of the daemon", () => {
     const source = readFileSync(
       fileURLToPath(new URL("../../src/core/ingest-coordinator.ts", import.meta.url)),
@@ -112,6 +293,30 @@ describe("background maintenance persistent workers", () => {
     await waitFor(() => client.activeTask() === null && events.some((event) => event.kind === "completed"));
     expect(events.some((event) => event.task === "wal_checkpoint")).toBe(true);
     expect(events.map(Object.keys).flat()).not.toContain("db_path");
+  });
+
+  test("scheduler consolidation advances one queued job per tick to bound same-DB contention", async () => {
+    const { client, dbPath, events } = makeClient();
+    const db = new Database(dbPath);
+    const requestedAt = new Date().toISOString();
+    for (let index = 0; index < 3; index += 1) {
+      db.query(`INSERT INTO mem_consolidation_queue(project, session_id, reason, status, requested_at)
+        VALUES (?, ?, 'scheduler', 'pending', ?)`)
+        .run(`bounded-project-${index}`, `bounded-session-${index}`, requestedAt);
+    }
+    db.close();
+
+    expect(client.schedule("consolidation")).toBe(true);
+    await waitFor(() => events.some((event) => event.kind === "completed" && event.task === "consolidation"));
+
+    const verify = new Database(dbPath, { readonly: true });
+    const counts = verify.query<{ status: string; count: number }, []>(
+      `SELECT status, COUNT(*) AS count FROM mem_consolidation_queue GROUP BY status`,
+    ).all();
+    verify.close();
+    expect(Object.fromEntries(counts.map((row) => [row.status, row.count]))).toEqual({ completed: 1, pending: 2 });
+    expect(events.find((event) => event.kind === "completed" && event.task === "consolidation"))
+      .toMatchObject({ jobs_processed: 1, pending_jobs: 2 });
   });
 
   test("consolidation worker restart marks an abandoned running queue job failed", async () => {
@@ -307,7 +512,7 @@ describe("background maintenance persistent workers", () => {
       internals.scheduleMaintenance("consolidation");
       internals.scheduleMaintenance("consolidation");
       expect(calls).toBe(1);
-      expect(request).toEqual({ reason: "scheduler", limit: 10 });
+      expect(request).toEqual({ reason: "scheduler", limit: 1 });
       release();
       await waitFor(() => !internals.localSchedulerConsolidationRunning);
       internals.scheduleMaintenance("consolidation");

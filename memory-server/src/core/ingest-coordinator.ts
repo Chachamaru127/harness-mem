@@ -666,6 +666,7 @@ export class IngestCoordinator {
   private claudeCodeIngestStartTimer: ReturnType<typeof setTimeout> | null = null;
   private claudeCodeIngestTimer: ReturnType<typeof setInterval> | null = null;
   private consolidationTimer: ReturnType<typeof setInterval> | null = null;
+  private consolidationStartTimer: ReturnType<typeof setTimeout> | null = null;
   private retryTimer: ReturnType<typeof setInterval> | null = null;
   private checkpointTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -857,10 +858,23 @@ export class IngestCoordinator {
     }
 
     if (config.consolidationEnabled !== false) {
-      this.consolidationTimer = setInterval(() => {
+      const consolidationIntervalMs = clampLimit(
+        Number(config.consolidationIntervalMs || 60000),
+        60000,
+        5000,
+        600000,
+      );
+      const runScheduledConsolidation = () => {
         if (this.deps.isShuttingDown()) return;
         this.deps.scheduleMaintenance?.("consolidation");
-      }, clampLimit(Number(config.consolidationIntervalMs || 60000), 60000, 5000, 600000));
+      };
+      const phaseOffsetMs = Math.min(30_000, Math.floor(consolidationIntervalMs / 2));
+      this.consolidationStartTimer = setTimeout(() => {
+        this.consolidationStartTimer = null;
+        if (this.deps.isShuttingDown()) return;
+        runScheduledConsolidation();
+        this.consolidationTimer = setInterval(runScheduledConsolidation, consolidationIntervalMs);
+      }, consolidationIntervalMs + phaseOffsetMs);
     }
 
     this.retryTimer = setInterval(() => {
@@ -894,6 +908,7 @@ export class IngestCoordinator {
     if (this.claudeCodeIngestStartTimer) { clearTimeout(this.claudeCodeIngestStartTimer); this.claudeCodeIngestStartTimer = null; }
     if (this.claudeCodeIngestTimer) { clearInterval(this.claudeCodeIngestTimer); this.claudeCodeIngestTimer = null; }
     if (this.consolidationTimer) { clearInterval(this.consolidationTimer); this.consolidationTimer = null; }
+    if (this.consolidationStartTimer) { clearTimeout(this.consolidationStartTimer); this.consolidationStartTimer = null; }
     if (this.retryTimer) { clearInterval(this.retryTimer); this.retryTimer = null; }
     if (this.checkpointTimer) { clearInterval(this.checkpointTimer); this.checkpointTimer = null; }
   }

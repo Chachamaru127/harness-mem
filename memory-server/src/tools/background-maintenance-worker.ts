@@ -2,7 +2,10 @@ import { createInterface } from "node:readline";
 import { Database } from "bun:sqlite";
 import { HarnessMemCore, getConfig } from "../core/harness-mem-core";
 import type { ConsolidationRunRequest } from "../core/types";
-import type { MaintenanceTask } from "../core/background-maintenance-worker-client";
+import {
+  resolveSchedulerConsolidationLimit,
+  type MaintenanceTask,
+} from "../core/background-maintenance-worker-client";
 
 type WorkerTask = MaintenanceTask | "recover_consolidation";
 
@@ -79,7 +82,10 @@ async function main(): Promise<void> {
           writeReply({ id, ok: true, result, progress: { ...result, elapsed_ms: Date.now() - startedAt } });
           continue;
         }
-        const result = await core.runConsolidation(request.request ?? { reason: "scheduler", limit: 10 });
+        const result = await core.runConsolidation(request.request ?? {
+          reason: "scheduler",
+          limit: resolveSchedulerConsolidationLimit(),
+        });
         const item = result.items[0] && typeof result.items[0] === "object"
           ? result.items[0] as Record<string, unknown>
           : {};

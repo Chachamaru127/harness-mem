@@ -35,6 +35,8 @@ export interface MaintenanceProgress {
   elapsed_ms?: number;
   queue_depth: number;
   jobs_processed?: number;
+  observations_scanned?: number;
+  existing_facts_scanned?: number;
   pending_jobs?: number;
   busy?: number;
   log?: number;
@@ -69,8 +71,16 @@ export function shouldRetryWalCheckpoint(event: MaintenanceProgress): boolean {
   return busy > 0 || log > checkpointed;
 }
 
+export function resolveSchedulerConsolidationLimit(
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const value = Number(env.HARNESS_MEM_CONSOLIDATION_SCHEDULER_BATCH_SIZE || 1);
+  if (!Number.isFinite(value) || value <= 0) return 1;
+  return Math.min(10, Math.floor(value));
+}
+
 const SAFE_RESULT_KEYS = new Set([
-  "jobs_processed", "pending_jobs", "facts_extracted", "facts_merged",
+  "jobs_processed", "observations_scanned", "existing_facts_scanned", "pending_jobs", "facts_extracted", "facts_merged",
   "derives_links_created", "dreaming_rewrites_created", "busy", "log",
   "checkpointed", "wal_bytes_before", "wal_bytes_after", "wal_limit_bytes",
   "wal_above_limit", "elapsed_ms",
@@ -109,7 +119,14 @@ export class BackgroundMaintenanceWorkerClient {
       return false;
     }
     this.scheduled.add(task);
-    const entry: QueueEntry = { id: `maintenance-${++this.sequence}`, task, scheduler: true };
+    const entry: QueueEntry = {
+      id: `maintenance-${++this.sequence}`,
+      task,
+      scheduler: true,
+      request: task === "consolidation"
+        ? { reason: "scheduler", limit: resolveSchedulerConsolidationLimit(this.options.env) }
+        : undefined,
+    };
     if (task === "wal_checkpoint" && this.active?.task === "consolidation") {
       this.queue.unshift(entry);
     } else {

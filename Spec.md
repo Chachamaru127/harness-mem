@@ -454,6 +454,16 @@ second concurrent maintenance I/O lane against search.
 - Scheduler consolidation and checkpoint ticks coalesce independently. Manual
   consolidation requests remain FIFO and wait for a complete response. A
   checkpoint queued during consolidation runs before the next manual request.
+  Scheduler consolidation advances one queued job per tick by default (maximum
+  configurable batch 10), bounding each same-database I/O window while keeping
+  durable queue progress. It is pending-only: an empty queue does not synthesize
+  work from recent sessions. A database partial-unique invariant coalesces
+  duplicate pending project/session/reason jobs; migration retains the earliest
+  requested row deterministically. An event arriving during a running job leaves
+  one next pending job. Scheduler extraction scans only observations without facts and skips
+  dedupe/derives when neither facts nor dreaming rewrites changed. Manual
+  requests keep their caller-supplied limit and explicit maintenance behavior.
+  The first scheduler run is phase-offset from minute-based ingest timers.
 - A core explicitly constructed with maintenance/provider settings that differ
   from the daemon environment keeps these operations local. The child must not
   reconstruct different settings or receive provider secrets over task IPC.

@@ -187,6 +187,14 @@ Busy/error/active-frame checkpoint retries use exponential backoff controlled
 by `HARNESS_MEM_WAL_CHECKPOINT_RETRY_BASE_MS` (default 10000) and stop after
 `HARNESS_MEM_WAL_CHECKPOINT_RETRY_MAX_ATTEMPTS` (default 3) until the next
 normal checkpoint timer.
+Scheduled consolidation processes one durable queue job per tick by default to
+bound same-database contention with search. Set
+`HARNESS_MEM_CONSOLIDATION_SCHEDULER_BATCH_SIZE` to 1–10 only after measuring
+the production search latency impact; manual consolidation limits are unchanged.
+Empty queues stay idle, a SQLite partial-unique invariant coalesces duplicate
+pending work across processes, unchanged observations do not repeat relation or
+LLM existing-fact scans, and the scheduler is phase-offset from minute-based
+ingest ticks.
 
 ### Claude-harness companion mode
 
