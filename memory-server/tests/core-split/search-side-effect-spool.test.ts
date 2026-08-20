@@ -170,6 +170,46 @@ describe("search side-effect spool", () => {
     db.close();
   });
 
+  test("a flush applies a true batch in one main transaction before sidecar deletion", () => {
+    const { db, dbPath } = makeDb();
+    const spool = new SearchSideEffectSpool(dbPath);
+    for (let index = 0; index < 5; index += 1) spool.append(intent(`batch-${index}`));
+    spool.close();
+
+    let hooks = 0;
+    expect(() => flushSearchSideEffectSpool(db, dbPath, 5, {
+      afterApply: () => {
+        hooks += 1;
+        if (hooks === 1) throw new Error("simulated crash after batch commit");
+      },
+    })).toThrow("simulated crash after batch commit");
+    expect((db.query("SELECT COUNT(*) AS count FROM mem_audit_log WHERE action = 'read.search'").get() as { count: number }).count).toBe(5);
+
+    const replay = flushSearchSideEffectSpool(db, dbPath, 5);
+    expect(replay).toEqual({ intents_applied: 0, intents_replayed: 5, intents_remaining: 0 });
+    expect((db.query("SELECT COUNT(*) AS count FROM mem_search_side_effect_claims").get() as { count: number }).count).toBe(0);
+    db.close();
+  });
+
+  test("all flush entry points cap one transaction batch at 100 intents", () => {
+    const { db, dbPath } = makeDb();
+    const spool = new SearchSideEffectSpool(dbPath);
+    for (let index = 0; index < 101; index += 1) spool.append(intent(`bounded-${index}`));
+    spool.close();
+
+    expect(flushSearchSideEffectSpool(db, dbPath, 500)).toEqual({
+      intents_applied: 100,
+      intents_replayed: 0,
+      intents_remaining: 1,
+    });
+    expect(flushSearchSideEffectSpool(db, dbPath, 500)).toEqual({
+      intents_applied: 1,
+      intents_replayed: 0,
+      intents_remaining: 0,
+    });
+    db.close();
+  });
+
   test("graceful core shutdown drains durable intents before closing the main DB", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-search-side-effect-shutdown-"));
     dirs.push(dir);

@@ -9,6 +9,7 @@
 
 ### 修正
 
+- **成功searchごとのaudit flushをやめ、idle時のtrue batchで反映する**。通常trafficはpending 8件以上かつsearch idle 2秒で開始し、最古intentは最大30秒、1 batchは最大100件とする。batch全体をmain claim/apply、sidecar delete、claim cleanupの3 transactionへまとめる。新しいsearchは未開始flushだけをcancelし、実行中flushは中断しない。startup/shutdownの即時drain、失敗時の有限retry、応答前`synchronous=FULL`耐久性は維持する。本番latencyは再検証待ち。
 - **strict-project cache missでproject全factsのscanとevent payload lookupを避けるようにした**。active factsは既存observation-first indexを明示使用し、latest interactionのevent typeは小さい`(event_id, event_type)` covering indexから読む。既存aggregateと応答ABIを維持したまま、latest SQL/materializeとfacts tokenize/load/scoringをprivacy-safeに分解する。45万rows・1.86GBのsynthetic migrationはindex作成576.03ms、index 12.79MB、checkpoint前WAL 12.87MB。warm synthetic値は本番上限ではなく、1.60GBの本番event tableはcold/競合I/Oで長くなり得るため、承認済みrestart時に実測する。
 - **recall-generation triggerが運用向け変更件数を水増ししないようにした**。forget-policyのeviction/audit/TTL、consolidationのfact/link、memory compression、project alias migrationは、trigger書き込みを含むBun `Statement.run().changes`ではなく、top-level statementだけを数えるSQLite `changes()`を使う。実際のarchive/update対象は正しく、API・audit・telemetryの表示件数だけを修正する。
 - **latest interactionがproject全体をscan/sortせず、soft-delete済みturnを再表示しないようにした**。search/resume-packの既存`meta.latest_interaction` ABIとlatest-intent rankingは維持する。lookupはnewest-first sortの前に標準archived/expired filterを適用し、既存`(project, archived_at, created_at, id)` indexを使う。本番latencyは再検証待ち。

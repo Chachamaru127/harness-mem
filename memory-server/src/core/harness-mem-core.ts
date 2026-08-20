@@ -2677,58 +2677,63 @@ export class HarnessMemCore {
   private async runSearchWithPersistentWorker(request: SearchRequest): Promise<ApiResponse> {
     const startedAt = performance.now();
     const worker = this.getOrCreateSearchWorker();
-    worker.ensureStarted();
-    const queueDepthAtStart = worker.pendingDepth();
-    if (request.safe_mode !== true && request.vector_search !== false && !worker.isWarmupComplete()) {
-      throw new SearchOffloadUnavailableError("search worker", "warming");
+    const maintenanceWorker = this.getOrCreateBackgroundMaintenanceWorker();
+    let pendingSideEffects = 0;
+    maintenanceWorker.searchStarted();
+    try {
+      worker.ensureStarted();
+      const queueDepthAtStart = worker.pendingDepth();
+      if (request.safe_mode !== true && request.vector_search !== false && !worker.isWarmupComplete()) {
+        throw new SearchOffloadUnavailableError("search worker", "warming");
+      }
+      const timeoutMs = this.searchWorkerTimeoutMs(worker);
+      const result = await worker.request(request, timeoutMs);
+      pendingSideEffects = result.side_effect_intents_pending;
+      const response = result.response;
+      const offloadWallMs = Number((performance.now() - startedAt).toFixed(2));
+      const workerLatencyMs =
+        typeof response.meta.latency_ms === "number"
+          ? response.meta.latency_ms
+          : null;
+      response.meta = {
+        ...response.meta,
+        latency_ms: offloadWallMs,
+        search_offload: {
+          mode: "persistent_worker",
+          timeout_ms: timeoutMs,
+          wall_ms: offloadWallMs,
+          worker_latency_ms: workerLatencyMs,
+          worker_ready_at_start: result.ready_at_start,
+          worker_pid: result.pid,
+          worker_warmup_ms: result.warmup_ms,
+        },
+      };
+      recordRecallTelemetry(
+        "recall.worker",
+        {
+          ...this.recallScopeAttributes({
+            project: request.scope?.project ?? request.project,
+            session_id: request.scope?.session_id ?? request.session_id,
+            include_private: request.include_private,
+            safe_mode: request.safe_mode,
+            limit: request.limit,
+          }),
+          "harness.result": response.ok ? "ok" : "error",
+          "recall.worker.mode": "persistent_worker",
+          "recall.worker.ready": result.ready_at_start,
+          "recall.worker.warmup_complete": result.warmup_ms !== null,
+          "recall.worker.queue_depth": queueDepthAtStart,
+          "recall.worker.timeout_ms": timeoutMs,
+        },
+        {
+          recall_latency_ms: offloadWallMs,
+          worker_queue_depth: queueDepthAtStart,
+        },
+      );
+      return response;
+    } finally {
+      maintenanceWorker.searchFinished(pendingSideEffects);
     }
-    const timeoutMs = this.searchWorkerTimeoutMs(worker);
-    const result = await worker.request(request, timeoutMs);
-    if (result.side_effect_intents_pending > 0) {
-      this.scheduleMaintenance("search_audit_flush");
-    }
-    const response = result.response;
-    const offloadWallMs = Number((performance.now() - startedAt).toFixed(2));
-    const workerLatencyMs =
-      typeof response.meta.latency_ms === "number"
-        ? response.meta.latency_ms
-        : null;
-    response.meta = {
-      ...response.meta,
-      latency_ms: offloadWallMs,
-      search_offload: {
-        mode: "persistent_worker",
-        timeout_ms: timeoutMs,
-        wall_ms: offloadWallMs,
-        worker_latency_ms: workerLatencyMs,
-        worker_ready_at_start: result.ready_at_start,
-        worker_pid: result.pid,
-        worker_warmup_ms: result.warmup_ms,
-      },
-    };
-    recordRecallTelemetry(
-      "recall.worker",
-      {
-        ...this.recallScopeAttributes({
-          project: request.scope?.project ?? request.project,
-          session_id: request.scope?.session_id ?? request.session_id,
-          include_private: request.include_private,
-          safe_mode: request.safe_mode,
-          limit: request.limit,
-        }),
-        "harness.result": response.ok ? "ok" : "error",
-        "recall.worker.mode": "persistent_worker",
-        "recall.worker.ready": result.ready_at_start,
-        "recall.worker.warmup_complete": result.warmup_ms !== null,
-        "recall.worker.queue_depth": queueDepthAtStart,
-        "recall.worker.timeout_ms": timeoutMs,
-      },
-      {
-        recall_latency_ms: offloadWallMs,
-        worker_queue_depth: queueDepthAtStart,
-      },
-    );
-    return response;
   }
 
   private async runSearchWithOneShotChild(request: SearchRequest): Promise<ApiResponse> {
@@ -2746,32 +2751,36 @@ export class HarnessMemCore {
       throw new SearchOffloadQueueFullError("search child", this.searchChildPending, maxPending);
     }
     this.searchChildPending += 1;
+    const maintenanceWorker = this.getOrCreateBackgroundMaintenanceWorker();
+    let pendingSideEffects = 0;
+    maintenanceWorker.searchStarted();
     let timedOut = false;
-    const proc = Bun.spawn({
-      cmd: buildSearchChildCommand(scriptPath),
-      cwd: process.cwd(),
-      env: {
-        ...process.env,
-        HARNESS_MEM_DB_PATH: this.config.dbPath,
-        HARNESS_MEM_SEARCH_CHILD_PROCESS: "1",
-      },
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const timer = setTimeout(() => {
-      timedOut = true;
-      proc.kill("SIGTERM");
-      const forceKill = setTimeout(() => {
-        try {
-          proc.kill("SIGKILL");
-        } catch {
-          // best effort
-        }
-      }, 1_000);
-      void proc.exited.finally(() => clearTimeout(forceKill));
-    }, timeoutMs);
+    let timer: ReturnType<typeof setTimeout> | null = null;
     try {
+      const proc = Bun.spawn({
+        cmd: buildSearchChildCommand(scriptPath),
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          HARNESS_MEM_DB_PATH: this.config.dbPath,
+          HARNESS_MEM_SEARCH_CHILD_PROCESS: "1",
+        },
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      timer = setTimeout(() => {
+        timedOut = true;
+        proc.kill("SIGTERM");
+        const forceKill = setTimeout(() => {
+          try {
+            proc.kill("SIGKILL");
+          } catch {
+            // best effort
+          }
+        }, 1_000);
+        void proc.exited.finally(() => clearTimeout(forceKill));
+      }, timeoutMs);
       await writeJsonToChildStdin(proc.stdin as SearchWorkerStdin | null, request);
       const [stdout, stderr, exitCode] = await Promise.all([
         new Response(proc.stdout).text(),
@@ -2783,7 +2792,11 @@ export class HarnessMemCore {
         throw new Error(`search child ${reason}: ${stderr.trim() || stdout.trim()}`);
       }
       const response = parseChildApiResponse(stdout, stderr, "search child");
-      this.scheduleMaintenance("search_audit_flush");
+      const internalPendingCount = response.meta.__search_side_effect_intents_pending;
+      pendingSideEffects = typeof internalPendingCount === "number"
+        ? Math.max(0, Math.floor(internalPendingCount))
+        : 1;
+      delete response.meta.__search_side_effect_intents_pending;
       const offloadWallMs = Number((performance.now() - startedAt).toFixed(2));
       const childLatencyMs =
         typeof response.meta.latency_ms === "number"
@@ -2821,8 +2834,9 @@ export class HarnessMemCore {
       );
       return response;
     } finally {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       this.searchChildPending = Math.max(0, this.searchChildPending - 1);
+      maintenanceWorker.searchFinished(pendingSideEffects);
     }
   }
 
@@ -3946,6 +3960,24 @@ export class HarnessMemCore {
           120_000,
           90_000,
           30 * 60_000,
+        ),
+        searchAuditFlushIdleGraceMs: clampLimit(
+          Number(process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_IDLE_GRACE_MS || 2_000),
+          2_000,
+          1,
+          30_000,
+        ),
+        searchAuditFlushMinBatch: clampLimit(
+          Number(process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MIN_BATCH || 8),
+          8,
+          1,
+          100,
+        ),
+        searchAuditFlushMaxAgeMs: clampLimit(
+          Number(process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MAX_AGE_MS || 30_000),
+          30_000,
+          1_000,
+          300_000,
         ),
         onProgress: (event) => this.logMaintenanceProgress(event),
       });
@@ -9846,8 +9878,14 @@ export class HarnessMemCore {
     this.searchPhaseProgressObserver = observer;
   }
 
-  runMaintenanceSearchAuditFlush(limit = 100): Record<string, number> {
-    return flushSearchSideEffectSpool(this.db, this.config.dbPath, limit);
+  runMaintenanceSearchAuditFlush(limit?: number): Record<string, number> {
+    const batchLimit = clampLimit(
+      Number(limit ?? process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_BATCH_LIMIT ?? 100),
+      100,
+      1,
+      100,
+    );
+    return flushSearchSideEffectSpool(this.db, this.config.dbPath, batchLimit);
   }
 
   /**

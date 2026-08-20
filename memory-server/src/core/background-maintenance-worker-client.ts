@@ -25,6 +25,7 @@ interface QueueEntry {
   task: WorkerTask;
   request?: ConsolidationRunRequest;
   scheduler: boolean;
+  cancelOnSearch?: boolean;
   resolve?: (value: ApiResponse) => void;
   reject?: (error: Error) => void;
 }
@@ -61,6 +62,9 @@ export interface BackgroundMaintenanceWorkerClientOptions {
   restartBackoffMs?: number;
   maxConsecutiveStartFailures?: number;
   searchAuditFlushMaxRetries?: number;
+  searchAuditFlushIdleGraceMs?: number;
+  searchAuditFlushMinBatch?: number;
+  searchAuditFlushMaxAgeMs?: number;
   spawnWorker?: () => WorkerProcess;
   onProgress?: (event: MaintenanceProgress) => void;
   stopOwnedProcess?: typeof stopOwnedSearchWorkerProcess;
@@ -123,12 +127,26 @@ export class BackgroundMaintenanceWorkerClient {
   private searchAuditFlushRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private searchAuditFlushRetryAttempt = 0;
   private activeSearchAuditFlushRunState: SearchAuditFlushRunState | null = null;
+  private searchesInFlight = 0;
+  private searchAuditPendingCount = 0;
+  private searchAuditFirstPendingAtMs: number | null = null;
+  private searchAuditIdleTimer: ReturnType<typeof setTimeout> | null = null;
+  private searchAuditMaxAgeTimer: ReturnType<typeof setTimeout> | null = null;
+  private searchAuditMaxAgeReached = false;
 
   constructor(private readonly options: BackgroundMaintenanceWorkerClientOptions) {}
 
   schedule(task: MaintenanceTask): boolean {
+    return this.enqueueScheduled(task, false);
+  }
+
+  private enqueueScheduled(task: MaintenanceTask, cancelOnSearch: boolean): boolean {
     if (this.stopped || this.disabled) return false;
     if (this.scheduled.has(task)) {
+      if (task === "search_audit_flush" && !cancelOnSearch) {
+        const queued = this.queue.find((entry) => entry.task === task && entry.scheduler);
+        if (queued) queued.cancelOnSearch = false;
+      }
       this.recordBusyState(task);
       return false;
     }
@@ -137,17 +155,12 @@ export class BackgroundMaintenanceWorkerClient {
       id: `maintenance-${++this.sequence}`,
       task,
       scheduler: true,
+      cancelOnSearch: task === "search_audit_flush" ? cancelOnSearch : undefined,
       request: task === "consolidation"
         ? { reason: "scheduler", limit: resolveSchedulerConsolidationLimit(this.options.env) }
         : undefined,
     };
-    if (task === "search_audit_flush") {
-      this.queue.unshift(entry);
-    } else if (task === "wal_checkpoint" && this.active?.task === "consolidation") {
-      this.queue.unshift(entry);
-    } else {
-      this.queue.push(entry);
-    }
+    this.insertScheduledEntry(entry);
     this.drain();
     return true;
   }
@@ -182,6 +195,38 @@ export class BackgroundMaintenanceWorkerClient {
     return this.activeSearchAuditFlushRunState;
   }
 
+  searchStarted(): void {
+    if (this.stopped || this.disabled) return;
+    this.searchesInFlight += 1;
+    if (this.searchAuditIdleTimer) clearTimeout(this.searchAuditIdleTimer);
+    this.searchAuditIdleTimer = null;
+    const queuedIndex = this.queue.findIndex((entry) =>
+      entry.task === "search_audit_flush" && entry.scheduler && entry.cancelOnSearch === true);
+    if (queuedIndex >= 0) {
+      this.queue.splice(queuedIndex, 1);
+      this.scheduled.delete("search_audit_flush");
+      this.searchAuditPendingCount = Math.max(1, this.searchAuditPendingCount);
+      this.searchAuditFirstPendingAtMs ??= Date.now();
+      this.armSearchAuditMaxAge();
+    }
+  }
+
+  searchFinished(pendingCount: number): void {
+    this.searchesInFlight = Math.max(0, this.searchesInFlight - 1);
+    if (this.stopped || this.disabled) return;
+    if (Number.isFinite(pendingCount) && pendingCount > 0) {
+      this.searchAuditPendingCount = Math.max(this.searchAuditPendingCount, Math.floor(pendingCount));
+      this.searchAuditFirstPendingAtMs ??= Date.now();
+      this.armSearchAuditMaxAge();
+    }
+    if (this.searchesInFlight > 0 || this.searchAuditPendingCount <= 0) return;
+    if (this.searchAuditMaxAgeReached) {
+      this.schedule("search_audit_flush");
+    } else if (this.searchAuditPendingCount >= (this.options.searchAuditFlushMinBatch ?? 8)) {
+      this.armSearchAuditIdleGrace();
+    }
+  }
+
   workerPid(): number | null {
     const proc = this.proc ?? this.stoppingProc;
     return typeof proc?.pid === "number" ? proc.pid : null;
@@ -197,6 +242,10 @@ export class BackgroundMaintenanceWorkerClient {
     this.retryTimer = null;
     if (this.searchAuditFlushRetryTimer) clearTimeout(this.searchAuditFlushRetryTimer);
     this.searchAuditFlushRetryTimer = null;
+    if (this.searchAuditIdleTimer) clearTimeout(this.searchAuditIdleTimer);
+    this.searchAuditIdleTimer = null;
+    if (this.searchAuditMaxAgeTimer) clearTimeout(this.searchAuditMaxAgeTimer);
+    this.searchAuditMaxAgeTimer = null;
     for (const entry of this.queue.splice(0)) entry.reject?.(new Error("maintenance worker stopped"));
     this.scheduled.clear();
     if (this.active) this.active.reject?.(new Error("maintenance worker stopped"));
@@ -241,6 +290,7 @@ export class BackgroundMaintenanceWorkerClient {
       if (!this.stdin) throw new Error("background maintenance worker unavailable");
       this.active = { ...entry, startedAtMs: Date.now() };
       if (entry.task === "search_audit_flush") {
+        this.clearSearchAuditDelayState();
         this.activeSearchAuditFlushRunState = {
           run_id: entry.id,
           started_at_ms: this.active.startedAtMs,
@@ -344,7 +394,19 @@ export class BackgroundMaintenanceWorkerClient {
       retrySearchAuditFlush = active.task === "search_audit_flush";
     }
     this.finishActive();
-    if (continueSearchAuditFlush) this.schedule("search_audit_flush");
+    if (continueSearchAuditFlush) {
+      const remaining = Math.max(1, Number((reply.progress as Record<string, unknown>)?.intents_remaining ?? 1));
+      if (this.searchesInFlight > 0) {
+        this.searchAuditPendingCount = Math.max(
+          this.options.searchAuditFlushMinBatch ?? 8,
+          remaining,
+        );
+        this.searchAuditFirstPendingAtMs ??= Date.now();
+        this.armSearchAuditMaxAge();
+      } else {
+        this.schedule("search_audit_flush");
+      }
+    }
     if (retrySearchAuditFlush) this.scheduleSearchAuditFlushRetry();
     this.drain();
   }
@@ -431,14 +493,60 @@ export class BackgroundMaintenanceWorkerClient {
     }, delay);
   }
 
+  private armSearchAuditIdleGrace(): void {
+    if (this.stopped || this.disabled || this.searchAuditIdleTimer || this.searchesInFlight > 0) return;
+    const delay = Math.max(0, this.options.searchAuditFlushIdleGraceMs ?? 2_000);
+    this.searchAuditIdleTimer = setTimeout(() => {
+      this.searchAuditIdleTimer = null;
+      if (this.searchesInFlight > 0) return;
+      this.enqueueScheduled("search_audit_flush", true);
+    }, delay);
+  }
+
+  private armSearchAuditMaxAge(): void {
+    if (this.stopped || this.disabled || this.searchAuditMaxAgeTimer || this.searchAuditFirstPendingAtMs === null) return;
+    const maxAge = Math.max(1, this.options.searchAuditFlushMaxAgeMs ?? 30_000);
+    const delay = Math.max(0, this.searchAuditFirstPendingAtMs + maxAge - Date.now());
+    this.searchAuditMaxAgeTimer = setTimeout(() => {
+      this.searchAuditMaxAgeTimer = null;
+      this.searchAuditMaxAgeReached = true;
+      this.schedule("search_audit_flush");
+    }, delay);
+  }
+
+  private clearSearchAuditDelayState(): void {
+    if (this.searchAuditIdleTimer) clearTimeout(this.searchAuditIdleTimer);
+    if (this.searchAuditMaxAgeTimer) clearTimeout(this.searchAuditMaxAgeTimer);
+    this.searchAuditIdleTimer = null;
+    this.searchAuditMaxAgeTimer = null;
+    this.searchAuditPendingCount = 0;
+    this.searchAuditFirstPendingAtMs = null;
+    this.searchAuditMaxAgeReached = false;
+  }
+
+  private insertScheduledEntry(entry: QueueEntry): void {
+    if (entry.task === "wal_checkpoint") {
+      this.queue.unshift(entry);
+      return;
+    }
+    if (entry.task === "search_audit_flush") {
+      let insertAt = 0;
+      while (insertAt < this.queue.length && this.queue[insertAt]?.task === "wal_checkpoint") insertAt += 1;
+      this.queue.splice(insertAt, 0, entry);
+      return;
+    }
+    this.queue.push(entry);
+  }
+
   private requeueOrReject(entry: QueueEntry, reason: string): void {
     if (entry.task === "recover_consolidation" && !this.stopped) {
       this.queue.unshift(entry);
       return;
     }
     if (entry.scheduler && entry.task !== "recover_consolidation" && !this.stopped) {
+      if (entry.task === "search_audit_flush") entry.cancelOnSearch = false;
       this.scheduled.add(entry.task);
-      this.queue.unshift(entry);
+      this.insertScheduledEntry(entry);
     } else {
       entry.reject?.(new Error(reason));
     }

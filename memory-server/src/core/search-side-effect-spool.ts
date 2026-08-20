@@ -193,7 +193,7 @@ export class SearchSideEffectSpool {
       FROM search_side_effect_intents
       ORDER BY sequence ASC
       LIMIT ?
-    `).all(Math.max(1, Math.min(500, Math.floor(limit)))) as Array<{
+    `).all(Math.max(1, Math.min(100, Math.floor(limit)))) as Array<{
       sequence: number;
       intent_id: string;
       payload_json: string;
@@ -213,6 +213,15 @@ export class SearchSideEffectSpool {
     this.db.query("DELETE FROM search_side_effect_intents WHERE intent_id = ?").run(intentId);
   }
 
+  deleteBatch(intentIds: string[]): void {
+    if (intentIds.length === 0) return;
+    const placeholders = intentIds.map(() => "?").join(",");
+    this.db.transaction(() => {
+      this.db.query(`DELETE FROM search_side_effect_intents WHERE intent_id IN (${placeholders})`)
+        .run(...(intentIds as SQLQueryBindings[]));
+    })();
+  }
+
   close(): void {
     this.db.close();
   }
@@ -227,35 +236,33 @@ function ensureClaimsTable(db: Database): void {
   `);
 }
 
-function applyIntent(db: Database, intent: StoredIntent): boolean {
-  return db.transaction(() => {
-    const claim = db.query(`
+function applyIntentInTransaction(db: Database, intent: StoredIntent): boolean {
+  const claim = db.query(`
       INSERT OR IGNORE INTO mem_search_side_effect_claims(intent_id, applied_at)
       VALUES (?, ?)
     `).run(intent.intent_id, new Date().toISOString());
-    if (Number(claim.changes) === 0) return false;
+  if (Number(claim.changes) === 0) return false;
 
-    if (intent.access_count_ids.length > 0) {
-      const placeholders = intent.access_count_ids.map(() => "?").join(",");
-      db.query(`
+  if (intent.access_count_ids.length > 0) {
+    const placeholders = intent.access_count_ids.map(() => "?").join(",");
+    db.query(`
         UPDATE mem_observations
         SET access_count = COALESCE(access_count, 0) + 1, last_accessed_at = ?
         WHERE id IN (${placeholders})
       `).run(intent.created_at, ...(intent.access_count_ids as SQLQueryBindings[]));
+  }
+  if (intent.audits.length > 0) {
+    const values = intent.audits.map(() => "(?, 'system', ?, ?, ?, ?)").join(",");
+    const params: SQLQueryBindings[] = [];
+    for (const audit of intent.audits) {
+      params.push(audit.action, audit.target_type, audit.target_id, JSON.stringify(audit.details), intent.created_at);
     }
-    if (intent.audits.length > 0) {
-      const values = intent.audits.map(() => "(?, 'system', ?, ?, ?, ?)").join(",");
-      const params: SQLQueryBindings[] = [];
-      for (const audit of intent.audits) {
-        params.push(audit.action, audit.target_type, audit.target_id, JSON.stringify(audit.details), intent.created_at);
-      }
-      db.query(`
+    db.query(`
         INSERT INTO mem_audit_log(action, actor, target_type, target_id, details_json, created_at)
         VALUES ${values}
       `).run(...params);
-    }
-    return true;
-  })();
+  }
+  return true;
 }
 
 export function flushSearchSideEffectSpool(
@@ -269,12 +276,24 @@ export function flushSearchSideEffectSpool(
   let replayed = 0;
   try {
     ensureClaimsTable(mainDb);
-    for (const intent of spool.loadBatch(limit)) {
-      if (applyIntent(mainDb, intent)) applied += 1;
-      else replayed += 1;
+    const intents = spool.loadBatch(limit);
+    mainDb.transaction(() => {
+      for (const intent of intents) {
+        if (applyIntentInTransaction(mainDb, intent)) applied += 1;
+        else replayed += 1;
+      }
+    })();
+    for (const intent of intents) {
       options.afterApply?.(intent.intent_id);
-      spool.delete(intent.intent_id);
-      mainDb.query("DELETE FROM mem_search_side_effect_claims WHERE intent_id = ?").run(intent.intent_id);
+    }
+    const intentIds = intents.map((intent) => intent.intent_id);
+    spool.deleteBatch(intentIds);
+    if (intentIds.length > 0) {
+      const placeholders = intentIds.map(() => "?").join(",");
+      mainDb.transaction(() => {
+        mainDb.query(`DELETE FROM mem_search_side_effect_claims WHERE intent_id IN (${placeholders})`)
+          .run(...(intentIds as SQLQueryBindings[]));
+      })();
     }
     return {
       intents_applied: applied,

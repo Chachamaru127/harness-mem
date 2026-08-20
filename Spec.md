@@ -489,10 +489,17 @@ second concurrent maintenance I/O lane against search.
   database before returning its result. Before a successful response, the
   worker durably appends one typed intent to a bounded mode-0600 sidecar SQLite
   spool with `synchronous=FULL`. The maintenance worker applies intents to the
-  main database in FIFO order. A main-database intent claim keyed by
+  main database in FIFO order. Normal search traffic waits for two search-idle
+  seconds after at least eight pending intents, with a hard 30-second oldest-
+  intent dispatch bound. A new search cancels only an unstarted flush; a
+  running flush is non-preemptive. WAL checkpoint stays ahead of audit flush,
+  which stays ahead of scheduler consolidation. Each batch is bounded to 100
+  intents and uses one main claim/apply transaction, one sidecar-delete
+  transaction, and one claim-cleanup transaction. Remaining batches yield
+  through the same priority queue. A main-database intent claim keyed by
   `intent_id` makes replay idempotent if the worker crashes after commit but
-  before deleting the spool row. Startup, each successful offloaded search,
-  and graceful shutdown request a flush; crash recovery may defer application
+  before deleting the spool row. Startup and graceful shutdown bypass the
+  search-idle delay; crash recovery may defer application
   until the next startup but must not lose an acknowledged intent. A busy or
   failed maintenance flush uses one coalesced, finite exponential-backoff retry
   budget; the durable spool remains the recovery source after that budget is

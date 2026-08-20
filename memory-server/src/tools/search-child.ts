@@ -55,6 +55,7 @@ async function main(): Promise<void> {
       await core.primeEmbedding(request.query || "", "query");
     }
     const response = core.search(request);
+    response.meta.__search_side_effect_intents_pending = core.pendingSearchSideEffectIntents();
     process.stdout.write(`${JSON.stringify(response)}\n`);
   } finally {
     core.shutdown("search-child");

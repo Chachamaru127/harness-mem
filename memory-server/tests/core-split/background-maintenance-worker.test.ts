@@ -30,6 +30,10 @@ function makeClient(options: {
   walMaxBytes?: number;
   busyTimeoutMs?: number;
   restartBackoffMs?: number;
+  searchAuditFlushIdleGraceMs?: number;
+  searchAuditFlushMinBatch?: number;
+  searchAuditFlushMaxAgeMs?: number;
+  searchAuditFlushBatchLimit?: number;
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "harness-mem-maintenance-worker-"));
   dirs.push(dir);
@@ -51,11 +55,15 @@ function makeClient(options: {
       HARNESS_MEM_TEST_MAINTENANCE_IGNORE_TERM: options.ignoreTerm ? "1" : "0",
       HARNESS_MEM_WAL_MAX_BYTES: String(options.walMaxBytes ?? 536_870_912),
       HARNESS_MEM_SQLITE_BUSY_TIMEOUT: String(options.busyTimeoutMs ?? 30_000),
+      HARNESS_MEM_SEARCH_AUDIT_FLUSH_BATCH_LIMIT: String(options.searchAuditFlushBatchLimit ?? 100),
     },
     dbPath,
     busyLogMs: 10,
     consolidationTimeoutMs: options.timeoutMs ?? 5_000,
     restartBackoffMs: options.restartBackoffMs,
+    searchAuditFlushIdleGraceMs: options.searchAuditFlushIdleGraceMs,
+    searchAuditFlushMinBatch: options.searchAuditFlushMinBatch,
+    searchAuditFlushMaxAgeMs: options.searchAuditFlushMaxAgeMs,
     onProgress: (event) => events.push(event),
   });
   clients.push(client);
@@ -71,6 +79,259 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<voi
 }
 
 describe("background maintenance persistent workers", () => {
+  test("search audit flush waits for a batch or max age and an active search cancels idle dispatch", async () => {
+    const { client, events } = makeClient({
+      searchAuditFlushIdleGraceMs: 20,
+      searchAuditFlushMinBatch: 3,
+      searchAuditFlushMaxAgeMs: 100,
+    });
+    client.searchStarted();
+    client.searchFinished(1);
+    await Bun.sleep(40);
+    expect(events.some((event) => event.task === "search_audit_flush")).toBe(false);
+
+    client.searchStarted();
+    client.searchFinished(3);
+    await Bun.sleep(10);
+    client.searchStarted();
+    await Bun.sleep(30);
+    expect(events.some((event) => event.task === "search_audit_flush")).toBe(false);
+    client.searchFinished(3);
+    await waitFor(() => events.some((event) =>
+      event.kind === "completed" && event.task === "search_audit_flush"));
+
+    events.length = 0;
+    client.searchStarted();
+    client.searchFinished(1);
+    await waitFor(() => events.some((event) =>
+      event.kind === "completed" && event.task === "search_audit_flush"), 500);
+  });
+
+  test("a search cannot cancel a max-age audit flush queued behind active maintenance", async () => {
+    const { client, events } = makeClient({
+      blockMs: 100,
+      searchAuditFlushIdleGraceMs: 10,
+      searchAuditFlushMinBatch: 8,
+      searchAuditFlushMaxAgeMs: 30,
+    });
+    expect(client.schedule("consolidation")).toBe(true);
+    await waitFor(() => client.activeTask() === "consolidation");
+    client.searchStarted();
+    client.searchFinished(1);
+    await waitFor(() => client.pendingTasks().includes("search_audit_flush"));
+
+    client.searchStarted();
+    expect(client.pendingTasks()).toContain("search_audit_flush");
+    client.searchFinished(1);
+    await waitFor(() => events.some((event) =>
+      event.kind === "completed" && event.task === "search_audit_flush"));
+  });
+
+  test("hard max age dispatches while a later search remains in flight", async () => {
+    const { client, events } = makeClient({
+      searchAuditFlushIdleGraceMs: 10,
+      searchAuditFlushMinBatch: 8,
+      searchAuditFlushMaxAgeMs: 30,
+    });
+    client.searchStarted();
+    client.searchFinished(1);
+    client.searchStarted();
+    await waitFor(() => events.some((event) =>
+      event.kind === "started" && event.task === "search_audit_flush"), 500);
+    expect(client.activeTask()).toBe("search_audit_flush");
+    client.searchFinished(0);
+  });
+
+  test("a search finishing after stop cannot recreate an audit timer or dispatch", async () => {
+    const { client, events } = makeClient({ searchAuditFlushMaxAgeMs: 20 });
+    client.searchStarted();
+    await client.stop();
+    client.searchFinished(1);
+    const internals = client as unknown as { searchAuditMaxAgeTimer: ReturnType<typeof setTimeout> | null };
+    expect(internals.searchAuditMaxAgeTimer).toBeNull();
+    await Bun.sleep(40);
+    expect(events.some((event) => event.task === "search_audit_flush")).toBe(false);
+    expect(client.hasLiveProcess()).toBe(false);
+  });
+
+  test("successful HTTP searches leave durable intents and the core dispatches one delayed batch", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-search-audit-batch-"));
+    dirs.push(dir);
+    const dbPath = join(dir, "batch.db");
+    const previousOffload = process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+    const previousWorker = process.env.HARNESS_MEM_SEARCH_WORKER;
+    const previousIdleGrace = process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_IDLE_GRACE_MS;
+    const previousMinBatch = process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MIN_BATCH;
+    const previousMaxAge = process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MAX_AGE_MS;
+    process.env.HARNESS_MEM_SEARCH_OFFLOAD = "1";
+    process.env.HARNESS_MEM_SEARCH_WORKER = "1";
+    process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_IDLE_GRACE_MS = "100";
+    process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MIN_BATCH = "2";
+    process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MAX_AGE_MS = "1000";
+    const config = createTestConfig({ dbPath, bindPort: 0, backgroundWorkersEnabled: false });
+    const core = new HarnessMemCore(config);
+    const server = startHarnessMemServer(core, config);
+    try {
+      const search = (query: string) => fetch(`http://127.0.0.1:${server.port}/v1/search`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query, project: dir, limit: 1, vector_search: false, strict_project: true }),
+      });
+      expect((await search("batch first miss")).status).toBe(200);
+      const beforeBatch = new Database(dbPath, { readonly: true });
+      expect((beforeBatch.query("SELECT COUNT(*) AS count FROM mem_audit_log WHERE action = 'read.search'").get() as { count: number }).count).toBe(0);
+      beforeBatch.close();
+      const pending = new SearchSideEffectSpool(dbPath);
+      expect(pending.count()).toBe(1);
+      pending.close();
+
+      expect((await search("batch second miss")).status).toBe(200);
+      await waitFor(() => {
+        const verify = new Database(dbPath, { readonly: true });
+        const count = (verify.query("SELECT COUNT(*) AS count FROM mem_audit_log WHERE action = 'read.search'").get() as { count: number }).count;
+        verify.close();
+        return count === 2;
+      });
+      const remaining = new SearchSideEffectSpool(dbPath);
+      expect(remaining.count()).toBe(0);
+      remaining.close();
+    } finally {
+      server.stop(true);
+      await core.shutdown("test");
+      if (previousOffload === undefined) delete process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+      else process.env.HARNESS_MEM_SEARCH_OFFLOAD = previousOffload;
+      if (previousWorker === undefined) delete process.env.HARNESS_MEM_SEARCH_WORKER;
+      else process.env.HARNESS_MEM_SEARCH_WORKER = previousWorker;
+      if (previousIdleGrace === undefined) delete process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_IDLE_GRACE_MS;
+      else process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_IDLE_GRACE_MS = previousIdleGrace;
+      if (previousMinBatch === undefined) delete process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MIN_BATCH;
+      else process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MIN_BATCH = previousMinBatch;
+      if (previousMaxAge === undefined) delete process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MAX_AGE_MS;
+      else process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MAX_AGE_MS = previousMaxAge;
+    }
+  });
+
+  test("one-shot search reports cumulative spool depth so the minimum batch dispatches", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-search-audit-one-shot-"));
+    dirs.push(dir);
+    const dbPath = join(dir, "one-shot.db");
+    const previousOffload = process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+    const previousWorker = process.env.HARNESS_MEM_SEARCH_WORKER;
+    const previousIdleGrace = process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_IDLE_GRACE_MS;
+    const previousMinBatch = process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MIN_BATCH;
+    const previousMaxAge = process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MAX_AGE_MS;
+    process.env.HARNESS_MEM_SEARCH_OFFLOAD = "1";
+    process.env.HARNESS_MEM_SEARCH_WORKER = "0";
+    process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_IDLE_GRACE_MS = "10";
+    process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MIN_BATCH = "2";
+    process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MAX_AGE_MS = "5000";
+    const config = createTestConfig({ dbPath, bindPort: 0, backgroundWorkersEnabled: false });
+    const core = new HarnessMemCore(config);
+    const server = startHarnessMemServer(core, config);
+    try {
+      const search = async (query: string) => {
+        const response = await fetch(`http://127.0.0.1:${server.port}/v1/search`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ query, project: dir, limit: 1, vector_search: false, strict_project: true }),
+        });
+        const payload = await response.json() as { meta: Record<string, unknown> };
+        expect(response.status).toBe(200);
+        expect(payload.meta.__search_side_effect_intents_pending).toBeUndefined();
+      };
+      await search("one shot first miss");
+      await search("one shot second miss");
+      await waitFor(() => {
+        const verify = new Database(dbPath, { readonly: true });
+        const count = (verify.query("SELECT COUNT(*) AS count FROM mem_audit_log WHERE action = 'read.search'").get() as { count: number }).count;
+        verify.close();
+        return count === 2;
+      }, 1_000);
+    } finally {
+      server.stop(true);
+      await core.shutdown("test");
+      if (previousOffload === undefined) delete process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+      else process.env.HARNESS_MEM_SEARCH_OFFLOAD = previousOffload;
+      if (previousWorker === undefined) delete process.env.HARNESS_MEM_SEARCH_WORKER;
+      else process.env.HARNESS_MEM_SEARCH_WORKER = previousWorker;
+      if (previousIdleGrace === undefined) delete process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_IDLE_GRACE_MS;
+      else process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_IDLE_GRACE_MS = previousIdleGrace;
+      if (previousMinBatch === undefined) delete process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MIN_BATCH;
+      else process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MIN_BATCH = previousMinBatch;
+      if (previousMaxAge === undefined) delete process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MAX_AGE_MS;
+      else process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MAX_AGE_MS = previousMaxAge;
+    }
+  });
+
+  test("one-shot synchronous spawn failure unwinds search and queue ownership", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-search-spawn-unwind-"));
+    dirs.push(dir);
+    const core = new HarnessMemCore(createTestConfig({
+      dbPath: join(dir, "spawn-unwind.db"),
+      backgroundWorkersEnabled: false,
+    }));
+    const internals = core as unknown as {
+      runSearchWithOneShotChild(request: Record<string, unknown>): Promise<unknown>;
+      searchChildPending: number;
+      backgroundMaintenanceWorker: { searchesInFlight: number } | null;
+    };
+    const originalSpawn = Bun.spawn;
+    try {
+      (Bun as unknown as { spawn: typeof Bun.spawn }).spawn = (() => {
+        throw new Error("synthetic spawn failure");
+      }) as typeof Bun.spawn;
+      await expect(internals.runSearchWithOneShotChild({
+        query: "spawn unwind",
+        project: dir,
+        vector_search: false,
+      })).rejects.toThrow("synthetic spawn failure");
+      expect(internals.searchChildPending).toBe(0);
+      expect(internals.backgroundMaintenanceWorker?.searchesInFlight).toBe(0);
+    } finally {
+      (Bun as unknown as { spawn: typeof Bun.spawn }).spawn = originalSpawn;
+      await core.shutdown("test");
+    }
+  });
+
+  test("a search in flight holds an unstarted remaining audit batch until the next idle grace", async () => {
+    const { client, dbPath, events } = makeClient({
+      blockMs: 100,
+      searchAuditFlushBatchLimit: 1,
+      searchAuditFlushIdleGraceMs: 20,
+      searchAuditFlushMinBatch: 1,
+      searchAuditFlushMaxAgeMs: 500,
+    });
+    const spool = new SearchSideEffectSpool(dbPath);
+    for (let index = 0; index < 2; index += 1) {
+      spool.append({
+        audits: [{
+          action: "read.search",
+          target_type: "project",
+          target_id: "private-project",
+          details: { query: `private-${index}`, limit: 1, include_private: false, count: 0, privacy_excluded_count: 0, boundary_excluded_count: 0 },
+        }],
+        access_count_ids: [],
+        created_at: "2026-08-20T00:00:00.000Z",
+      });
+    }
+    spool.close();
+
+    expect(client.schedule("search_audit_flush")).toBe(true);
+    await waitFor(() => client.activeTask() === "search_audit_flush");
+    client.searchStarted();
+    await waitFor(() => events.filter((event) =>
+      event.kind === "completed" && event.task === "search_audit_flush").length === 1);
+    await Bun.sleep(40);
+    expect(events.filter((event) => event.kind === "started" && event.task === "search_audit_flush")).toHaveLength(1);
+
+    client.searchFinished(1);
+    await waitFor(() => events.filter((event) =>
+      event.kind === "completed" && event.task === "search_audit_flush").length === 2);
+    const verify = new Database(dbPath, { readonly: true });
+    expect((verify.query("SELECT COUNT(*) AS count FROM mem_audit_log WHERE action = 'read.search'").get() as { count: number }).count).toBe(2);
+    verify.close();
+  });
+
   test("search audit flush is coalesced and applied by the maintenance process", async () => {
     const { client, dbPath, events } = makeClient();
     const spool = new SearchSideEffectSpool(dbPath);
@@ -506,16 +767,49 @@ describe("background maintenance persistent workers", () => {
     expect(JSON.stringify(event)).not.toMatch(/db_path|project|session|content|secret/i);
   });
 
-  test("manual requests remain FIFO and a queued checkpoint runs before the next manual request", async () => {
+  test("manual requests remain FIFO and queued priority is WAL then audit then consolidation", async () => {
     const { client, events } = makeClient({ blockMs: 100 });
     const first = client.runConsolidation({ reason: "manual", project: "p1", session_id: "s1" });
     await waitFor(() => client.activeTask() === "consolidation");
     const second = client.runConsolidation({ reason: "manual", project: "p2", session_id: "s2" });
+    expect(client.schedule("search_audit_flush")).toBe(true);
     expect(client.schedule("wal_checkpoint")).toBe(true);
     await Promise.all([first, second]);
     await waitFor(() => client.activeTask() === null && client.pendingTasks().length === 0);
     const completed = events.filter((event) => event.kind === "completed").map((event) => event.task);
-    expect(completed).toEqual(["consolidation", "wal_checkpoint", "consolidation"]);
+    expect(completed).toEqual(["consolidation", "wal_checkpoint", "search_audit_flush", "consolidation"]);
+  });
+
+  test("worker crash requeues audit behind a waiting WAL checkpoint", async () => {
+    const { client, events } = makeClient({ blockMs: 500, restartBackoffMs: 10 });
+    expect(client.schedule("search_audit_flush")).toBe(true);
+    await waitFor(() => client.activeTask() === "search_audit_flush" && client.workerPid() !== null);
+    expect(client.schedule("wal_checkpoint")).toBe(true);
+    process.kill(client.workerPid()!, "SIGKILL");
+    await waitFor(() => events.filter((event) => event.kind === "completed").length >= 2, 5_000);
+    expect(events.filter((event) => event.kind === "completed").map((event) => event.task))
+      .toEqual(["wal_checkpoint", "search_audit_flush"]);
+  });
+
+  test("idle audit becomes urgent after worker crash and a new search cannot cancel recovery", async () => {
+    const { client, events } = makeClient({
+      blockMs: 500,
+      restartBackoffMs: 100,
+      searchAuditFlushIdleGraceMs: 10,
+      searchAuditFlushMinBatch: 1,
+      searchAuditFlushMaxAgeMs: 5_000,
+    });
+    client.searchStarted();
+    client.searchFinished(1);
+    await waitFor(() => client.activeTask() === "search_audit_flush" && client.workerPid() !== null);
+    process.kill(client.workerPid()!, "SIGKILL");
+    await waitFor(() => client.pendingTasks().includes("search_audit_flush"));
+
+    client.searchStarted();
+    expect(client.pendingTasks()).toContain("search_audit_flush");
+    client.searchFinished(1);
+    await waitFor(() => events.some((event) =>
+      event.kind === "completed" && event.task === "search_audit_flush"), 5_000);
   });
 
   test("a real worker SQLite stall does not block daemon HTTP readiness or search", async () => {
@@ -811,10 +1105,14 @@ describe("background maintenance persistent workers", () => {
     const previousWorker = process.env.HARNESS_MEM_SEARCH_WORKER;
     const previousSearchDelay = process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS;
     const previousMaintenanceBlock = process.env.HARNESS_MEM_TEST_MAINTENANCE_WORKER_BLOCK_MS;
+    const previousAuditIdleGrace = process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_IDLE_GRACE_MS;
+    const previousAuditMinBatch = process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MIN_BATCH;
     process.env.HARNESS_MEM_SEARCH_OFFLOAD = "1";
     process.env.HARNESS_MEM_SEARCH_WORKER = "1";
     process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS = "600";
     process.env.HARNESS_MEM_TEST_MAINTENANCE_WORKER_BLOCK_MS = "100";
+    process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_IDLE_GRACE_MS = "1";
+    process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MIN_BATCH = "1";
     const config = createTestConfig({ dbPath, bindPort: 0, backgroundWorkersEnabled: false });
     const core = new HarnessMemCore(config);
     const server = startHarnessMemServer(core, config);
@@ -825,6 +1123,7 @@ describe("background maintenance persistent workers", () => {
         body: JSON.stringify({ query, project: dir, limit: 1, vector_search: false, strict_project: true }),
       });
       expect((await request("overlap warmup miss")).status).toBe(200);
+      await Bun.sleep(20);
       const response = await request("overlap measured miss");
       expect(response.status).toBe(200);
       const payload = await response.json() as { meta: { search_phase_timing?: Record<string, unknown> } };
@@ -847,6 +1146,10 @@ describe("background maintenance persistent workers", () => {
       else process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS = previousSearchDelay;
       if (previousMaintenanceBlock === undefined) delete process.env.HARNESS_MEM_TEST_MAINTENANCE_WORKER_BLOCK_MS;
       else process.env.HARNESS_MEM_TEST_MAINTENANCE_WORKER_BLOCK_MS = previousMaintenanceBlock;
+      if (previousAuditIdleGrace === undefined) delete process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_IDLE_GRACE_MS;
+      else process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_IDLE_GRACE_MS = previousAuditIdleGrace;
+      if (previousAuditMinBatch === undefined) delete process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MIN_BATCH;
+      else process.env.HARNESS_MEM_SEARCH_AUDIT_FLUSH_MIN_BATCH = previousAuditMinBatch;
     }
   });
 
