@@ -139,6 +139,19 @@ describe("forget-policy S81-B02", () => {
     expect(archived.sort()).toEqual(["a", "b"]);
   });
 
+  test("direct SQLite changes excludes recall-generation trigger writes from the eviction count", () => {
+    seed(db, { id: "trigger-a", session_id: "s1", created_at: daysAgo(200) });
+    seed(db, { id: "trigger-b", session_id: "s1", created_at: daysAgo(200) });
+
+    const result = db.query(`UPDATE mem_observations
+      SET archived_at = '2026-04-14T00:00:00.000Z'
+      WHERE id IN ('trigger-a', 'trigger-b')`).run() as { changes?: number };
+    const direct = db.query<{ changes: number }, []>("SELECT changes() AS changes").get();
+
+    expect(Number(result.changes ?? 0)).toBeGreaterThan(Number(direct?.changes ?? 0));
+    expect(Number(direct?.changes ?? 0)).toBe(2);
+  });
+
   test("wet mode downgrades to dry when HARNESS_MEM_AUTO_FORGET is absent", () => {
     seed(db, { id: "x", session_id: "s1", created_at: daysAgo(300), access_count: 0, signal_score: 0 });
     // env deliberately unset

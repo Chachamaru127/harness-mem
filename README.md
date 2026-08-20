@@ -209,6 +209,8 @@ Repeat-recall cache watermarks use transactionally maintained project, session,
 and global retrieval-auxiliary generations. Ready databases read three primary
 keys instead of scanning observations; a missing marker or trigger falls back
 to the legacy watermark scan until one atomic migration repairs readiness.
+Latest-interaction context keeps the same search/resume-pack response shape while
+excluding archived and expired turns through the indexed newest-first lookup.
 Scheduled consolidation processes one durable queue job per tick by default to
 bound same-database contention with search. Set
 `HARNESS_MEM_CONSOLIDATION_SCHEDULER_BATCH_SIZE` to 1–10 only after measuring

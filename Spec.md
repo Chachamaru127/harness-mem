@@ -515,6 +515,11 @@ second concurrent maintenance I/O lane against search.
   fixed `bounded_recent`/`fts` strategy enum, tokenize/primary SQL/fallback SQL/
   score durations, rows examined, and a fallback boolean. An explicit
   unattributed duration keeps the sum reconcilable with retrieval total.
+- Project/session search and resume-pack keep the `meta.latest_interaction`
+  response ABI for both generic and explicit latest-interaction intent. Its
+  lookup must apply the standard archived/expired observation filter before
+  ordering, so soft-deleted turns cannot become context and the existing
+  `(project, archived_at, created_at, id)` index bounds newest-first work.
 - A ready repeat-recall watermark is the tuple of project, session, and global
   retrieval-auxiliary generations. Observation insert/delete and updates to
   retrieval-relevant columns bump affected scopes in the same transaction;
@@ -525,6 +530,10 @@ second concurrent maintenance I/O lane against search.
   migration publishes a zero scoped baseline, the global auxiliary row,
   triggers, and readiness without scanning existing observations. This is safe
   because the repeat-recall cache is process-local and empty at startup.
+  Operator-facing mutation counts must use SQLite `changes()` immediately
+  after the top-level statement; driver totals that include generation-trigger
+  UPSERTs must never be reported as evicted, extracted, linked, compressed, or
+  project-alias row counts.
 
 ### Content dedupe ownership projection
 

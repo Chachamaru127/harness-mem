@@ -34,6 +34,7 @@
  */
 
 import { type Database } from "bun:sqlite";
+import { readDirectSqliteChanges } from "../core/core-utils";
 
 export interface ForgetPolicyWeights {
   access: number;
@@ -341,10 +342,11 @@ export function runForgetPolicy(
     const stmt = db.prepare(
       `UPDATE mem_observations SET archived_at = ?, updated_at = ? WHERE id IN (${placeholders}) AND archived_at IS NULL`
     );
-    const result = stmt.run(ts, ts, ...candidates.map((c) => c.observation_id)) as {
-      changes?: number;
-    };
-    evicted = Number(result.changes ?? candidates.length);
+    stmt.run(ts, ts, ...candidates.map((c) => c.observation_id));
+    // Bun's Statement.run().changes includes writes performed by AFTER UPDATE
+    // triggers. SQLite changes() reports only the observation rows updated by
+    // the immediately preceding statement, which is the operator-facing count.
+    evicted = readDirectSqliteChanges(db);
   }
 
   if (writeAudit) {

@@ -278,6 +278,92 @@ describe("search quality integration", () => {
     }
   });
 
+  test("generic and latest-intent search preserve active interaction context while excluding archived and expired turns", () => {
+    const { core, dir } = createCore("latest-active-only");
+    const dbPath = join(dir, "harness-mem.db");
+    try {
+      for (const interaction of [
+        { prefix: "active", session: "active-session", promptAt: "2026-02-14T00:00:00.000Z", responseAt: "2026-02-14T00:01:00.000Z" },
+        { prefix: "expired", session: "expired-session", promptAt: "2026-02-14T00:02:00.000Z", responseAt: "2026-02-14T00:03:00.000Z" },
+        { prefix: "archived", session: "archived-session", promptAt: "2026-02-14T00:04:00.000Z", responseAt: "2026-02-14T00:05:00.000Z" },
+      ]) {
+        core.recordEvent(makeEvent({
+          event_id: `${interaction.prefix}-prompt`,
+          platform: "claude",
+          session_id: interaction.session,
+          ts: interaction.promptAt,
+          payload: { content: `${interaction.prefix} visible prompt` },
+        }));
+        core.recordEvent(makeEvent({
+          event_id: `${interaction.prefix}-response`,
+          platform: "claude",
+          session_id: interaction.session,
+          event_type: "checkpoint",
+          ts: interaction.responseAt,
+          payload: { title: "assistant_response", content: `${interaction.prefix} visible answer` },
+        }));
+      }
+
+      const db = new Database(dbPath);
+      try {
+        db.exec(`UPDATE mem_observations
+          SET expires_at = '2026-03-01T00:00:00.000Z'
+          WHERE event_id IN ('expired-prompt', 'expired-response')`);
+        db.exec(`UPDATE mem_observations
+          SET archived_at = '2026-03-01T00:00:00.000Z'
+          WHERE event_id IN ('archived-prompt', 'archived-response')`);
+        const plan = db.query<{ detail: string }, [string]>(`EXPLAIN QUERY PLAN
+          SELECT o.id
+          FROM mem_observations o
+          LEFT JOIN mem_events e ON e.event_id = o.event_id
+          WHERE o.project = ?
+            AND o.archived_at IS NULL
+            AND (o.expires_at IS NULL OR o.expires_at > '2026-08-20T00:00:00.000Z')
+            AND (
+              e.event_type = 'user_prompt'
+              OR (e.event_type = 'checkpoint' AND o.title = 'assistant_response')
+            )
+          ORDER BY o.created_at DESC, o.id DESC
+          LIMIT 20`).all("search-quality");
+        const planText = plan.map((row) => row.detail).join("\n");
+        expect(planText).toContain("idx_mem_obs_project_archived_created");
+        expect(planText).not.toContain("USE TEMP B-TREE FOR ORDER BY");
+      } finally {
+        db.close();
+      }
+
+      const generic = core.search({
+        query: "unrelated infrastructure sentinel",
+        project: "search-quality",
+        strict_project: true,
+        include_private: true,
+        limit: 5,
+      });
+      expect(generic.ok).toBe(true);
+      const genericLatest = generic.meta.latest_interaction as Record<string, unknown>;
+      expect(genericLatest.session_id).toBe("active-session");
+      expect((genericLatest.response as Record<string, unknown>).content).toBe("active visible answer");
+
+      const latestIntent = core.search({
+        query: "直近を調べて",
+        project: "search-quality",
+        strict_project: true,
+        include_private: true,
+        limit: 5,
+      });
+      expect(latestIntent.ok).toBe(true);
+      const latestMeta = latestIntent.meta.latest_interaction as Record<string, unknown>;
+      expect(latestMeta.session_id).toBe("active-session");
+      expect((latestMeta.prompt as Record<string, unknown>).content).toBe("active visible prompt");
+      expect((latestMeta.response as Record<string, unknown>).content).toBe("active visible answer");
+      expect(String(asItems(latestIntent)[0]?.content || "")).toContain("active visible answer");
+      expect(String(asItems(latestIntent)[1]?.content || "")).toContain("active visible prompt");
+    } finally {
+      core.shutdown("test");
+      removeDirWithRetry(dir);
+    }
+  });
+
   test("private observations stay hidden by default and appear when requested", () => {
     const { core, dir } = createCore("privacy");
     try {

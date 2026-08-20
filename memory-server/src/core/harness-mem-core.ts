@@ -164,6 +164,7 @@ import {
   parseJsonSafe,
   parseBackendMode,
   getConfig,
+  readDirectSqliteChanges,
   resolveHomePath,
   resolveWorkspaceRootFromWorkspaceFile,
   resolveWorkspaceRootFromWorkspaceJson,
@@ -3357,8 +3358,8 @@ export class HarnessMemCore {
       const apply = this.db.transaction(() => {
         for (const [fromProject, toProject] of resolvedAliasMap) {
           for (const table of projectTables) {
-            const result = this.db.query(`UPDATE ${table} SET project = ? WHERE project = ?`).run(toProject, fromProject);
-            changed += Number((result as { changes?: number }).changes || 0);
+            this.db.query(`UPDATE ${table} SET project = ? WHERE project = ?`).run(toProject, fromProject);
+            changed += readDirectSqliteChanges(this.db);
           }
         }
 
@@ -10580,7 +10581,7 @@ export class HarnessMemCore {
       const projectClause = project ? `AND project = ?` : "";
       const pruneParams: unknown[] = project ? [now, now, now, project] : [now, now, now];
 
-      const result = this.db.query(
+      this.db.query(
         `UPDATE mem_facts
          SET valid_to = ?, invalidated_at = ?, updated_at = ?
          WHERE confidence < 0.5
@@ -10589,7 +10590,7 @@ export class HarnessMemCore {
            AND valid_to IS NULL
            ${projectClause}`
       ).run(...(pruneParams as []));
-      prunedCount = Number((result as { changes?: number }).changes ?? 0);
+      prunedCount = readDirectSqliteChanges(this.db);
     }
 
     if (strategy === "merge") {
@@ -10635,7 +10636,7 @@ export class HarnessMemCore {
           : [dup.fact_key, keepId];
         const projectFilt2 = project ? `AND project = ?` : "";
 
-        const dupResult = this.db.query(
+        this.db.query(
           `UPDATE mem_facts
            SET merged_into_fact_id = ?, updated_at = ?
            WHERE fact_key = ?
@@ -10645,7 +10646,7 @@ export class HarnessMemCore {
              AND valid_to IS NULL
              ${projectFilt2}`
         ).run(keepId, now, ...(dupFactParams as []));
-        mergedCount += Number((dupResult as { changes?: number }).changes ?? 0);
+        mergedCount += readDirectSqliteChanges(this.db);
       }
     }
 

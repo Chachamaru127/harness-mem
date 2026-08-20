@@ -11,6 +11,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -64,6 +65,53 @@ function makeEvent(title: string, content: string, project = "test-proj", sessio
 }
 
 describe("COMP-006: メモリ圧縮エンジン", () => {
+  test("recall-generation triggers do not inflate direct fact prune counts", async () => {
+    const config = createConfig("trigger-count");
+    const core = new HarnessMemCore(config);
+    try {
+      const db = new Database(config.dbPath);
+      try {
+        db.exec(`INSERT INTO mem_sessions(
+          session_id, platform, project, started_at, created_at, updated_at
+        ) VALUES (
+          'sess-compress', 'test', 'test-proj',
+          '2026-08-20T00:00:00.000Z', '2026-08-20T00:00:00.000Z', '2026-08-20T00:00:00.000Z'
+        )`);
+        db.exec(`INSERT INTO mem_observations(
+          id, platform, project, session_id, title, content, content_redacted,
+          tags_json, privacy_tags_json, created_at, updated_at
+        ) VALUES (
+          'trigger-observation', 'test', 'test-proj', 'sess-compress', 'anchor', 'anchor', 'anchor',
+          '[]', '[]', '2026-08-20T00:00:00.000Z', '2026-08-20T00:00:00.000Z'
+        )`);
+        for (const index of [1, 2]) {
+          db.query(`INSERT INTO mem_facts(
+            fact_id, observation_id, project, session_id, fact_type, fact_key,
+            fact_value, confidence, valid_from, created_at, updated_at
+          ) VALUES (?, ?, 'test-proj', 'sess-compress', 'context', ?, ?, 0.1, ?, ?, ?)`)
+            .run(
+              `trigger-fact-${index}`,
+              "trigger-observation",
+              `trigger-key-${index}`,
+              `trigger-value-${index}`,
+              "2026-08-20T00:00:00.000Z",
+              "2026-08-20T00:00:00.000Z",
+              "2026-08-20T00:00:00.000Z",
+            );
+        }
+      } finally {
+        db.close();
+      }
+
+      const result = await core.compressMemory({ strategy: "prune", project: "test-proj" });
+      expect(result.observations_before).toBe(2);
+      expect(result.observations_after).toBe(0);
+      expect(result.pruned_count).toBe(2);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
   test("正常: prune 戦略で低 confidence ファクトが削除される", async () => {
     const core = new HarnessMemCore(createConfig("prune"));
     // 観察を記録

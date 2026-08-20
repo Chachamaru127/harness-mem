@@ -21,6 +21,16 @@ export function nowIso(): string {
 }
 
 /**
+ * Count rows changed by the immediately preceding top-level statement.
+ * Bun's Statement.run().changes also includes AFTER-trigger writes, which is
+ * unsuitable for operator-facing counts once recall-generation triggers run.
+ */
+export function readDirectSqliteChanges(db: Database): number {
+  const row = db.query<{ changes: number }, []>("SELECT changes() AS changes").get();
+  return Number(row?.changes ?? 0);
+}
+
+/**
  * S78-D01: expires_at 正規化。
  * - ISO-8601 文字列: そのまま検証して返す
  * - Unix 秒 (number): ISO-8601 に変換

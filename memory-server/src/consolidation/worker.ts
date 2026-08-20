@@ -2,7 +2,7 @@ import { type Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { dedupeFacts, buildSupersededDecisions, type ConsolidationFact } from "./deduper";
 import { extractFacts, llmExtractWithDiff, type ExistingFact } from "./extractor";
-import { expiredFilterSql, segmentJapaneseForFts, tokenize as tokenizeText } from "../core/core-utils";
+import { expiredFilterSql, readDirectSqliteChanges, segmentJapaneseForFts, tokenize as tokenizeText } from "../core/core-utils";
 import { redactSecrets, stripPrivateBlocks } from "../core/privacy-tags";
 
 export interface ConsolidationRunOptions {
@@ -562,7 +562,7 @@ async function upsertFactsForSession(
         const factValidTo = observation.valid_to ?? null;
         const factSupersedes = diffResult.supersedes[i] ?? observation.supersedes ?? null;
         const factInvalidatedAt = observation.invalidated_at ?? null;
-        const row = db
+        db
           .query(
             `
               INSERT OR IGNORE INTO mem_facts(
@@ -603,7 +603,7 @@ async function upsertFactsForSession(
             validFrom,
             validFrom
           );
-        const changes = Number((row as { changes?: number }).changes ?? 0);
+        const changes = readDirectSqliteChanges(db);
         inserted += changes;
         newFactIds.push(factId);
 
@@ -685,7 +685,7 @@ async function upsertFactsForSession(
         const factValidTo = observation.valid_to ?? null;
         const factSupersedes = observation.supersedes ?? null;
         const factInvalidatedAt = observation.invalidated_at ?? null;
-        const row = db
+        db
           .query(
             `
               INSERT OR IGNORE INTO mem_facts(
@@ -726,7 +726,7 @@ async function upsertFactsForSession(
             validFrom,
             validFrom
           );
-        inserted += Number((row as { changes?: number }).changes ?? 0);
+        inserted += readDirectSqliteChanges(db);
 
         // 自動推薦タグを mem_tags に挿入する（重複は IGNORE で無視）
         if (Array.isArray(fact.auto_tags)) {
@@ -836,21 +836,21 @@ function generateDerivesLinks(db: Database, project: string, sessionId: string):
 
       // derives リンクを双方向に挿入
       const weight = Number((0.5 + similarity).toFixed(4)); // 0.55〜0.85
-      const row1 = db
+      db
         .query(
           `INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
            VALUES (?, ?, 'derives', ?, ?)`
         )
         .run(fi.observation_id, fj.observation_id, weight, nowTs);
-      const changes1 = Number((row1 as { changes?: number }).changes ?? 0);
+      const changes1 = readDirectSqliteChanges(db);
 
-      const row2 = db
+      db
         .query(
           `INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
            VALUES (?, ?, 'derives', ?, ?)`
         )
         .run(fj.observation_id, fi.observation_id, weight, nowTs);
-      const changes2 = Number((row2 as { changes?: number }).changes ?? 0);
+      const changes2 = readDirectSqliteChanges(db);
 
       linksCreated += changes1 + changes2;
     }

@@ -1175,6 +1175,7 @@ export class ObservationStore {
 
     sql += this.deps.platformVisibilityFilterSql("o");
     sql += visibilityFilterSql("o", options.include_private);
+    sql += archivedFilterSql("o", false);
 
     if (options.user_id) {
       if (options.team_id) {

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -327,6 +328,47 @@ describe("resume-pack integration behavior", () => {
           content: "We decided to ship a continuity briefing and fix adapter delivery next.",
         },
       });
+      recordEvent(core, {
+        event_id: "briefing-expired-user",
+        project,
+        session_id: "expired-session",
+        ts: "2026-02-20T04:01:00.000Z",
+        payload: { content: "expired newer prompt" },
+      });
+      recordEvent(core, {
+        event_id: "briefing-expired-assistant",
+        project,
+        session_id: "expired-session",
+        event_type: "checkpoint",
+        ts: "2026-02-20T04:01:05.000Z",
+        payload: { title: "assistant_response", content: "expired newer answer" },
+      });
+      recordEvent(core, {
+        event_id: "briefing-archived-user",
+        project,
+        session_id: "archived-session",
+        ts: "2026-02-20T04:02:00.000Z",
+        payload: { content: "archived newest prompt" },
+      });
+      recordEvent(core, {
+        event_id: "briefing-archived-assistant",
+        project,
+        session_id: "archived-session",
+        event_type: "checkpoint",
+        ts: "2026-02-20T04:02:05.000Z",
+        payload: { title: "assistant_response", content: "archived newest answer" },
+      });
+      const db = new Database(join(runtime.dir, "harness-mem.db"));
+      try {
+        db.exec(`UPDATE mem_observations
+          SET expires_at = '2026-03-01T00:00:00.000Z'
+          WHERE event_id IN ('briefing-expired-user', 'briefing-expired-assistant')`);
+        db.exec(`UPDATE mem_observations
+          SET archived_at = '2026-03-01T00:00:00.000Z'
+          WHERE event_id IN ('briefing-archived-user', 'briefing-archived-assistant')`);
+      } finally {
+        db.close();
+      }
 
       const finalizeResponse = core.finalizeSession({
         session_id: "previous-session",
