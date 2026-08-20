@@ -66,6 +66,12 @@ export interface BackgroundMaintenanceWorkerClientOptions {
   stopOwnedProcess?: typeof stopOwnedSearchWorkerProcess;
 }
 
+export interface SearchAuditFlushRunState {
+  readonly run_id: string;
+  readonly started_at_ms: number;
+  finished_at_ms: number | null;
+}
+
 export function shouldRetryWalCheckpoint(event: MaintenanceProgress): boolean {
   if (event.task !== "wal_checkpoint") return false;
   if (event.kind === "failed") return true;
@@ -116,6 +122,7 @@ export class BackgroundMaintenanceWorkerClient {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private searchAuditFlushRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private searchAuditFlushRetryAttempt = 0;
+  private activeSearchAuditFlushRunState: SearchAuditFlushRunState | null = null;
 
   constructor(private readonly options: BackgroundMaintenanceWorkerClientOptions) {}
 
@@ -169,6 +176,10 @@ export class BackgroundMaintenanceWorkerClient {
   activeTask(): MaintenanceTask | null {
     const task = this.active?.task;
     return task === "recover_consolidation" ? null : task ?? null;
+  }
+
+  activeSearchAuditFlushRun(): SearchAuditFlushRunState | null {
+    return this.activeSearchAuditFlushRunState;
   }
 
   workerPid(): number | null {
@@ -229,6 +240,13 @@ export class BackgroundMaintenanceWorkerClient {
       this.ensureStarted();
       if (!this.stdin) throw new Error("background maintenance worker unavailable");
       this.active = { ...entry, startedAtMs: Date.now() };
+      if (entry.task === "search_audit_flush") {
+        this.activeSearchAuditFlushRunState = {
+          run_id: entry.id,
+          started_at_ms: this.active.startedAtMs,
+          finished_at_ms: null,
+        };
+      }
       if (entry.task !== "recover_consolidation") {
         this.emit({ kind: "started", task: entry.task, queue_depth: this.queue.length });
       }
@@ -442,6 +460,12 @@ export class BackgroundMaintenanceWorkerClient {
   private finishActive(): void {
     if (this.timeout) clearTimeout(this.timeout);
     this.timeout = null;
+    if (this.active?.task === "search_audit_flush") {
+      if (this.activeSearchAuditFlushRunState?.run_id === this.active.id) {
+        this.activeSearchAuditFlushRunState.finished_at_ms = Date.now();
+      }
+      this.activeSearchAuditFlushRunState = null;
+    }
     if (this.active?.scheduler && this.active.task !== "recover_consolidation") {
       this.scheduled.delete(this.active.task);
     }

@@ -26,6 +26,10 @@ export const RECALL_TELEMETRY_METRIC_NAMES = [
   "recall_cache_hit_count",
   "recall_cache_miss_count",
   "adr_recall_count",
+  "recall_watermark_cache_lookup_ms",
+  "recall_retrieval_total_ms",
+  "recall_spool_append_commit_ms",
+  "recall_audit_flush_overlap_ms",
 ] as const;
 
 export type RecallTelemetryMetricName = (typeof RECALL_TELEMETRY_METRIC_NAMES)[number];
@@ -140,6 +144,8 @@ const RECALL_TELEMETRY_ALLOWED_ATTRIBUTE_SET = new Set<string>([
   "recall.cache.ttl_ms",
   "recall.cache.age_ms",
   "recall.cache.data_watermark_hash",
+  "recall.audit_flush_active_at_search_start",
+  "recall.spool_append_commit_complete",
   "recall.projection.generation",
   "recall.projection.status",
   "recall.projection.source_watermark_hash",

@@ -147,8 +147,15 @@ describe("S128-008 recall semantic telemetry", () => {
       "recall_cache_hit_count",
       "recall_cache_miss_count",
       "adr_recall_count",
+      "recall_watermark_cache_lookup_ms",
+      "recall_retrieval_total_ms",
+      "recall_spool_append_commit_ms",
+      "recall_audit_flush_overlap_ms",
     ]);
     expect(recallTelemetryAllowedAttributes()).toContain("metric.recall_latency_ms");
+    expect(recallTelemetryAllowedAttributes()).toContain("metric.recall_spool_append_commit_ms");
+    expect(recallTelemetryAllowedAttributes()).toContain("recall.audit_flush_active_at_search_start");
+    expect(recallTelemetryAllowedAttributes()).toContain("recall.spool_append_commit_complete");
     expect(recallTelemetryAllowedAttributes()).toContain("recall.cache.key_hash");
   });
 
@@ -176,6 +183,8 @@ describe("S128-008 recall semantic telemetry", () => {
         "recall.session_present": false,
         "recall.cache.hit": true,
         "recall.cache.key_hash": "abc123",
+        "recall.audit_flush_active_at_search_start": false,
+        "recall.spool_append_commit_complete": true,
         "query": "raw user prompt must not leave process",
         "project": "raw-project-name",
         "content": "raw observation content",
@@ -186,6 +195,10 @@ describe("S128-008 recall semantic telemetry", () => {
         recall_latency_ms: 12.5,
         recall_cache_hit_count: 1,
         fallback_count: 0,
+        recall_watermark_cache_lookup_ms: 1.25,
+        recall_retrieval_total_ms: 2.5,
+        recall_spool_append_commit_ms: 8.75,
+        recall_audit_flush_overlap_ms: 0,
       },
     );
     await runtime.flush("test");
@@ -195,8 +208,14 @@ describe("S128-008 recall semantic telemetry", () => {
     const attrs = plainAttributes(span!);
     expect(attrs["recall.scope"]).toBe("project");
     expect(attrs["recall.cache.key_hash"]).toBe("abc123");
+    expect(attrs["recall.audit_flush_active_at_search_start"]).toBe(false);
+    expect(attrs["recall.spool_append_commit_complete"]).toBe(true);
     expect(attrs["metric.recall_latency_ms"]).toBe(12.5);
     expect(attrs["metric.recall_cache_hit_count"]).toBe(1);
+    expect(attrs["metric.recall_watermark_cache_lookup_ms"]).toBe(1.25);
+    expect(attrs["metric.recall_retrieval_total_ms"]).toBe(2.5);
+    expect(attrs["metric.recall_spool_append_commit_ms"]).toBe(8.75);
+    expect(attrs["metric.recall_audit_flush_overlap_ms"]).toBe(0);
     expect(attrs.query).toBeUndefined();
     expect(attrs.project).toBeUndefined();
     expect(attrs.content).toBeUndefined();

@@ -500,6 +500,14 @@ second concurrent maintenance I/O lane against search.
   `audit_backpressure` diagnostics.
   Protocol and telemetry expose counts/error codes only, never query, project,
   IDs, paths, or intent payloads.
+- Search phase diagnostics expose fixed scalar fields only: watermark/cache
+  lookup, retrieval total, durable spool append/commit, worker total, request
+  total, and whether an audit flush was already active when search started with
+  its same-run bounded overlap duration. A worker timeout retains the last
+  completed phase, the elapsed in-progress spool phase, and an explicit false
+  completion flag. They must not contain query, project, path,
+  session, hash, correlation identifier, or other request-derived values.
+  These measurements do not weaken the pre-response durable-intent contract.
 
 ### Content dedupe ownership projection
 

@@ -422,6 +422,16 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
         "ttl_ms": "number",
       },
       "recall_cache_hit": "boolean",
+      "search_phase_timing": {
+        "audit_flush_active_at_search_start": "boolean",
+        "audit_flush_overlap_elapsed_ms": "number",
+        "retrieval_total_ms": "number",
+        "spool_append_commit_complete": "null",
+        "spool_append_commit_ms": "null",
+        "total_ms": "number",
+        "watermark_cache_lookup_ms": "number",
+        "worker_total_ms": "null",
+      },
       "sla_latency_ms": "number",
       "token_estimate": {
         "estimated_input_tokens": "number",

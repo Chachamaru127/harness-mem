@@ -202,6 +202,10 @@ boundedなSQLite spoolへ耐久保存します。main DBへの反映はmaintenan
 DB audit commitを待たず、監査の耐久性も維持します。spool backpressureは固定errorで
 fail closedし、worker進捗へquery、project、ID、pathを出しません。flush失敗は有限の
 coalesced指数backoffでretryし、未反映intentはdurable spoolに残して次回回収します。
+cache miss応答の`search_phase_timing`はwatermark/cache lookup、retrieval、durable spool
+append/commit、worker、total、audit flush overlapを固定scalarだけで示します。request由来の
+識別子は含めず、耐久性の挙動も変更しません。
+worker timeoutでも完了済みretrievalと処理中spoolの経過を残し、未完了flagを明示します。
 定期consolidationは、searchとの同一DB競合時間を区切るため、既定で1 tickにつき
 durable queue 1件だけ進めます。`HARNESS_MEM_CONSOLIDATION_SCHEDULER_BATCH_SIZE`
 は1〜10で変更できますが、本番search latencyを実測した場合だけ引き上げます。

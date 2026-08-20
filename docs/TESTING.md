@@ -158,7 +158,7 @@ bun test memory-server/tests/unit/postgres-adapter.test.ts
 | `mem-links-relation.test.ts` | リンク関係 |
 | `derives-links.test.ts` | derives リンク推論 |
 | `audn-consolidation.test.ts` | 統合処理 |
-| `background-maintenance-worker.test.ts` | consolidation / WAL checkpoint の子プロセス隔離、FIFO/coalesce、timeout、停止・回収 |
+| `background-maintenance-worker.test.ts` | consolidation / WAL checkpoint の子プロセス隔離、FIFO/coalesce、timeout、停止・回収、実HTTP search phase帰属 |
 | `search-side-effect-spool.test.ts` | search audit/access-count intent の0600耐久spool、bounded backpressure、FIFO、crash replay冪等性、shutdown drain |
 | `external-connectors.test.ts` | 外部コネクタ |
 | `knowledge-connector.test.ts` | ナレッジコネクタ |

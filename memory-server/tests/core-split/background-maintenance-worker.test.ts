@@ -137,6 +137,26 @@ describe("background maintenance persistent workers", () => {
     }
   });
 
+  test("a captured audit flush run retains its finish time across more than 32 successors", async () => {
+    const { client, events } = makeClient({ blockMs: 10 });
+    expect(client.schedule("search_audit_flush")).toBe(true);
+    await waitFor(() => client.activeSearchAuditFlushRun() !== null);
+    const captured = client.activeSearchAuditFlushRun()!;
+    await waitFor(() => captured.finished_at_ms !== null);
+    const finishedAt = captured.finished_at_ms;
+
+    for (let index = 0; index < 33; index += 1) {
+      const completedBefore = events.filter((event) =>
+        event.kind === "completed" && event.task === "search_audit_flush").length;
+      expect(client.schedule("search_audit_flush")).toBe(true);
+      await waitFor(() => events.filter((event) =>
+        event.kind === "completed" && event.task === "search_audit_flush").length > completedBefore);
+    }
+
+    expect(captured.finished_at_ms).toBe(finishedAt);
+    expect(JSON.stringify(events)).not.toContain(captured.run_id);
+  });
+
   test("literal tilde DB path is shared by search append and maintenance recovery", async () => {
     const home = mkdtempSync(join(tmpdir(), "harness-mem-search-tilde-home-"));
     dirs.push(home);
@@ -594,6 +614,189 @@ describe("background maintenance persistent workers", () => {
       else process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS = previousWorkerMarker;
       if (previousMax === undefined) delete process.env.HARNESS_MEM_SEARCH_AUDIT_SPOOL_MAX;
       else process.env.HARNESS_MEM_SEARCH_AUDIT_SPOOL_MAX = previousMax;
+    }
+  });
+
+  test("actual HTTP cache miss attributes a synchronous spool stall to fixed privacy-safe phases", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-search-phase-http-"));
+    dirs.push(dir);
+    const dbPath = join(dir, "phase.db");
+    const bootstrap = new HarnessMemCore(createTestConfig({ dbPath, backgroundWorkersEnabled: false }));
+    bootstrap.recordEvent({
+      event_id: "phase-event",
+      platform: "codex",
+      project: dir,
+      session_id: "phase-session",
+      event_type: "user_prompt",
+      ts: "2026-08-20T00:00:00.000Z",
+      payload: { content: "private phase timing target" },
+      tags: [],
+      privacy_tags: [],
+    });
+    await bootstrap.shutdown("bootstrap");
+
+    const previousOffload = process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+    const previousWorker = process.env.HARNESS_MEM_SEARCH_WORKER;
+    const previousDelay = process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS;
+    process.env.HARNESS_MEM_SEARCH_OFFLOAD = "1";
+    process.env.HARNESS_MEM_SEARCH_WORKER = "1";
+    process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS = "300";
+    const config = createTestConfig({ dbPath, bindPort: 0, backgroundWorkersEnabled: false });
+    const core = new HarnessMemCore(config);
+    const server = startHarnessMemServer(core, config);
+    const privateQuery = "private phase timing target";
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}/v1/search`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: privateQuery, project: dir, limit: 1, vector_search: false, strict_project: true }),
+      });
+      expect(response.status).toBe(200);
+      const payload = await response.json() as { meta: { search_phase_timing?: Record<string, unknown> } };
+      const timing = payload.meta.search_phase_timing!;
+      expect(Object.keys(timing).sort()).toEqual([
+        "audit_flush_active_at_search_start",
+        "audit_flush_overlap_elapsed_ms",
+        "retrieval_total_ms",
+        "spool_append_commit_complete",
+        "spool_append_commit_ms",
+        "total_ms",
+        "watermark_cache_lookup_ms",
+        "worker_total_ms",
+      ]);
+      expect(timing.spool_append_commit_ms).toBeGreaterThanOrEqual(250);
+      expect(timing.spool_append_commit_complete).toBe(true);
+      expect(timing.retrieval_total_ms).toBeLessThan(200);
+      expect(timing.worker_total_ms).toBeGreaterThanOrEqual(timing.spool_append_commit_ms as number);
+      expect(timing.total_ms).toBeGreaterThanOrEqual(timing.worker_total_ms as number);
+      expect(timing.audit_flush_active_at_search_start).toBe(false);
+      expect(timing.audit_flush_overlap_elapsed_ms).toBe(0);
+      expect(JSON.stringify(timing)).not.toContain(privateQuery);
+      expect(JSON.stringify(timing)).not.toContain(dir);
+      expect(JSON.stringify(timing)).not.toContain("phase-session");
+    } finally {
+      server.stop(true);
+      await core.shutdown("test");
+      if (previousOffload === undefined) delete process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+      else process.env.HARNESS_MEM_SEARCH_OFFLOAD = previousOffload;
+      if (previousWorker === undefined) delete process.env.HARNESS_MEM_SEARCH_WORKER;
+      else process.env.HARNESS_MEM_SEARCH_WORKER = previousWorker;
+      if (previousDelay === undefined) delete process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS;
+      else process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS = previousDelay;
+    }
+  });
+
+  test("actual worker timeout preserves privacy-safe in-progress spool attribution", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-search-phase-timeout-"));
+    dirs.push(dir);
+    const dbPath = join(dir, "phase-timeout.db");
+    const bootstrap = new HarnessMemCore(createTestConfig({ dbPath, backgroundWorkersEnabled: false }));
+    await bootstrap.shutdown("bootstrap");
+
+    const previousOffload = process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+    const previousWorker = process.env.HARNESS_MEM_SEARCH_WORKER;
+    const previousTimeout = process.env.HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS;
+    const previousDelay = process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS;
+    const previousDelayAfter = process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_DELAY_AFTER_COUNT;
+    process.env.HARNESS_MEM_SEARCH_OFFLOAD = "1";
+    process.env.HARNESS_MEM_SEARCH_WORKER = "1";
+    process.env.HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS = "250";
+    process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS = "600";
+    process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_DELAY_AFTER_COUNT = "1";
+    const config = createTestConfig({ dbPath, bindPort: 0, backgroundWorkersEnabled: false });
+    const core = new HarnessMemCore(config);
+    const server = startHarnessMemServer(core, config);
+    const privateQuery = "private timeout phase target";
+    try {
+      const warm = await fetch(`http://127.0.0.1:${server.port}/v1/search`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: "phase warmup miss", project: dir, limit: 1, vector_search: false, strict_project: true }),
+      });
+      expect(warm.status).toBe(200);
+      const response = await fetch(`http://127.0.0.1:${server.port}/v1/search`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: privateQuery, project: dir, limit: 1, vector_search: false, strict_project: true }),
+      });
+      expect(response.status).toBe(200);
+      const payload = await response.json() as { meta: { search_phase_timing?: Record<string, unknown> } };
+      const timing = payload.meta.search_phase_timing!;
+      expect(typeof timing.retrieval_total_ms).toBe("number");
+      expect(typeof timing.spool_append_commit_ms).toBe("number");
+      expect(timing.spool_append_commit_complete).toBe(false);
+      expect(timing.worker_total_ms).toBeNull();
+      expect(typeof timing.total_ms).toBe("number");
+      const spoolElapsedMs = Number(timing.spool_append_commit_ms);
+      const totalElapsedMs = Number(timing.total_ms);
+      expect(Number.isFinite(spoolElapsedMs)).toBe(true);
+      expect(spoolElapsedMs).toBeGreaterThanOrEqual(150);
+      expect(totalElapsedMs).toBeGreaterThanOrEqual(spoolElapsedMs);
+      expect(JSON.stringify(timing)).not.toContain(privateQuery);
+      expect(JSON.stringify(timing)).not.toContain(dir);
+    } finally {
+      server.stop(true);
+      await core.shutdown("test");
+      if (previousOffload === undefined) delete process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+      else process.env.HARNESS_MEM_SEARCH_OFFLOAD = previousOffload;
+      if (previousWorker === undefined) delete process.env.HARNESS_MEM_SEARCH_WORKER;
+      else process.env.HARNESS_MEM_SEARCH_WORKER = previousWorker;
+      if (previousTimeout === undefined) delete process.env.HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS;
+      else process.env.HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS = previousTimeout;
+      if (previousDelay === undefined) delete process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS;
+      else process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS = previousDelay;
+      if (previousDelayAfter === undefined) delete process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_DELAY_AFTER_COUNT;
+      else process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_DELAY_AFTER_COUNT = previousDelayAfter;
+    }
+  });
+
+  test("audit flush overlap is bounded to the run active when search started", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-search-flush-overlap-"));
+    dirs.push(dir);
+    const dbPath = join(dir, "overlap.db");
+    const bootstrap = new HarnessMemCore(createTestConfig({ dbPath, backgroundWorkersEnabled: false }));
+    await bootstrap.shutdown("bootstrap");
+
+    const previousOffload = process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+    const previousWorker = process.env.HARNESS_MEM_SEARCH_WORKER;
+    const previousSearchDelay = process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS;
+    const previousMaintenanceBlock = process.env.HARNESS_MEM_TEST_MAINTENANCE_WORKER_BLOCK_MS;
+    process.env.HARNESS_MEM_SEARCH_OFFLOAD = "1";
+    process.env.HARNESS_MEM_SEARCH_WORKER = "1";
+    process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS = "600";
+    process.env.HARNESS_MEM_TEST_MAINTENANCE_WORKER_BLOCK_MS = "100";
+    const config = createTestConfig({ dbPath, bindPort: 0, backgroundWorkersEnabled: false });
+    const core = new HarnessMemCore(config);
+    const server = startHarnessMemServer(core, config);
+    try {
+      const request = (query: string) => fetch(`http://127.0.0.1:${server.port}/v1/search`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query, project: dir, limit: 1, vector_search: false, strict_project: true }),
+      });
+      expect((await request("overlap warmup miss")).status).toBe(200);
+      const response = await request("overlap measured miss");
+      expect(response.status).toBe(200);
+      const payload = await response.json() as { meta: { search_phase_timing?: Record<string, unknown> } };
+      const timing = payload.meta.search_phase_timing!;
+      const overlapMs = Number(timing.audit_flush_overlap_elapsed_ms);
+      const totalMs = Number(timing.total_ms);
+      expect(timing.audit_flush_active_at_search_start).toBe(true);
+      expect(overlapMs).toBeGreaterThanOrEqual(50);
+      expect(overlapMs).toBeLessThan(500);
+      expect(totalMs).toBeGreaterThanOrEqual(550);
+      expect(overlapMs).toBeLessThan(totalMs - 100);
+    } finally {
+      server.stop(true);
+      await core.shutdown("test");
+      if (previousOffload === undefined) delete process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+      else process.env.HARNESS_MEM_SEARCH_OFFLOAD = previousOffload;
+      if (previousWorker === undefined) delete process.env.HARNESS_MEM_SEARCH_WORKER;
+      else process.env.HARNESS_MEM_SEARCH_WORKER = previousWorker;
+      if (previousSearchDelay === undefined) delete process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS;
+      else process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS = previousSearchDelay;
+      if (previousMaintenanceBlock === undefined) delete process.env.HARNESS_MEM_TEST_MAINTENANCE_WORKER_BLOCK_MS;
+      else process.env.HARNESS_MEM_TEST_MAINTENANCE_WORKER_BLOCK_MS = previousMaintenanceBlock;
     }
   });
 

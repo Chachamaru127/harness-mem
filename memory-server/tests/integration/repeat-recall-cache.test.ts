@@ -73,6 +73,12 @@ describe("repeat recall query cache", () => {
       expect(first.ok).toBe(true);
       expect(first.meta.recall_cache_hit).toBe(false);
       expect(JSON.stringify(first.meta.recall_cache)).not.toContain("projection cache sentinel alpha");
+      expect(first.meta.search_phase_timing).toMatchObject({
+        watermark_cache_lookup_ms: expect.any(Number),
+        retrieval_total_ms: expect.any(Number),
+        spool_append_commit_ms: null,
+        total_ms: expect.any(Number),
+      });
 
       const second = await core.searchPrepared({
         query: "projection cache sentinel alpha",
@@ -82,6 +88,13 @@ describe("repeat recall query cache", () => {
       });
       expect(second.ok).toBe(true);
       expect(second.meta.recall_cache_hit).toBe(true);
+      expect(second.meta.search_phase_timing).toMatchObject({
+        watermark_cache_lookup_ms: expect.any(Number),
+        retrieval_total_ms: null,
+        spool_append_commit_ms: null,
+        worker_total_ms: null,
+        total_ms: expect.any(Number),
+      });
 
       core.recordEvent(event({
         event_id: "evt-b",
@@ -121,6 +134,43 @@ describe("repeat recall query cache", () => {
       expect(second.meta.recall_cache_hit).toBeUndefined();
     } finally {
       core.shutdown("test");
+    }
+  });
+
+  test("local cache miss attributes a synchronous spool stall without identifiers", async () => {
+    const previousWorkerMarker = process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS;
+    const previousDelay = process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS;
+    process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS = "1";
+    const { core, dir } = makeCore("phase-local");
+    try {
+      core.recordEvent(event({
+        event_id: "evt-phase-local",
+        project: dir,
+        session_id: "private-phase-session",
+        payload: { content: "private local phase target" },
+      }));
+      process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS = "100";
+      const response = await core.searchPrepared({
+        query: "private local phase target",
+        project: dir,
+        limit: 1,
+        vector_search: false,
+        strict_project: true,
+      });
+      const timing = response.meta.search_phase_timing as Record<string, unknown>;
+      expect(timing.spool_append_commit_ms).toBeGreaterThanOrEqual(80);
+      expect(timing.retrieval_total_ms).toBeLessThan(100);
+      expect(timing.worker_total_ms).toBeNull();
+      expect(timing.total_ms).toBeGreaterThanOrEqual(timing.spool_append_commit_ms as number);
+      expect(JSON.stringify(timing)).not.toContain("private local phase target");
+      expect(JSON.stringify(timing)).not.toContain(dir);
+      expect(JSON.stringify(timing)).not.toContain("private-phase-session");
+    } finally {
+      await core.shutdown("test");
+      if (previousWorkerMarker === undefined) delete process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS;
+      else process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS = previousWorkerMarker;
+      if (previousDelay === undefined) delete process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS;
+      else process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS = previousDelay;
     }
   });
 });

@@ -139,6 +139,7 @@ function validateIntent(value: unknown): SearchSideEffectIntent {
 
 export class SearchSideEffectSpool {
   private readonly db: Database;
+  private appendCount = 0;
 
   constructor(
     dbPath: string,
@@ -156,6 +157,14 @@ export class SearchSideEffectSpool {
       const validated = validateIntent(intent);
       const payload = JSON.stringify(validated);
       if (Buffer.byteLength(payload) > MAX_PAYLOAD_BYTES) throw new SearchAuditBackpressureError();
+      if (process.env.NODE_ENV === "test") {
+        const delayMs = Number(process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_APPEND_DELAY_MS || 0);
+        const delayAfterCount = Number(process.env.HARNESS_MEM_TEST_SEARCH_AUDIT_SPOOL_DELAY_AFTER_COUNT || 0);
+        this.appendCount += 1;
+        if (Number.isFinite(delayMs) && delayMs > 0 && this.appendCount > Math.max(0, delayAfterCount)) {
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(5_000, Math.floor(delayMs)));
+        }
+      }
       const intentId = randomUUID();
       const append = this.db.transaction(() => {
         const row = this.db.query("SELECT COUNT(*) AS count FROM search_side_effect_intents").get() as { count: number };

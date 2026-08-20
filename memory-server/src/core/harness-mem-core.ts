@@ -1014,11 +1014,19 @@ interface SearchWorkerResponseEnvelope {
   ok?: boolean;
   response?: ApiResponse;
   error?: string;
-  type?: "ready" | "warmup";
+  type?: "ready" | "warmup" | "phase";
   pid?: number;
   warmup_ms?: number | null;
   warmup_error?: string;
   side_effect_intents_pending?: number;
+  phase?: "retrieval_complete" | "spool_complete";
+  elapsed_ms?: number;
+}
+
+interface SearchWorkerPhaseTiming {
+  retrieval_total_ms: number | null;
+  spool_append_commit_ms: number | null;
+  spool_append_commit_complete: boolean | null;
 }
 
 interface SearchWorkerResult {
@@ -1034,6 +1042,15 @@ interface PendingSearchWorkerRequest {
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
   readyAtStart: boolean;
+  phaseTiming: SearchWorkerPhaseTiming;
+  spoolPhaseReceivedAtMs: number | null;
+}
+
+class SearchWorkerRequestTimeoutError extends Error {
+  constructor(timeoutMs: number, readonly phaseTiming: SearchWorkerPhaseTiming) {
+    super(`search worker request timed out after ${timeoutMs}ms`);
+    this.name = "SearchWorkerRequestTimeoutError";
+  }
 }
 
 class SearchOffloadQueueFullError extends Error {
@@ -1229,17 +1246,28 @@ export class PersistentSearchWorkerClient {
     const payload = this.encoder.encode(`${JSON.stringify(envelope)}\n`);
     const promise = new Promise<SearchWorkerResult>((resolve, reject) => {
       const timer = setTimeout(() => {
-        if (!this.pending.has(id)) {
+        const timedOut = this.pending.get(id);
+        if (!timedOut) {
           return;
         }
         this.pending.delete(id);
-        reject(new Error(`search worker request timed out after ${timeoutMs}ms`));
+        const phaseTiming = { ...timedOut.phaseTiming };
+        if (phaseTiming.spool_append_commit_complete === false && timedOut.spoolPhaseReceivedAtMs !== null) {
+          phaseTiming.spool_append_commit_ms = Number((performance.now() - timedOut.spoolPhaseReceivedAtMs).toFixed(2));
+        }
+        reject(new SearchWorkerRequestTimeoutError(timeoutMs, phaseTiming));
       }, timeoutMs);
       this.pending.set(id, {
         resolve,
         reject,
         timer,
         readyAtStart,
+        phaseTiming: {
+          retrieval_total_ms: null,
+          spool_append_commit_ms: null,
+          spool_append_commit_complete: null,
+        },
+        spoolPhaseReceivedAtMs: null,
       });
     });
 
@@ -1354,6 +1382,20 @@ export class PersistentSearchWorkerClient {
       this.warmupMs = typeof message.warmup_ms === "number" ? message.warmup_ms : this.warmupMs;
       if (message.warmup_error) {
         this.stderrTail = truncateTail(`${this.stderrTail}\nwarmup: ${message.warmup_error}`);
+      }
+      return;
+    }
+
+    if (message.type === "phase" && typeof message.id === "string") {
+      const pending = this.pending.get(message.id);
+      if (!pending || typeof message.elapsed_ms !== "number" || !Number.isFinite(message.elapsed_ms)) return;
+      if (message.phase === "retrieval_complete") {
+        pending.phaseTiming.retrieval_total_ms = Math.max(0, message.elapsed_ms);
+        pending.phaseTiming.spool_append_commit_complete = false;
+        pending.spoolPhaseReceivedAtMs = performance.now();
+      } else if (message.phase === "spool_complete") {
+        pending.phaseTiming.spool_append_commit_ms = Math.max(0, message.elapsed_ms);
+        pending.phaseTiming.spool_append_commit_complete = true;
       }
       return;
     }
@@ -1885,6 +1927,10 @@ export class HarnessMemCore {
   private readonly environmentSnapshotCache = new TtlCache<EnvironmentSnapshot>(DEFAULT_ENVIRONMENT_CACHE_TTL_MS);
   private readonly repeatRecallCache = new Map<string, RepeatRecallCacheEntry>();
   private readonly searchSideEffectSpool: SearchSideEffectSpool | null;
+  private searchPhaseProgressObserver: ((event: {
+    phase: "retrieval_complete" | "spool_complete";
+    elapsed_ms: number;
+  }) => void) | null = null;
 
   // ---------------------------------------------------------------------------
   // モジュールインスタンス (facade パターン)
@@ -2035,6 +2081,7 @@ export class HarnessMemCore {
       persistSearchSideEffectIntent: this.searchSideEffectSpool
         ? (intent) => this.searchSideEffectSpool!.append(intent)
         : undefined,
+      onSearchPhaseProgress: (event) => this.searchPhaseProgressObserver?.(event),
       getVectorEngine: () => this.vectorEngine,
       getVectorModelVersion: () => this.vectorModelVersion,
       vectorDimension: this.config.vectorDimension,
@@ -5540,7 +5587,13 @@ export class HarnessMemCore {
     const offload = meta.search_offload && typeof meta.search_offload === "object"
       ? meta.search_offload as Record<string, unknown>
       : null;
+    const phaseTiming = meta.search_phase_timing && typeof meta.search_phase_timing === "object"
+      ? meta.search_phase_timing as Record<string, unknown>
+      : null;
     const cacheHit = typeof meta.recall_cache_hit === "boolean" ? meta.recall_cache_hit : undefined;
+    const auditFlushActiveAtSearchStart = typeof phaseTiming?.audit_flush_active_at_search_start === "boolean"
+      ? phaseTiming.audit_flush_active_at_search_start
+      : undefined;
     const fallback = typeof offload?.fallback === "string" ? offload.fallback : undefined;
     const items = Array.isArray(response.items) ? response.items : [];
     recordRecallTelemetry(
@@ -5564,6 +5617,10 @@ export class HarnessMemCore {
         "recall.cache.data_watermark_hash": typeof cache?.data_watermark === "string"
           ? hashTelemetryValue(cache.data_watermark)
           : undefined,
+        "recall.audit_flush_active_at_search_start": auditFlushActiveAtSearchStart,
+        "recall.spool_append_commit_complete": typeof phaseTiming?.spool_append_commit_complete === "boolean"
+          ? phaseTiming.spool_append_commit_complete
+          : undefined,
         "recall.worker.mode": typeof offload?.mode === "string" ? offload.mode : undefined,
         "recall.worker.fallback": fallback,
         "recall.worker.queue_depth": typeof offload?.pending === "number" ? offload.pending : undefined,
@@ -5576,6 +5633,18 @@ export class HarnessMemCore {
         worker_queue_depth: typeof offload?.pending === "number" ? offload.pending : undefined,
         recall_cache_hit_count: cacheHit === true ? 1 : 0,
         recall_cache_miss_count: cacheHit === false ? 1 : 0,
+        recall_watermark_cache_lookup_ms: typeof phaseTiming?.watermark_cache_lookup_ms === "number"
+          ? phaseTiming.watermark_cache_lookup_ms
+          : undefined,
+        recall_retrieval_total_ms: typeof phaseTiming?.retrieval_total_ms === "number"
+          ? phaseTiming.retrieval_total_ms
+          : undefined,
+        recall_spool_append_commit_ms: typeof phaseTiming?.spool_append_commit_ms === "number"
+          ? phaseTiming.spool_append_commit_ms
+          : undefined,
+        recall_audit_flush_overlap_ms: typeof phaseTiming?.audit_flush_overlap_elapsed_ms === "number"
+          ? phaseTiming.audit_flush_overlap_elapsed_ms
+          : undefined,
       },
     );
   }
@@ -6147,15 +6216,40 @@ export class HarnessMemCore {
 
   async searchPrepared(request: SearchRequest): Promise<ApiResponse> {
     const startedAt = performance.now();
+    const startedAtWallMs = Date.now();
+    const auditFlushRunAtSearchStart = this.backgroundMaintenanceWorker?.activeSearchAuditFlushRun() ?? null;
+    const auditFlushActiveAtSearchStart = auditFlushRunAtSearchStart !== null;
+    const auditFlushOverlapElapsedMs = (): number => {
+      if (!auditFlushRunAtSearchStart) return 0;
+      const elapsedMs = Math.max(0, Date.now() - startedAtWallMs);
+      if (this.backgroundMaintenanceWorker?.activeSearchAuditFlushRun()?.run_id === auditFlushRunAtSearchStart.run_id) {
+        return elapsedMs;
+      }
+      const finishedAtMs = auditFlushRunAtSearchStart.finished_at_ms;
+      if (finishedAtMs === null || finishedAtMs === undefined) return elapsedMs;
+      return Math.max(0, Math.min(elapsedMs, finishedAtMs - startedAtWallMs));
+    };
     const rewriteResult = await rewriteSearchQueryIfEnabled(request.query || "", {
       safeMode: request.safe_mode === true,
     });
     const effectiveRequest = rewriteResult.query === request.query
       ? request
       : { ...request, query: rewriteResult.query };
+    const cacheLookupStartedAt = performance.now();
     const cacheLookup = this.lookupRepeatRecallCache(effectiveRequest, startedAt);
+    const watermarkCacheLookupMs = Number((performance.now() - cacheLookupStartedAt).toFixed(2));
     if (cacheLookup?.response) {
       cacheLookup.response.meta.query_rewrite = queryRewriteMeta(rewriteResult);
+      cacheLookup.response.meta.search_phase_timing = {
+        watermark_cache_lookup_ms: watermarkCacheLookupMs,
+        retrieval_total_ms: null,
+        spool_append_commit_ms: null,
+        spool_append_commit_complete: null,
+        worker_total_ms: null,
+        audit_flush_active_at_search_start: auditFlushActiveAtSearchStart,
+        audit_flush_overlap_elapsed_ms: auditFlushOverlapElapsedMs(),
+        total_ms: Number((performance.now() - startedAt).toFixed(2)),
+      };
       this.recordRecallSearchTelemetry(startedAt, effectiveRequest, cacheLookup.response);
       return cacheLookup.response;
     }
@@ -6193,6 +6287,17 @@ export class HarnessMemCore {
             this.recordRecallSearchTelemetry(startedAt, effectiveRequest, rejected);
             return rejected;
           }
+        } else if (
+          offloadMode === "persistent_worker" &&
+          error instanceof SearchWorkerRequestTimeoutError
+        ) {
+          response = await this.searchWithSafeFallback(effectiveRequest, error.message, offloadMode);
+          response.meta.search_phase_timing = {
+            retrieval_total_ms: error.phaseTiming.retrieval_total_ms,
+            spool_append_commit_ms: error.phaseTiming.spool_append_commit_ms,
+            spool_append_commit_complete: error.phaseTiming.spool_append_commit_complete,
+            worker_total_ms: null,
+          };
         } else if (
           offloadMode === "persistent_worker" &&
           error instanceof Error &&
@@ -6297,6 +6402,21 @@ export class HarnessMemCore {
     }
 
     const finalResponse = this.storeRepeatRecallCache(cacheCandidate, response);
+    const phaseTiming = finalResponse.meta.search_phase_timing && typeof finalResponse.meta.search_phase_timing === "object"
+      ? finalResponse.meta.search_phase_timing as Record<string, unknown>
+      : {};
+    finalResponse.meta.search_phase_timing = {
+      watermark_cache_lookup_ms: watermarkCacheLookupMs,
+      retrieval_total_ms: typeof phaseTiming.retrieval_total_ms === "number" ? phaseTiming.retrieval_total_ms : null,
+      spool_append_commit_ms: typeof phaseTiming.spool_append_commit_ms === "number" ? phaseTiming.spool_append_commit_ms : null,
+      spool_append_commit_complete: typeof phaseTiming.spool_append_commit_complete === "boolean"
+        ? phaseTiming.spool_append_commit_complete
+        : null,
+      worker_total_ms: typeof phaseTiming.worker_total_ms === "number" ? phaseTiming.worker_total_ms : null,
+      audit_flush_active_at_search_start: auditFlushActiveAtSearchStart,
+      audit_flush_overlap_elapsed_ms: auditFlushOverlapElapsedMs(),
+      total_ms: Number((performance.now() - startedAt).toFixed(2)),
+    };
     this.recordRecallSearchTelemetry(startedAt, effectiveRequest, finalResponse);
     return finalResponse;
   }
@@ -9566,6 +9686,13 @@ export class HarnessMemCore {
 
   pendingSearchSideEffectIntents(): number {
     return this.searchSideEffectSpool?.count() ?? 0;
+  }
+
+  setSearchPhaseProgressObserver(observer: ((event: {
+    phase: "retrieval_complete" | "spool_complete";
+    elapsed_ms: number;
+  }) => void) | null): void {
+    this.searchPhaseProgressObserver = observer;
   }
 
   runMaintenanceSearchAuditFlush(limit = 100): Record<string, number> {

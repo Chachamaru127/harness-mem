@@ -195,6 +195,12 @@ weakening the durable audit contract. Spool backpressure fails closed with a
 fixed error and never emits query, project, identifier, or path data in worker
 progress telemetry. A failed flush retries with finite coalesced exponential
 backoff; acknowledged intents remain in the durable spool for later recovery.
+Cache-miss responses include fixed scalar `search_phase_timing` fields for
+watermark/cache lookup, retrieval, durable spool append/commit, worker, total,
+and audit-flush overlap attribution. These fields contain no request-derived
+identifiers and do not change durability behavior. A worker timeout preserves
+the completed retrieval time and marks the reported spool elapsed time as
+incomplete instead of discarding the phase evidence.
 Scheduled consolidation processes one durable queue job per tick by default to
 bound same-database contention with search. Set
 `HARNESS_MEM_CONSOLIDATION_SCHEDULER_BATCH_SIZE` to 1–10 only after measuring

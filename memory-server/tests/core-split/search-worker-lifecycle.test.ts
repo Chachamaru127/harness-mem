@@ -171,6 +171,12 @@ describe("search worker lifecycle", () => {
       expect(result.response.ok).toBe(true);
       expect(result.response.items).toHaveLength(1);
       expect(result.side_effect_intents_pending).toBeGreaterThan(0);
+      expect(result.response.meta.search_phase_timing).toMatchObject({
+        retrieval_total_ms: expect.any(Number),
+        spool_append_commit_ms: expect.any(Number),
+        spool_append_commit_complete: true,
+        worker_total_ms: expect.any(Number),
+      });
       expect(elapsedMs).toBeLessThan(250);
       expect((lockDb.query("SELECT access_count FROM mem_observations WHERE id = ?").get("spooled-search-hit") as { access_count: number }).access_count).toBe(0);
 

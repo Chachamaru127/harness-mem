@@ -127,6 +127,10 @@ export interface ObservationStoreDeps {
     details: Record<string, unknown>
   ) => void;
   persistSearchSideEffectIntent?: (intent: SearchSideEffectIntent) => { pending: number };
+  onSearchPhaseProgress?: (event: {
+    phase: "retrieval_complete" | "spool_complete";
+    elapsed_ms: number;
+  }) => void;
   // ---- vector 検索に必要な依存 ----
   getVectorEngine: () => VectorEngine;
   getVectorModelVersion: () => string;
@@ -4837,6 +4841,9 @@ export class ObservationStore {
       .map((item) => item.id as string)
       .filter((id): id is string => Boolean(id));
     const skipSearchHitSideEffects = latencySafeMode || request.skip_search_hit === true;
+    const retrievalTotalMs = Number((performance.now() - startedAt).toFixed(2));
+    let spoolAppendCommitMs: number | null = null;
+    this.deps.onSearchPhaseProgress?.({ phase: "retrieval_complete", elapsed_ms: retrievalTotalMs });
     if (this.deps.persistSearchSideEffectIntent) {
       const createdAt = nowIso();
       const audits: SearchSideEffectIntent["audits"] = [{
@@ -4882,11 +4889,14 @@ export class ObservationStore {
           });
         }
       }
+      const spoolStartedAt = performance.now();
       this.deps.persistSearchSideEffectIntent({
         audits,
         access_count_ids: skipSearchHitSideEffects ? [] : hitIds,
         created_at: createdAt,
       });
+      spoolAppendCommitMs = Number((performance.now() - spoolStartedAt).toFixed(2));
+      this.deps.onSearchPhaseProgress?.({ phase: "spool_complete", elapsed_ms: spoolAppendCommitMs });
     } else {
       try {
         this.deps.writeAuditLog("read.search", "project", normalizedProject || "", auditDetails);
@@ -4943,6 +4953,12 @@ export class ObservationStore {
         // best effort
       }
     }
+    meta.search_phase_timing = {
+      retrieval_total_ms: retrievalTotalMs,
+      spool_append_commit_ms: spoolAppendCommitMs,
+      spool_append_commit_complete: spoolAppendCommitMs === null ? null : true,
+      worker_total_ms: null,
+    };
 
     const embeddingShadowManifest = this.deps.getEmbeddingShadowManifest?.() ?? null;
     if (embeddingShadowManifest) {

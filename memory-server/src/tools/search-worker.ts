@@ -8,6 +8,7 @@
  */
 
 import { createInterface } from "node:readline";
+import { writeSync } from "node:fs";
 import { HarnessMemCore, getConfig } from "../core/harness-mem-core";
 import { initializeTelemetry, recordRecallTelemetry, resolveHarnessMemVersion, shutdownTelemetry } from "../telemetry/otel";
 import type { ApiResponse, SearchRequest } from "../core/types";
@@ -37,6 +38,10 @@ interface SearchWorkerWarmupState {
 
 function writeProtocol(message: Record<string, unknown> | SearchWorkerResponseEnvelope): void {
   process.stdout.write(`${JSON.stringify(message)}\n`);
+}
+
+function writePhaseProtocol(message: Record<string, unknown>): void {
+  writeSync(1, `${JSON.stringify(message)}\n`);
 }
 
 function parseSearchRequest(raw: unknown): SearchRequest {
@@ -135,7 +140,27 @@ async function runSearch(
       }
     }
     await testDelayIfRequested();
-    const response = core.search(effectiveRequest);
+    core.setSearchPhaseProgressObserver((event) => {
+      writePhaseProtocol({ type: "phase", id, ...event });
+    });
+    let response: ApiResponse;
+    try {
+      response = core.search(effectiveRequest);
+    } finally {
+      core.setSearchPhaseProgressObserver(null);
+    }
+    const workerTotalMs = Number((performance.now() - startedAt).toFixed(2));
+    const phaseTiming = response.meta.search_phase_timing && typeof response.meta.search_phase_timing === "object"
+      ? response.meta.search_phase_timing as Record<string, unknown>
+      : {};
+    response.meta.search_phase_timing = {
+      retrieval_total_ms: typeof phaseTiming.retrieval_total_ms === "number" ? phaseTiming.retrieval_total_ms : null,
+      spool_append_commit_ms: typeof phaseTiming.spool_append_commit_ms === "number" ? phaseTiming.spool_append_commit_ms : null,
+      spool_append_commit_complete: typeof phaseTiming.spool_append_commit_complete === "boolean"
+        ? phaseTiming.spool_append_commit_complete
+        : null,
+      worker_total_ms: workerTotalMs,
+    };
     if (workerFallback) {
       response.meta = {
         ...response.meta,
