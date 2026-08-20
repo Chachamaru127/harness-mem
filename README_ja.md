@@ -196,6 +196,12 @@ busy/error/active frame時のcheckpoint retryは指数backoffとし、
 `HARNESS_MEM_WAL_CHECKPOINT_RETRY_BASE_MS`（既定10000）を基準に、
 `HARNESS_MEM_WAL_CHECKPOINT_RETRY_MAX_ATTEMPTS`（既定3）で停止します。
 次の通常checkpoint timerでretry予算を再開します。
+子プロセスへ隔離したsearchは、応答前に監査・access count更新のintentをprivateかつ
+boundedなSQLite spoolへ耐久保存します。main DBへの反映はmaintenance childがFIFOで
+行い、crash replayはintent claimで冪等にします。これによりcache missが競合中のmain
+DB audit commitを待たず、監査の耐久性も維持します。spool backpressureは固定errorで
+fail closedし、worker進捗へquery、project、ID、pathを出しません。flush失敗は有限の
+coalesced指数backoffでretryし、未反映intentはdurable spoolに残して次回回収します。
 定期consolidationは、searchとの同一DB競合時間を区切るため、既定で1 tickにつき
 durable queue 1件だけ進めます。`HARNESS_MEM_CONSOLIDATION_SCHEDULER_BATCH_SIZE`
 は1〜10で変更できますが、本番search latencyを実測した場合だけ引き上げます。

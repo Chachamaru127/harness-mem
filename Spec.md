@@ -484,6 +484,22 @@ second concurrent maintenance I/O lane against search.
 - Progress telemetry is counts, durations, error codes, and WAL sizes only. It
   must not contain content, project, session, correlation identifiers, secrets,
   or filesystem/database paths.
+- A search-worker cache miss must not synchronously commit `read.search`,
+  privacy/boundary audit, `search_hit`, or access-count writes to the main
+  database before returning its result. Before a successful response, the
+  worker durably appends one typed intent to a bounded mode-0600 sidecar SQLite
+  spool with `synchronous=FULL`. The maintenance worker applies intents to the
+  main database in FIFO order. A main-database intent claim keyed by
+  `intent_id` makes replay idempotent if the worker crashes after commit but
+  before deleting the spool row. Startup, each successful offloaded search,
+  and graceful shutdown request a flush; crash recovery may defer application
+  until the next startup but must not lose an acknowledged intent. A busy or
+  failed maintenance flush uses one coalesced, finite exponential-backoff retry
+  budget; the durable spool remains the recovery source after that budget is
+  exhausted. A full or unwritable spool fails closed with fixed
+  `audit_backpressure` diagnostics.
+  Protocol and telemetry expose counts/error codes only, never query, project,
+  IDs, paths, or intent payloads.
 
 ### Content dedupe ownership projection
 

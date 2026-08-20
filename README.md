@@ -187,6 +187,14 @@ Busy/error/active-frame checkpoint retries use exponential backoff controlled
 by `HARNESS_MEM_WAL_CHECKPOINT_RETRY_BASE_MS` (default 10000) and stop after
 `HARNESS_MEM_WAL_CHECKPOINT_RETRY_MAX_ATTEMPTS` (default 3) until the next
 normal checkpoint timer.
+Offloaded search records audit and access-count side effects in a private,
+bounded SQLite spool before returning. The maintenance child then applies them
+to the main database in FIFO order with idempotent crash replay. This keeps a
+cache miss from waiting on a contended main-database audit commit without
+weakening the durable audit contract. Spool backpressure fails closed with a
+fixed error and never emits query, project, identifier, or path data in worker
+progress telemetry. A failed flush retries with finite coalesced exponential
+backoff; acknowledged intents remain in the durable spool for later recovery.
 Scheduled consolidation processes one durable queue job per tick by default to
 bound same-database contention with search. Set
 `HARNESS_MEM_CONSOLIDATION_SCHEDULER_BATCH_SIZE` to 1–10 only after measuring

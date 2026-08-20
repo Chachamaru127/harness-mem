@@ -18,7 +18,8 @@ interface RequestEnvelope {
 function parseEnvelope(line: string): RequestEnvelope {
   const value = JSON.parse(line) as Record<string, unknown>;
   if (typeof value.id !== "string" || !value.id) throw new Error("invalid request id");
-  if (value.task !== "consolidation" && value.task !== "wal_checkpoint" && value.task !== "recover_consolidation") {
+  if (value.task !== "consolidation" && value.task !== "wal_checkpoint" &&
+    value.task !== "search_audit_flush" && value.task !== "recover_consolidation") {
     throw new Error("invalid maintenance task");
   }
   const request = value.request && typeof value.request === "object"
@@ -79,6 +80,11 @@ async function main(): Promise<void> {
         await testBlockIfConfigured();
         if (request.task === "wal_checkpoint") {
           const result = core.runMaintenanceWalCheckpoint();
+          writeReply({ id, ok: true, result, progress: { ...result, elapsed_ms: Date.now() - startedAt } });
+          continue;
+        }
+        if (request.task === "search_audit_flush") {
+          const result = core.runMaintenanceSearchAuditFlush();
           writeReply({ id, ok: true, result, progress: { ...result, elapsed_ms: Date.now() - startedAt } });
           continue;
         }

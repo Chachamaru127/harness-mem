@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -15,6 +16,9 @@ import {
   PersistentSearchWorkerClient,
   resolveBackgroundWorkersEnabled,
 } from "../../src/core/harness-mem-core";
+import { configureDatabase, initSchema, migrateSchema } from "../../src/db/schema";
+import { flushSearchSideEffectSpool, SearchSideEffectSpool } from "../../src/core/search-side-effect-spool";
+import { insertTestObservation } from "./test-helpers";
 
 const tempPaths: string[] = [];
 const spawnedPids = new Set<number>();
@@ -113,6 +117,131 @@ describe("search worker lifecycle", () => {
     expect(getWorker).toContain('"core shutting down"');
     expect(shutdown).not.toContain("this.searchWorker = null");
   });
+
+  test("cache-miss response survives main-DB writer contention and worker crash", async () => {
+    const root = mkdtempSync(join(tmpdir(), "harness-mem-search-spool-process-"));
+    tempPaths.push(root);
+    const dbPath = join(root, "memory.db");
+    const seedDb = new Database(dbPath);
+    configureDatabase(seedDb);
+    initSchema(seedDb);
+    migrateSchema(seedDb);
+    insertTestObservation(seedDb, {
+      id: "spooled-search-hit",
+      project: root,
+      content: "durable cache miss target",
+    });
+    seedDb.close();
+
+    const client = new PersistentSearchWorkerClient({
+      scriptPath: resolve(import.meta.dir, "../../src/tools/search-worker.ts"),
+      cwd: resolve(import.meta.dir, "../.."),
+      env: {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        NODE_ENV: "test",
+        HARNESS_MEM_DB_PATH: dbPath,
+      },
+      maxPending: 2,
+      dbPath,
+    });
+    const lockDb = new Database(dbPath);
+    configureDatabase(lockDb);
+    try {
+      await client.request({
+        query: "worker warmup no match",
+        project: root,
+        limit: 1,
+        vector_search: false,
+        strict_project: true,
+      }, 3_000);
+      flushSearchSideEffectSpool(lockDb, dbPath);
+
+      lockDb.exec("BEGIN IMMEDIATE");
+      const startedAt = performance.now();
+      const result = await client.request({
+        query: "durable cache miss target",
+        project: root,
+        limit: 1,
+        vector_search: false,
+        strict_project: true,
+      }, 3_000);
+      const elapsedMs = performance.now() - startedAt;
+
+      expect(result.response.ok).toBe(true);
+      expect(result.response.items).toHaveLength(1);
+      expect(result.side_effect_intents_pending).toBeGreaterThan(0);
+      expect(elapsedMs).toBeLessThan(250);
+      expect((lockDb.query("SELECT access_count FROM mem_observations WHERE id = ?").get("spooled-search-hit") as { access_count: number }).access_count).toBe(0);
+
+      if (result.pid) process.kill(result.pid, "SIGKILL");
+      await waitFor(() => result.pid === null || !isAlive(result.pid));
+      lockDb.exec("COMMIT");
+
+      const recovered = flushSearchSideEffectSpool(lockDb, dbPath);
+      expect(recovered.intents_applied).toBe(1);
+      expect(recovered.intents_remaining).toBe(0);
+      expect((lockDb.query("SELECT access_count FROM mem_observations WHERE id = ?").get("spooled-search-hit") as { access_count: number }).access_count).toBe(1);
+      expect((lockDb.query("SELECT COUNT(*) AS count FROM mem_audit_log WHERE action = 'read.search'").get() as { count: number }).count).toBe(2);
+    } finally {
+      if (lockDb.inTransaction) lockDb.exec("ROLLBACK");
+      lockDb.close();
+      await client.stop("fixture-complete");
+    }
+  }, 10_000);
+
+  test("full audit spool fails closed with fixed privacy-safe worker output", async () => {
+    const root = mkdtempSync(join(tmpdir(), "harness-mem-search-spool-full-"));
+    tempPaths.push(root);
+    const dbPath = join(root, "memory.db");
+    const db = new Database(dbPath);
+    configureDatabase(db);
+    initSchema(db);
+    migrateSchema(db);
+    db.close();
+    const spool = new SearchSideEffectSpool(dbPath, 100);
+    for (let index = 0; index < 100; index += 1) {
+      spool.append({
+        audits: [{ action: "read.search", target_type: "project", target_id: "fixture", details: { query: "fixture-query", limit: 1, include_private: false, count: 0, privacy_excluded_count: 0, boundary_excluded_count: 0 } }],
+        access_count_ids: [],
+        created_at: "2026-08-20T00:00:00.000Z",
+      });
+    }
+    spool.close();
+
+    const client = new PersistentSearchWorkerClient({
+      scriptPath: resolve(import.meta.dir, "../../src/tools/search-worker.ts"),
+      cwd: resolve(import.meta.dir, "../.."),
+      env: {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        NODE_ENV: "test",
+        HARNESS_MEM_DB_PATH: dbPath,
+        HARNESS_MEM_SEARCH_AUDIT_SPOOL_MAX: "100",
+      },
+      maxPending: 1,
+      dbPath,
+    });
+    try {
+      const privateQuery = "private-full-spool-query";
+      const result = await client.request({
+        query: privateQuery,
+        project: root,
+        limit: 1,
+        vector_search: false,
+        strict_project: true,
+      }, 3_000);
+      expect(result.response.ok).toBe(false);
+      expect(result.response.meta.error_code).toBe("audit_backpressure");
+      expect(result.response.error).toBe("search audit temporarily unavailable");
+      const serialized = JSON.stringify(result.response);
+      expect(serialized).not.toContain(privateQuery);
+      expect(serialized).not.toContain(root);
+      expect(serialized).not.toContain(dbPath);
+    } finally {
+      await client.stop("fixture-complete");
+    }
+  }, 10_000);
 
   test("busy owned child gets SIGTERM, then SIGKILL, and disappearance is confirmed", async () => {
     if (process.platform === "win32") return;

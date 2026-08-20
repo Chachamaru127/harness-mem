@@ -8,11 +8,12 @@ import {
   BackgroundMaintenanceWorkerClient,
   shouldRetryWalCheckpoint,
 } from "../../src/core/background-maintenance-worker-client";
-import { getConfig, HarnessMemCore } from "../../src/core/harness-mem-core";
+import { getConfig, HarnessMemCore, PersistentSearchWorkerClient } from "../../src/core/harness-mem-core";
 import { createTestConfig } from "./test-helpers";
 import { startHarnessMemServer } from "../../src/server";
 import { configureDatabase, initSchema, migrateSchema } from "../../src/db/schema";
 import { enqueueConsolidationJob, runConsolidationOnce } from "../../src/consolidation/worker";
+import { SearchSideEffectSpool } from "../../src/core/search-side-effect-spool";
 
 const clients: BackgroundMaintenanceWorkerClient[] = [];
 const dirs: string[] = [];
@@ -22,7 +23,14 @@ afterEach(async () => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function makeClient(options: { blockMs?: number; timeoutMs?: number; ignoreTerm?: boolean; walMaxBytes?: number } = {}) {
+function makeClient(options: {
+  blockMs?: number;
+  timeoutMs?: number;
+  ignoreTerm?: boolean;
+  walMaxBytes?: number;
+  busyTimeoutMs?: number;
+  restartBackoffMs?: number;
+} = {}) {
   const dir = mkdtempSync(join(tmpdir(), "harness-mem-maintenance-worker-"));
   dirs.push(dir);
   const dbPath = join(dir, "worker.db");
@@ -42,10 +50,12 @@ function makeClient(options: { blockMs?: number; timeoutMs?: number; ignoreTerm?
       HARNESS_MEM_TEST_MAINTENANCE_WORKER_BLOCK_MS: String(options.blockMs ?? 0),
       HARNESS_MEM_TEST_MAINTENANCE_IGNORE_TERM: options.ignoreTerm ? "1" : "0",
       HARNESS_MEM_WAL_MAX_BYTES: String(options.walMaxBytes ?? 536_870_912),
+      HARNESS_MEM_SQLITE_BUSY_TIMEOUT: String(options.busyTimeoutMs ?? 30_000),
     },
     dbPath,
     busyLogMs: 10,
     consolidationTimeoutMs: options.timeoutMs ?? 5_000,
+    restartBackoffMs: options.restartBackoffMs,
     onProgress: (event) => events.push(event),
   });
   clients.push(client);
@@ -61,6 +71,127 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<voi
 }
 
 describe("background maintenance persistent workers", () => {
+  test("search audit flush is coalesced and applied by the maintenance process", async () => {
+    const { client, dbPath, events } = makeClient();
+    const spool = new SearchSideEffectSpool(dbPath);
+    spool.append({
+      audits: [{
+        action: "read.search",
+        target_type: "project",
+        target_id: "private-project",
+        details: { query: "private-query", limit: 1, include_private: false, count: 0, privacy_excluded_count: 0, boundary_excluded_count: 0 },
+      }],
+      access_count_ids: [],
+      created_at: "2026-08-20T00:00:00.000Z",
+    });
+    spool.close();
+
+    expect(client.schedule("search_audit_flush")).toBe(true);
+    expect(client.schedule("search_audit_flush")).toBe(false);
+    await waitFor(() => events.some((event) =>
+      event.kind === "completed" && event.task === "search_audit_flush"));
+
+    const completed = events.find((event) =>
+      event.kind === "completed" && event.task === "search_audit_flush");
+    expect(completed?.intents_applied).toBe(1);
+    expect(completed?.intents_remaining).toBe(0);
+    expect(JSON.stringify(completed)).not.toContain("private-query");
+    expect(JSON.stringify(completed)).not.toContain("private-project");
+    const db = new Database(dbPath);
+    expect((db.query("SELECT COUNT(*) AS count FROM mem_audit_log WHERE action = 'read.search'").get() as { count: number }).count).toBe(1);
+    db.close();
+  });
+
+  test("failed search audit flush retries with bounded backoff and applies after lock release", async () => {
+    const { client, dbPath, events } = makeClient({ busyTimeoutMs: 50, restartBackoffMs: 20 });
+    expect(client.schedule("search_audit_flush")).toBe(true);
+    await waitFor(() => events.some((event) =>
+      event.kind === "completed" && event.task === "search_audit_flush"));
+    events.length = 0;
+    const spool = new SearchSideEffectSpool(dbPath);
+    spool.append({
+      audits: [{ action: "read.search", target_type: "project", target_id: "retry-project", details: { query: "fixture-query", limit: 1, include_private: false, count: 0, privacy_excluded_count: 0, boundary_excluded_count: 0 } }],
+      access_count_ids: [],
+      created_at: "2026-08-20T00:00:00.000Z",
+    });
+    spool.close();
+    const lockDb = new Database(dbPath);
+    configureDatabase(lockDb, { HARNESS_MEM_SQLITE_BUSY_TIMEOUT: "50" });
+    try {
+      lockDb.exec("BEGIN IMMEDIATE");
+      expect(client.schedule("search_audit_flush")).toBe(true);
+      await waitFor(() => events.some((event) =>
+        event.kind === "failed" && event.task === "search_audit_flush"));
+      lockDb.exec("COMMIT");
+      await waitFor(() => events.some((event) =>
+        event.kind === "completed" && event.task === "search_audit_flush" && event.intents_applied === 1));
+
+      const audit = lockDb.query("SELECT COUNT(*) AS count FROM mem_audit_log WHERE action = 'read.search'").get() as { count: number };
+      expect(audit.count).toBe(1);
+      const attempts = events.filter((event) => event.task === "search_audit_flush");
+      expect(attempts.some((event) => event.kind === "failed")).toBe(true);
+      expect(attempts.some((event) => event.kind === "completed")).toBe(true);
+    } finally {
+      if (lockDb.inTransaction) lockDb.exec("ROLLBACK");
+      lockDb.close();
+    }
+  });
+
+  test("literal tilde DB path is shared by search append and maintenance recovery", async () => {
+    const home = mkdtempSync(join(tmpdir(), "harness-mem-search-tilde-home-"));
+    dirs.push(home);
+    const dbPath = join(home, "memory.db");
+    const db = new Database(dbPath);
+    configureDatabase(db);
+    initSchema(db);
+    migrateSchema(db);
+    db.close();
+    const env = {
+      PATH: process.env.PATH,
+      HOME: home,
+      NODE_ENV: "test",
+      HARNESS_MEM_DB_PATH: "~/memory.db",
+    };
+    const search = new PersistentSearchWorkerClient({
+      scriptPath: fileURLToPath(new URL("../../src/tools/search-worker.ts", import.meta.url)),
+      cwd: join(import.meta.dir, "../.."),
+      env,
+      maxPending: 1,
+      dbPath,
+    });
+    try {
+      const result = await search.request({
+        query: "tilde-path-audit",
+        project: home,
+        limit: 1,
+        vector_search: false,
+        strict_project: true,
+      }, 3_000);
+      expect(result.response.ok).toBe(true);
+      expect(result.side_effect_intents_pending).toBe(1);
+    } finally {
+      await search.stop("tilde-fixture");
+    }
+
+    const events: Array<Record<string, unknown>> = [];
+    const maintenance = new BackgroundMaintenanceWorkerClient({
+      scriptPath: fileURLToPath(new URL("../../src/tools/background-maintenance-worker.ts", import.meta.url)),
+      cwd: join(import.meta.dir, "../.."),
+      env,
+      dbPath,
+      busyLogMs: 10,
+      consolidationTimeoutMs: 5_000,
+      onProgress: (event) => events.push(event),
+    });
+    clients.push(maintenance);
+    expect(maintenance.schedule("search_audit_flush")).toBe(true);
+    await waitFor(() => events.some((event) =>
+      event.kind === "completed" && event.task === "search_audit_flush" && event.intents_applied === 1));
+    const verify = new Database(dbPath, { readonly: true });
+    expect((verify.query("SELECT COUNT(*) AS count FROM mem_audit_log WHERE action = 'read.search'").get() as { count: number }).count).toBe(1);
+    verify.close();
+  });
+
   test("commit-time autocheckpoint remains the primary 1000-page WAL bound", () => {
     const db = new Database(":memory:");
     configureDatabase(db, {});
@@ -415,6 +546,54 @@ describe("background maintenance persistent workers", () => {
       await parent.shutdown("test");
       if (previousBlock === undefined) delete process.env.HARNESS_MEM_TEST_MAINTENANCE_WORKER_BLOCK_MS;
       else process.env.HARNESS_MEM_TEST_MAINTENANCE_WORKER_BLOCK_MS = previousBlock;
+    }
+  });
+
+  test("audit spool backpressure returns privacy-safe HTTP 503", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-search-audit-http-"));
+    dirs.push(dir);
+    const dbPath = join(dir, "http.db");
+    const bootstrap = new HarnessMemCore(createTestConfig({ dbPath, backgroundWorkersEnabled: false }));
+    await bootstrap.shutdown("bootstrap");
+    const spool = new SearchSideEffectSpool(dbPath, 100);
+    for (let index = 0; index < 100; index += 1) {
+      spool.append({
+        audits: [{ action: "read.search", target_type: "project", target_id: "fixture", details: { query: "fixture-query", limit: 1, include_private: false, count: 0, privacy_excluded_count: 0, boundary_excluded_count: 0 } }],
+        access_count_ids: [],
+        created_at: "2026-08-20T00:00:00.000Z",
+      });
+    }
+    spool.close();
+
+    const previousWorkerMarker = process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS;
+    const previousMax = process.env.HARNESS_MEM_SEARCH_AUDIT_SPOOL_MAX;
+    process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS = "1";
+    process.env.HARNESS_MEM_SEARCH_AUDIT_SPOOL_MAX = "100";
+    const config = createTestConfig({ dbPath, bindPort: 0, backgroundWorkersEnabled: false });
+    const core = new HarnessMemCore(config);
+    const server = startHarnessMemServer(core, config);
+    const privateQuery = "private-http-backpressure-query";
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}/v1/search`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: privateQuery, project: dir, limit: 1, vector_search: false }),
+      });
+      expect(response.status).toBe(503);
+      const body = await response.json() as { error?: string; meta?: Record<string, unknown> };
+      expect(body.error).toBe("search audit temporarily unavailable");
+      expect(body.meta?.error_code).toBe("audit_backpressure");
+      const serialized = JSON.stringify(body);
+      expect(serialized).not.toContain(privateQuery);
+      expect(serialized).not.toContain(dir);
+      expect(serialized).not.toContain(dbPath);
+    } finally {
+      server.stop(true);
+      await core.shutdown("test");
+      if (previousWorkerMarker === undefined) delete process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS;
+      else process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS = previousWorkerMarker;
+      if (previousMax === undefined) delete process.env.HARNESS_MEM_SEARCH_AUDIT_SPOOL_MAX;
+      else process.env.HARNESS_MEM_SEARCH_AUDIT_SPOOL_MAX = previousMax;
     }
   });
 

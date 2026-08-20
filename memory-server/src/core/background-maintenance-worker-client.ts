@@ -9,7 +9,7 @@ type WorkerStdin = {
   end?: () => void;
 };
 
-export type MaintenanceTask = "consolidation" | "wal_checkpoint";
+export type MaintenanceTask = "consolidation" | "wal_checkpoint" | "search_audit_flush";
 type WorkerTask = MaintenanceTask | "recover_consolidation";
 
 interface WorkerReply {
@@ -46,6 +46,9 @@ export interface MaintenanceProgress {
   wal_limit_bytes?: number;
   wal_above_limit?: boolean;
   error_code?: string;
+  intents_applied?: number;
+  intents_replayed?: number;
+  intents_remaining?: number;
 }
 
 export interface BackgroundMaintenanceWorkerClientOptions {
@@ -57,6 +60,7 @@ export interface BackgroundMaintenanceWorkerClientOptions {
   consolidationTimeoutMs: number;
   restartBackoffMs?: number;
   maxConsecutiveStartFailures?: number;
+  searchAuditFlushMaxRetries?: number;
   spawnWorker?: () => WorkerProcess;
   onProgress?: (event: MaintenanceProgress) => void;
   stopOwnedProcess?: typeof stopOwnedSearchWorkerProcess;
@@ -84,6 +88,7 @@ const SAFE_RESULT_KEYS = new Set([
   "derives_links_created", "dreaming_rewrites_created", "busy", "log",
   "checkpointed", "wal_bytes_before", "wal_bytes_after", "wal_limit_bytes",
   "wal_above_limit", "elapsed_ms",
+  "intents_applied", "intents_replayed", "intents_remaining",
 ]);
 
 /**
@@ -109,6 +114,8 @@ export class BackgroundMaintenanceWorkerClient {
   private consecutiveStartFailures = 0;
   private disabled = false;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private searchAuditFlushRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private searchAuditFlushRetryAttempt = 0;
 
   constructor(private readonly options: BackgroundMaintenanceWorkerClientOptions) {}
 
@@ -127,7 +134,9 @@ export class BackgroundMaintenanceWorkerClient {
         ? { reason: "scheduler", limit: resolveSchedulerConsolidationLimit(this.options.env) }
         : undefined,
     };
-    if (task === "wal_checkpoint" && this.active?.task === "consolidation") {
+    if (task === "search_audit_flush") {
+      this.queue.unshift(entry);
+    } else if (task === "wal_checkpoint" && this.active?.task === "consolidation") {
       this.queue.unshift(entry);
     } else {
       this.queue.push(entry);
@@ -175,6 +184,8 @@ export class BackgroundMaintenanceWorkerClient {
     this.stopped = true;
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = null;
+    if (this.searchAuditFlushRetryTimer) clearTimeout(this.searchAuditFlushRetryTimer);
+    this.searchAuditFlushRetryTimer = null;
     for (const entry of this.queue.splice(0)) entry.reject?.(new Error("maintenance worker stopped"));
     this.scheduled.clear();
     if (this.active) this.active.reject?.(new Error("maintenance worker stopped"));
@@ -282,6 +293,8 @@ export class BackgroundMaintenanceWorkerClient {
       this.drain();
       return;
     }
+    let continueSearchAuditFlush = false;
+    let retrySearchAuditFlush = false;
     if (reply.ok === true) {
       this.consecutiveStartFailures = 0;
       const result = reply.progress && typeof reply.progress === "object"
@@ -298,13 +311,23 @@ export class BackgroundMaintenanceWorkerClient {
         queue_depth: this.queue.length,
         ...safe,
       } as MaintenanceProgress);
+      continueSearchAuditFlush = active.task === "search_audit_flush" &&
+        Number(safe.intents_remaining ?? 0) > 0;
+      if (active.task === "search_audit_flush") {
+        this.searchAuditFlushRetryAttempt = 0;
+        if (this.searchAuditFlushRetryTimer) clearTimeout(this.searchAuditFlushRetryTimer);
+        this.searchAuditFlushRetryTimer = null;
+      }
       if (!active.scheduler) active.resolve?.(reply.result as ApiResponse);
     } else {
       const errorCode = typeof reply.error_code === "string" ? reply.error_code : "worker_failure";
       this.emit({ kind: "failed", task: active.task, elapsed_ms: elapsedMs, queue_depth: this.queue.length, error_code: errorCode });
       active.reject?.(new Error(errorCode));
+      retrySearchAuditFlush = active.task === "search_audit_flush";
     }
     this.finishActive();
+    if (continueSearchAuditFlush) this.schedule("search_audit_flush");
+    if (retrySearchAuditFlush) this.scheduleSearchAuditFlushRetry();
     this.drain();
   }
 
@@ -374,6 +397,19 @@ export class BackgroundMaintenanceWorkerClient {
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
       this.drain();
+    }, delay);
+  }
+
+  private scheduleSearchAuditFlushRetry(): void {
+    if (this.stopped || this.disabled || this.searchAuditFlushRetryTimer) return;
+    const maxRetries = Math.max(0, this.options.searchAuditFlushMaxRetries ?? 5);
+    if (this.searchAuditFlushRetryAttempt >= maxRetries) return;
+    this.searchAuditFlushRetryAttempt += 1;
+    const base = Math.max(1, this.options.restartBackoffMs ?? 250);
+    const delay = Math.min(5_000, base * (2 ** Math.max(0, this.searchAuditFlushRetryAttempt - 1)));
+    this.searchAuditFlushRetryTimer = setTimeout(() => {
+      this.searchAuditFlushRetryTimer = null;
+      this.schedule("search_audit_flush");
     }, delay);
   }
 

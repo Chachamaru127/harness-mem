@@ -26,6 +26,7 @@ interface SearchWorkerResponseEnvelope {
   error?: string;
   warmup_ms?: number | null;
   warmup_error?: string;
+  side_effect_intents_pending?: number;
 }
 
 interface SearchWorkerWarmupState {
@@ -162,7 +163,12 @@ async function runSearch(
         worker_queue_depth: 0,
       },
     );
-    writeProtocol({ id, ok: true, response });
+    writeProtocol({
+      id,
+      ok: true,
+      response,
+      side_effect_intents_pending: core.pendingSearchSideEffectIntents(),
+    });
   } catch (error) {
     recordRecallTelemetry(
       "recall.worker",

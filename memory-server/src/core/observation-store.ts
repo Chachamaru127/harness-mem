@@ -52,6 +52,7 @@ import { detectConsumed } from "../inject/consume-detector";
 import type { InjectEnvelope } from "../inject/envelope";
 import type { IObservationRepository } from "../db/repositories/IObservationRepository.js";
 import type { EmbeddingShadowManifest } from "../projector/shadow-sync";
+import type { SearchSideEffectIntent } from "./search-side-effect-spool";
 import type {
   ApiResponse,
   Config,
@@ -125,6 +126,7 @@ export interface ObservationStoreDeps {
     targetId: string,
     details: Record<string, unknown>
   ) => void;
+  persistSearchSideEffectIntent?: (intent: SearchSideEffectIntent) => { pending: number };
   // ---- vector 検索に必要な依存 ----
   getVectorEngine: () => VectorEngine;
   getVectorModelVersion: () => string;
@@ -4823,49 +4825,89 @@ export class ObservationStore {
       };
     }
 
-    try {
-      this.deps.writeAuditLog("read.search", "project", normalizedProject || "", {
-        query: request.query,
-        limit,
-        include_private: includePrivate,
-        count: items.length,
-        privacy_excluded_count: privacyExcludedCount,
-        boundary_excluded_count: boundaryExcludedCount,
-      });
+    const auditDetails = {
+      query: request.query,
+      limit,
+      include_private: includePrivate,
+      count: items.length,
+      privacy_excluded_count: privacyExcludedCount,
+      boundary_excluded_count: boundaryExcludedCount,
+    };
+    const hitIds = (items as Array<{ id?: unknown }>)
+      .map((item) => item.id as string)
+      .filter((id): id is string => Boolean(id));
+    const skipSearchHitSideEffects = latencySafeMode || request.skip_search_hit === true;
+    if (this.deps.persistSearchSideEffectIntent) {
+      const createdAt = nowIso();
+      const audits: SearchSideEffectIntent["audits"] = [{
+        action: "read.search",
+        target_type: "project",
+        target_id: normalizedProject || "",
+        details: auditDetails,
+      }];
       if (privacyExcludedCount > 0) {
-        this.deps.writeAuditLog(
-          "privacy_filter",
-          "search",
-          normalizedProject || "",
-          {
+        audits.push({
+          action: "privacy_filter",
+          target_type: "search",
+          target_id: normalizedProject || "",
+          details: {
+            reason: "include_private_false",
+            query: request.query,
+            returned_count: items.length,
+            excluded_count: privacyExcludedCount,
+            path: `search/${normalizedProject || "global"}`,
+            ts: createdAt,
+          },
+        });
+      }
+      if (boundaryExcludedCount > 0) {
+        audits.push({
+          action: "boundary_filter",
+          target_type: "search",
+          target_id: normalizedProject || "",
+          details: {
+            reason: "workspace_boundary",
+            excluded_count: boundaryExcludedCount,
+            project: normalizedProject,
+          },
+        });
+      }
+      if (hitIds.length > 0 && !skipSearchHitSideEffects) {
+        for (const id of hitIds) {
+          audits.push({
+            action: "search_hit",
+            target_type: "observation",
+            target_id: id,
+            details: { query: request.query?.substring(0, 100), project: normalizedProject },
+          });
+        }
+      }
+      this.deps.persistSearchSideEffectIntent({
+        audits,
+        access_count_ids: skipSearchHitSideEffects ? [] : hitIds,
+        created_at: createdAt,
+      });
+    } else {
+      try {
+        this.deps.writeAuditLog("read.search", "project", normalizedProject || "", auditDetails);
+        if (privacyExcludedCount > 0) {
+          this.deps.writeAuditLog("privacy_filter", "search", normalizedProject || "", {
             reason: "include_private_false",
             query: request.query,
             returned_count: items.length,
             excluded_count: privacyExcludedCount,
             path: `search/${normalizedProject || "global"}`,
             ts: nowIso(),
-          }
-        );
-      }
-      if (boundaryExcludedCount > 0) {
-        this.deps.writeAuditLog(
-          "boundary_filter",
-          "search",
-          normalizedProject || "",
-          {
+          });
+        }
+        if (boundaryExcludedCount > 0) {
+          this.deps.writeAuditLog("boundary_filter", "search", normalizedProject || "", {
             reason: "workspace_boundary",
             excluded_count: boundaryExcludedCount,
             project: normalizedProject,
-          }
-        );
-      }
-      // 返却した observation ごとに search_hit を記録し、access_count をインクリメント
-      const hitIds = (items as Array<{ id?: unknown }>)
-        .map((item) => item.id as string)
-        .filter((id): id is string => Boolean(id));
-      const skipSearchHitSideEffects = latencySafeMode || request.skip_search_hit === true;
-      if (hitIds.length > 0 && !skipSearchHitSideEffects) {
-        const recordSearchHits = () => {
+          });
+        }
+        if (hitIds.length > 0 && !skipSearchHitSideEffects) {
           try {
             this.deps.db.transaction(() => {
               const now = new Date().toISOString();
@@ -4896,11 +4938,10 @@ export class ObservationStore {
           } catch {
             // best effort: access_count 更新に失敗しても検索結果は返す
           }
-        };
-        recordSearchHits();
+        }
+      } catch {
+        // best effort
       }
-    } catch {
-      // best effort
     }
 
     const embeddingShadowManifest = this.deps.getEmbeddingShadowManifest?.() ?? null;

@@ -79,6 +79,12 @@ import {
 } from "./content-dedupe-claims";
 import { ObservationStore } from "./observation-store";
 import {
+  flushSearchSideEffectSpool,
+  hasPendingSearchSideEffects,
+  SearchAuditBackpressureError,
+  SearchSideEffectSpool,
+} from "./search-side-effect-spool";
+import {
   EXTERNAL_CHANNEL_BLOCKED_PRIVACY_TAGS,
   sanitizeItemsForExternalChannel,
   type ExternalChannelItem,
@@ -1012,6 +1018,7 @@ interface SearchWorkerResponseEnvelope {
   pid?: number;
   warmup_ms?: number | null;
   warmup_error?: string;
+  side_effect_intents_pending?: number;
 }
 
 interface SearchWorkerResult {
@@ -1019,6 +1026,7 @@ interface SearchWorkerResult {
   ready_at_start: boolean;
   pid: number | null;
   warmup_ms: number | null;
+  side_effect_intents_pending: number;
 }
 
 interface PendingSearchWorkerRequest {
@@ -1365,6 +1373,9 @@ export class PersistentSearchWorkerClient {
         ready_at_start: pending.readyAtStart,
         pid: this.workerPid,
         warmup_ms: this.warmupMs,
+        side_effect_intents_pending: typeof message.side_effect_intents_pending === "number"
+          ? Math.max(0, Math.floor(message.side_effect_intents_pending))
+          : 0,
       });
       return;
     }
@@ -1873,6 +1884,7 @@ export class HarnessMemCore {
   private readonly projectNormalizationRoots: string[];
   private readonly environmentSnapshotCache = new TtlCache<EnvironmentSnapshot>(DEFAULT_ENVIRONMENT_CACHE_TTL_MS);
   private readonly repeatRecallCache = new Map<string, RepeatRecallCacheEntry>();
+  private readonly searchSideEffectSpool: SearchSideEffectSpool | null;
 
   // ---------------------------------------------------------------------------
   // モジュールインスタンス (facade パターン)
@@ -1938,6 +1950,15 @@ export class HarnessMemCore {
     // Expose raw SQLite Database for backward compat and SQLite-specific features
     // (FTS5, sqlite-vec, PRAGMA).  Will be removed once all methods migrate to storage.
     this.db = (this.storage as SqliteStorageAdapter).raw;
+    this.searchSideEffectSpool = (
+      process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS === "1" ||
+      process.env.HARNESS_MEM_SEARCH_CHILD_PROCESS === "1"
+    )
+      ? new SearchSideEffectSpool(
+          dbPath,
+          clampLimit(Number(process.env.HARNESS_MEM_SEARCH_AUDIT_SPOOL_MAX || 10_000), 10_000, 100, 100_000),
+        )
+      : null;
 
     this.configureDatabase();
     const hadHarnessSchemaBeforeInit = this.hasHarnessSchema();
@@ -2011,6 +2032,9 @@ export class HarnessMemCore {
       platformVisibilityFilterSql: (alias) => this.platformVisibilityFilterSql(alias),
       writeAuditLog: (action, targetType, targetId, details) =>
         this.writeAuditLog(action, targetType, targetId, details),
+      persistSearchSideEffectIntent: this.searchSideEffectSpool
+        ? (intent) => this.searchSideEffectSpool!.append(intent)
+        : undefined,
       getVectorEngine: () => this.vectorEngine,
       getVectorModelVersion: () => this.vectorModelVersion,
       vectorDimension: this.config.vectorDimension,
@@ -2514,6 +2538,9 @@ export class HarnessMemCore {
     }
     const timeoutMs = this.searchWorkerTimeoutMs(worker);
     const result = await worker.request(request, timeoutMs);
+    if (result.side_effect_intents_pending > 0) {
+      this.scheduleMaintenance("search_audit_flush");
+    }
     const response = result.response;
     const offloadWallMs = Number((performance.now() - startedAt).toFixed(2));
     const workerLatencyMs =
@@ -2610,6 +2637,7 @@ export class HarnessMemCore {
         throw new Error(`search child ${reason}: ${stderr.trim() || stdout.trim()}`);
       }
       const response = parseChildApiResponse(stdout, stderr, "search child");
+      this.scheduleMaintenance("search_audit_flush");
       const offloadWallMs = Number((performance.now() - startedAt).toFixed(2));
       const childLatencyMs =
         typeof response.meta.latency_ms === "number"
@@ -3713,6 +3741,9 @@ export class HarnessMemCore {
     if (this.maintenanceWorkerConfigCompatible) {
       this.getOrCreateBackgroundMaintenanceWorker();
     }
+    if (hasPendingSearchSideEffects(this.config.dbPath)) {
+      this.scheduleMaintenance("search_audit_flush");
+    }
     this.ingestCoord.startTimers();
     // §91-002: start partial-finalize scheduler (no-op when enabled=false)
     this.partialFinalizeScheduler.start();
@@ -3780,6 +3811,10 @@ export class HarnessMemCore {
     if (this.shuttingDown) return;
     if (task === "consolidation" && this.vectorBackfillWorker?.isRunning() === true) return;
     if (task === "wal_checkpoint" && !isWalRetry) this.resetWalCheckpointRetry();
+    if (task === "search_audit_flush") {
+      this.getOrCreateBackgroundMaintenanceWorker().schedule(task);
+      return;
+    }
     if (!this.maintenanceWorkerConfigCompatible) {
       if (task === "consolidation") {
         if (this.localSchedulerConsolidationRunning) return;
@@ -6095,6 +6130,12 @@ export class HarnessMemCore {
     try {
       return this.obsStore.search(request);
     } catch (error) {
+      if (error instanceof SearchAuditBackpressureError) {
+        const response = makeErrorResponse(startedAt, "search audit temporarily unavailable", {});
+        response.meta.error_code = error.code;
+        response.meta.http_status = 503;
+        return response;
+      }
       return this.makeEmbeddingUnavailableResponse(
         startedAt,
         request as unknown as Record<string, unknown>,
@@ -9523,6 +9564,14 @@ export class HarnessMemCore {
     };
   }
 
+  pendingSearchSideEffectIntents(): number {
+    return this.searchSideEffectSpool?.count() ?? 0;
+  }
+
+  runMaintenanceSearchAuditFlush(limit = 100): Record<string, number> {
+    return flushSearchSideEffectSpool(this.db, this.config.dbPath, limit);
+  }
+
   /**
    * S81-B03: build the LLM-backed adjudicator used by contradiction
    * detection. Attempts the Claude Agent SDK provider (S81-C02) first, then
@@ -10155,6 +10204,14 @@ export class HarnessMemCore {
           const message = err instanceof Error ? err.message : String(err);
           console.error(`[harness-mem] shutdown: processRetryQueue failed (continuing): ${message}`);
         }
+        try {
+          let remaining = 0;
+          do {
+            remaining = Number(this.runMaintenanceSearchAuditFlush(500).intents_remaining ?? 0);
+          } while (remaining > 0);
+        } catch {
+          console.error("[harness-mem] search audit flush failed error_code=audit_backpressure");
+        }
       }
 
       // Shutdown managed backend (fire-and-forget, best effort)
@@ -10169,6 +10226,12 @@ export class HarnessMemCore {
         } catch {
           // best effort
         }
+      }
+
+      try {
+        this.searchSideEffectSpool?.close();
+      } catch {
+        console.error("[harness-mem] search audit spool close failed error_code=audit_backpressure");
       }
 
       try {
