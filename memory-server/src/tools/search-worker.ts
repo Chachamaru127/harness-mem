@@ -158,6 +158,9 @@ async function runSearch(
       retrieval_unattributed_ms: typeof phaseTiming.retrieval_unattributed_ms === "number" ? phaseTiming.retrieval_unattributed_ms : null,
       scope_resolution_ms: typeof phaseTiming.scope_resolution_ms === "number" ? phaseTiming.scope_resolution_ms : null,
       latest_interaction_ms: typeof phaseTiming.latest_interaction_ms === "number" ? phaseTiming.latest_interaction_ms : null,
+      latest_interaction_sql_ms: typeof phaseTiming.latest_interaction_sql_ms === "number" ? phaseTiming.latest_interaction_sql_ms : null,
+      latest_interaction_materialize_ms: typeof phaseTiming.latest_interaction_materialize_ms === "number"
+        ? phaseTiming.latest_interaction_materialize_ms : null,
       lexical_candidate_ms: typeof phaseTiming.lexical_candidate_ms === "number" ? phaseTiming.lexical_candidate_ms : null,
       lexical_strategy: phaseTiming.lexical_strategy === "bounded_recent" || phaseTiming.lexical_strategy === "fts"
         ? phaseTiming.lexical_strategy
@@ -174,6 +177,9 @@ async function runSearch(
       vector_executed: typeof phaseTiming.vector_executed === "boolean" ? phaseTiming.vector_executed : null,
       load_hydrate_ms: typeof phaseTiming.load_hydrate_ms === "number" ? phaseTiming.load_hydrate_ms : null,
       facts_tags_ms: typeof phaseTiming.facts_tags_ms === "number" ? phaseTiming.facts_tags_ms : null,
+      search_tokenize_ms: typeof phaseTiming.search_tokenize_ms === "number" ? phaseTiming.search_tokenize_ms : null,
+      fact_load_ms: typeof phaseTiming.fact_load_ms === "number" ? phaseTiming.fact_load_ms : null,
+      tag_fact_scoring_ms: typeof phaseTiming.tag_fact_scoring_ms === "number" ? phaseTiming.tag_fact_scoring_ms : null,
       route_ms: typeof phaseTiming.route_ms === "number" ? phaseTiming.route_ms : null,
       ranking_rerank_ms: typeof phaseTiming.ranking_rerank_ms === "number" ? phaseTiming.ranking_rerank_ms : null,
       privacy_boundary_ms: typeof phaseTiming.privacy_boundary_ms === "number" ? phaseTiming.privacy_boundary_ms : null,

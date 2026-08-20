@@ -315,7 +315,7 @@ describe("search quality integration", () => {
         const plan = db.query<{ detail: string }, [string]>(`EXPLAIN QUERY PLAN
           SELECT o.id
           FROM mem_observations o
-          LEFT JOIN mem_events e ON e.event_id = o.event_id
+          LEFT JOIN mem_events e INDEXED BY idx_mem_events_id_type ON e.event_id = o.event_id
           WHERE o.project = ?
             AND o.archived_at IS NULL
             AND (o.expires_at IS NULL OR o.expires_at > '2026-08-20T00:00:00.000Z')
@@ -327,7 +327,18 @@ describe("search quality integration", () => {
           LIMIT 20`).all("search-quality");
         const planText = plan.map((row) => row.detail).join("\n");
         expect(planText).toContain("idx_mem_obs_project_archived_created");
+        expect(planText).toContain("COVERING INDEX idx_mem_events_id_type");
         expect(planText).not.toContain("USE TEMP B-TREE FOR ORDER BY");
+        const activeFactPlan = db.query<{ detail: string }, [string, string]>(`EXPLAIN QUERY PLAN
+          SELECT observation_id, fact_type, fact_key, fact_value, confidence
+          FROM mem_facts INDEXED BY idx_mem_facts_observation_active
+          WHERE observation_id IN (?)
+            AND project = ?
+            AND merged_into_fact_id IS NULL
+            AND superseded_by IS NULL
+            AND valid_to IS NULL`).all("active-prompt", "search-quality");
+        expect(activeFactPlan.map((row) => row.detail).join("\n"))
+          .toContain("idx_mem_facts_observation_active");
       } finally {
         db.close();
       }

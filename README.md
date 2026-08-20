@@ -205,12 +205,16 @@ Retrieval timing is further split into scope resolution, latest interaction,
 lexical candidates (including bounded-recent/FTS strategy, SQL fallback, and
 rows examined), vector, load/hydration, facts/tags, route, ranking/rerank,
 privacy/boundary, audit-intent build, and an explicit unattributed remainder.
+Latest interaction separates SQL from materialization; facts/tags separates
+tokenization, observation-indexed active-fact loading, and tag/fact scoring.
 Repeat-recall cache watermarks use transactionally maintained project, session,
 and global retrieval-auxiliary generations. Ready databases read three primary
 keys instead of scanning observations; a missing marker or trigger falls back
 to the legacy watermark scan until one atomic migration repairs readiness.
 Latest-interaction context keeps the same search/resume-pack response shape while
 excluding archived and expired turns through the indexed newest-first lookup.
+Its event-type lookup is covering, and active facts are loaded through the
+observation-first index instead of a project-wide fact scan.
 Scheduled consolidation processes one durable queue job per tick by default to
 bound same-database contention with search. Set
 `HARNESS_MEM_CONSOLIDATION_SCHEDULER_BATCH_SIZE` to 1–10 only after measuring

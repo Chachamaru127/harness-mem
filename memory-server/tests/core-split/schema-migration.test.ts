@@ -922,6 +922,10 @@ describe("schema migration", () => {
         .query(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_mem_facts_observation_active'`)
         .get() as { name: string } | null;
       expect(activeFactIndex?.name).toBe("idx_mem_facts_observation_active");
+      const eventTypeCoveringIndex = db
+        .query(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_mem_events_id_type'`)
+        .get() as { name: string } | null;
+      expect(eventTypeCoveringIndex?.name).toBe("idx_mem_events_id_type");
 
       const now = "2026-05-07T00:00:00.000Z";
       db.query(

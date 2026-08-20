@@ -515,11 +515,18 @@ second concurrent maintenance I/O lane against search.
   fixed `bounded_recent`/`fts` strategy enum, tokenize/primary SQL/fallback SQL/
   score durations, rows examined, and a fallback boolean. An explicit
   unattributed duration keeps the sum reconcilable with retrieval total.
+  Latest interaction additionally separates SQL from materialization, while
+  facts/tags separates search tokenization, active-fact loading, and per-item
+  tag/fact scoring. These additive subphases remain inside their existing
+  aggregate durations.
 - Project/session search and resume-pack keep the `meta.latest_interaction`
   response ABI for both generic and explicit latest-interaction intent. Its
   lookup must apply the standard archived/expired observation filter before
   ordering, so soft-deleted turns cannot become context and the existing
   `(project, archived_at, created_at, id)` index bounds newest-first work.
+  Event-type lookup must use the covering `(event_id, event_type)` index, and
+  active-fact lookup must use the observation-first active-fact index rather
+  than scanning all facts for a project.
 - A ready repeat-recall watermark is the tuple of project, session, and global
   retrieval-auxiliary generations. Observation insert/delete and updates to
   retrieval-relevant columns bump affected scopes in the same transaction;

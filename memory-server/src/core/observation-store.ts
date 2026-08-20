@@ -116,6 +116,8 @@ interface RetrievalPhaseTiming {
   retrieval_unattributed_ms: number;
   scope_resolution_ms: number;
   latest_interaction_ms: number;
+  latest_interaction_sql_ms: number;
+  latest_interaction_materialize_ms: number;
   lexical_candidate_ms: number;
   lexical_strategy: "bounded_recent" | "fts";
   lexical_tokenize_ms: number;
@@ -128,6 +130,9 @@ interface RetrievalPhaseTiming {
   vector_executed: boolean;
   load_hydrate_ms: number;
   facts_tags_ms: number;
+  search_tokenize_ms: number;
+  fact_load_ms: number;
+  tag_fact_scoring_ms: number;
   route_ms: number;
   ranking_rerank_ms: number;
   privacy_boundary_ms: number;
@@ -1133,7 +1138,7 @@ export class ObservationStore {
     user_id?: string;
     team_id?: string;
     limit?: number;
-  }): LatestInteractionObservation[] {
+  }, timing?: { sql_ms: number; materialize_ms: number }): LatestInteractionObservation[] {
     const params: unknown[] = [];
     let sql = `
       SELECT
@@ -1149,14 +1154,14 @@ export class ObservationStore {
         o.created_at,
         e.event_type
       FROM mem_observations o
-      LEFT JOIN mem_events e ON e.event_id = o.event_id
+      LEFT JOIN mem_events e INDEXED BY idx_mem_events_id_type ON e.event_id = o.event_id
       WHERE 1 = 1
     `;
 
     if (options.correlation_id) {
       sql = sql.replace(
-        "LEFT JOIN mem_events e ON e.event_id = o.event_id",
-        "JOIN mem_sessions s ON s.session_id = o.session_id\n      LEFT JOIN mem_events e ON e.event_id = o.event_id"
+        "LEFT JOIN mem_events e INDEXED BY idx_mem_events_id_type ON e.event_id = o.event_id",
+        "JOIN mem_sessions s ON s.session_id = o.session_id\n      LEFT JOIN mem_events e INDEXED BY idx_mem_events_id_type ON e.event_id = o.event_id"
       );
     }
 
@@ -1198,8 +1203,11 @@ export class ObservationStore {
     sql += " ORDER BY o.created_at DESC, o.id DESC LIMIT ?";
     params.push(limit);
 
+    const sqlStartedAt = performance.now();
     const rows = this.deps.db.query(sql).all(...(params as any[])) as Array<Record<string, unknown>>;
-    return rows.map((row) => ({
+    if (timing) timing.sql_ms += performance.now() - sqlStartedAt;
+    const materializeStartedAt = performance.now();
+    const observations = rows.map((row) => ({
       id: String(row.id || ""),
       event_id: typeof row.event_id === "string" ? row.event_id : null,
       event_type: typeof row.event_type === "string" ? row.event_type : "",
@@ -1212,6 +1220,8 @@ export class ObservationStore {
       tags: parseArrayJson(row.tags_json),
       privacy_tags: parseArrayJson(row.privacy_tags_json),
     }));
+    if (timing) timing.materialize_ms += performance.now() - materializeStartedAt;
+    return observations;
   }
 
   private collectLatestInteractionContexts(
@@ -1312,7 +1322,12 @@ export class ObservationStore {
     return contexts[0] ?? null;
   }
 
-  private getLatestInteractionContext(request: SearchRequest, projectMembers: string[] = [], scanLimit?: number): LatestInteractionContext | null {
+  private getLatestInteractionContext(
+    request: SearchRequest,
+    projectMembers: string[] = [],
+    scanLimit?: number,
+    timing?: { sql_ms: number; materialize_ms: number },
+  ): LatestInteractionContext | null {
     if (projectMembers.length === 0 && !request.session_id) {
       return null;
     }
@@ -1332,8 +1347,11 @@ export class ObservationStore {
       user_id: userId,
       team_id: teamId,
       limit: scanLimit,
-    });
-    return this.selectLatestInteractionContext(candidates, scope);
+    }, timing);
+    const materializeStartedAt = performance.now();
+    const context = this.selectLatestInteractionContext(candidates, scope);
+    if (timing) timing.materialize_ms += performance.now() - materializeStartedAt;
+    return context;
   }
 
   private getResumeInteractionContext(
@@ -2832,7 +2850,7 @@ export class ObservationStore {
         .query(
           `
             SELECT observation_id, fact_type, fact_key, fact_value, confidence
-            FROM mem_facts
+            FROM mem_facts INDEXED BY idx_mem_facts_observation_active
             WHERE observation_id IN (${placeholders})
               ${projectClause}
               AND merged_into_fact_id IS NULL
@@ -4201,10 +4219,15 @@ export class ObservationStore {
     const startedAt = performance.now();
     let projectScopeMsRaw = 0;
     let latestInteractionMsRaw = 0;
+    let latestInteractionSqlMsRaw = 0;
+    let latestInteractionMaterializeMsRaw = 0;
     let lexicalCandidateMsRaw = 0;
     let vectorMsRaw = 0;
     let loadHydrateMsRaw = 0;
     let factsTagsMsRaw = 0;
+    let searchTokenizeMsRaw = 0;
+    let factLoadMsRaw = 0;
+    let tagFactScoringMsRaw = 0;
     let routeMsRaw = 0;
     let rankingRerankMsRaw = 0;
     let privacyBoundaryMsRaw = 0;
@@ -4286,6 +4309,7 @@ export class ObservationStore {
     };
     projectScopeMsRaw = performance.now() - projectScopeStartedAt;
     const latestInteractionStartedAt = performance.now();
+    const latestInteractionTiming = { sql_ms: 0, materialize_ms: 0 };
     const hasLatestInteractionIntent = isLatestInteractionIntent(request.query);
     // COMP-003: as_of が指定されている場合、latest interaction は時点外の結果を混入させるためスキップ
     const latestInteraction = request.as_of
@@ -4293,9 +4317,12 @@ export class ObservationStore {
       : this.getLatestInteractionContext(
           normalizedRequest, projectMembers || [],
           hasLatestInteractionIntent ? 400 : 20,
+          latestInteractionTiming,
         );
     const prioritizeLatestInteraction = Boolean(latestInteraction) && hasLatestInteractionIntent;
     latestInteractionMsRaw = performance.now() - latestInteractionStartedAt;
+    latestInteractionSqlMsRaw = latestInteractionTiming.sql_ms;
+    latestInteractionMaterializeMsRaw = latestInteractionTiming.materialize_ms;
 
     const lexicalCandidateStartedAt = performance.now();
     const lexical = this.lexicalSearch(normalizedRequest, internalLimit, lexicalPhaseTiming);
@@ -4453,13 +4480,15 @@ export class ObservationStore {
     loadHydrateMsRaw += performance.now() - loadObservationsStartedAt;
     const factsTagsStartedAt = performance.now();
     const queryTokens = buildSearchTokens(request.query);
-    factsTagsMsRaw += performance.now() - factsTagsStartedAt;
+    searchTokenizeMsRaw = performance.now() - factsTagsStartedAt;
+    factsTagsMsRaw += searchTokenizeMsRaw;
     const routeStartedAt = performance.now();
     const routeDecision: RouteDecision = routeQuery(request.query, request.question_kind);
     routeMsRaw = performance.now() - routeStartedAt;
     const activeFactsStartedAt = performance.now();
     const activeFactsByObservation = this.loadActiveFactsByObservation(projectMembers || [], [...candidateIds]);
-    factsTagsMsRaw += performance.now() - activeFactsStartedAt;
+    factLoadMsRaw = performance.now() - activeFactsStartedAt;
+    factsTagsMsRaw += factLoadMsRaw;
 
     const ranked: SearchCandidate[] = [];
     let vectorCandidateCount = 0;
@@ -4522,6 +4551,7 @@ export class ObservationStore {
             activeFactsByObservation.get(id) ?? []
           );
       const candidateFactsTagsMs = performance.now() - candidateFactsTagsStartedAt;
+      tagFactScoringMsRaw += candidateFactsTagsMs;
       factsTagsMsRaw += candidateFactsTagsMs;
       const precisionBoost = latencySafeMode
         ? 0
@@ -5029,10 +5059,15 @@ export class ObservationStore {
       Math.max(0, Math.floor(value * 100) / 100);
     const scopeResolutionMs = retrievalPhaseMs(projectScopeMsRaw);
     const latestInteractionMs = retrievalPhaseMs(latestInteractionMsRaw);
+    const latestInteractionSqlMs = retrievalPhaseMs(latestInteractionSqlMsRaw);
+    const latestInteractionMaterializeMs = retrievalPhaseMs(latestInteractionMaterializeMsRaw);
     const lexicalCandidateMs = retrievalPhaseMs(lexicalCandidateMsRaw);
     const vectorMs = retrievalPhaseMs(vectorMsRaw);
     const loadHydrateMs = retrievalPhaseMs(loadHydrateMsRaw);
     const factsTagsMs = retrievalPhaseMs(factsTagsMsRaw);
+    const searchTokenizeMs = retrievalPhaseMs(searchTokenizeMsRaw);
+    const factLoadMs = retrievalPhaseMs(factLoadMsRaw);
+    const tagFactScoringMs = retrievalPhaseMs(tagFactScoringMsRaw);
     const routeMs = retrievalPhaseMs(routeMsRaw);
     const rankingRerankMs = retrievalPhaseMs(rankingRerankMsRaw);
     const privacyBoundaryMs = retrievalPhaseMs(privacyBoundaryMsRaw);
@@ -5045,6 +5080,8 @@ export class ObservationStore {
       retrieval_unattributed_ms: retrievalPhaseMs(Math.max(0, retrievalTotalMs - retrievalAttributedMs)),
       scope_resolution_ms: scopeResolutionMs,
       latest_interaction_ms: latestInteractionMs,
+      latest_interaction_sql_ms: latestInteractionSqlMs,
+      latest_interaction_materialize_ms: latestInteractionMaterializeMs,
       lexical_candidate_ms: lexicalCandidateMs,
       lexical_strategy: lexicalPhaseTiming.strategy,
       lexical_tokenize_ms: retrievalPhaseMs(lexicalPhaseTiming.tokenize_ms),
@@ -5057,6 +5094,9 @@ export class ObservationStore {
       vector_executed: vectorExecuted,
       load_hydrate_ms: loadHydrateMs,
       facts_tags_ms: factsTagsMs,
+      search_tokenize_ms: searchTokenizeMs,
+      fact_load_ms: factLoadMs,
+      tag_fact_scoring_ms: tagFactScoringMs,
       route_ms: routeMs,
       ranking_rerank_ms: rankingRerankMs,
       privacy_boundary_ms: privacyBoundaryMs,

@@ -823,6 +823,8 @@ export function initSchema(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_mem_events_lookup
       ON mem_events(platform, project, session_id, ts);
+    CREATE INDEX IF NOT EXISTS idx_mem_events_id_type
+      ON mem_events(event_id, event_type);
 
     CREATE TABLE IF NOT EXISTS mem_observations (
       id TEXT PRIMARY KEY,
@@ -1904,6 +1906,8 @@ export function migrateSchema(
   } catch {
     // already exists
   }
+
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_events_id_type ON mem_events(event_id, event_type)`);
 
   // S108-007: Temporal anchor persistence contract across observations,
   // facts, observation links, and entity relations.

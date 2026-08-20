@@ -204,6 +204,24 @@ describe("repeat recall query cache", () => {
         expect(timing[key]).toEqual(expect.any(Number));
         expect(timing[key]).toBeGreaterThanOrEqual(0);
       }
+      for (const key of [
+        "latest_interaction_sql_ms",
+        "latest_interaction_materialize_ms",
+        "search_tokenize_ms",
+        "fact_load_ms",
+        "tag_fact_scoring_ms",
+      ]) {
+        expect(timing[key]).toEqual(expect.any(Number));
+        expect(timing[key]).toBeGreaterThanOrEqual(0);
+      }
+      expect(Number(timing.latest_interaction_sql_ms) + Number(timing.latest_interaction_materialize_ms))
+        .toBeLessThanOrEqual(Number(timing.latest_interaction_ms) + 0.1);
+      expect(Number(timing.latest_interaction_sql_ms) + Number(timing.latest_interaction_materialize_ms))
+        .toBeGreaterThanOrEqual(Number(timing.latest_interaction_ms) - 0.1);
+      expect(Number(timing.search_tokenize_ms) + Number(timing.fact_load_ms) + Number(timing.tag_fact_scoring_ms))
+        .toBeLessThanOrEqual(Number(timing.facts_tags_ms) + 0.1);
+      expect(Number(timing.search_tokenize_ms) + Number(timing.fact_load_ms) + Number(timing.tag_fact_scoring_ms))
+        .toBeGreaterThanOrEqual(Number(timing.facts_tags_ms) - 0.1);
       expect(timing.vector_executed).toBe(false);
       expect(timing.lexical_strategy).toBe("bounded_recent");
       expect(timing.lexical_tokenize_ms).toEqual(expect.any(Number));
