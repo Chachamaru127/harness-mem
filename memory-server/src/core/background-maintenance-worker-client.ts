@@ -225,6 +225,7 @@ export class BackgroundMaintenanceWorkerClient {
     } else if (this.searchAuditPendingCount >= (this.options.searchAuditFlushMinBatch ?? 8)) {
       this.armSearchAuditIdleGrace();
     }
+    this.drain();
   }
 
   workerPid(): number | null {
@@ -284,6 +285,7 @@ export class BackgroundMaintenanceWorkerClient {
 
   private drain(): void {
     if (this.stopped || this.terminating || this.active || this.queue.length === 0) return;
+    if (this.queue[0]?.task === "search_audit_flush" && this.searchesInFlight > 0) return;
     const entry = this.queue.shift()!;
     try {
       this.ensureStarted();

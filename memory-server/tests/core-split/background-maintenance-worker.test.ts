@@ -127,7 +127,7 @@ describe("background maintenance persistent workers", () => {
       event.kind === "completed" && event.task === "search_audit_flush"));
   });
 
-  test("hard max age dispatches while a later search remains in flight", async () => {
+  test("hard max age queues durably but waits for the in-flight search to finish", async () => {
     const { client, events } = makeClient({
       searchAuditFlushIdleGraceMs: 10,
       searchAuditFlushMinBatch: 8,
@@ -136,10 +136,13 @@ describe("background maintenance persistent workers", () => {
     client.searchStarted();
     client.searchFinished(1);
     client.searchStarted();
-    await waitFor(() => events.some((event) =>
-      event.kind === "started" && event.task === "search_audit_flush"), 500);
-    expect(client.activeTask()).toBe("search_audit_flush");
+    await waitFor(() => client.pendingTasks().includes("search_audit_flush"), 500);
+    await Bun.sleep(50);
+    expect(events.some((event) =>
+      event.kind === "started" && event.task === "search_audit_flush")).toBe(false);
     client.searchFinished(0);
+    await waitFor(() => events.some((event) =>
+      event.kind === "completed" && event.task === "search_audit_flush"), 500);
   });
 
   test("a search finishing after stop cannot recreate an audit timer or dispatch", async () => {

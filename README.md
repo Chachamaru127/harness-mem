@@ -196,8 +196,9 @@ fixed error and never emits query, project, identifier, or path data in worker
 progress telemetry. A failed flush retries with finite coalesced exponential
 backoff; acknowledged intents remain in the durable spool for later recovery.
 Normal search traffic batches main-database application after two idle seconds
-once eight intents are pending, with a 30-second oldest-intent bound and a
-100-intent batch limit. One batch uses three transactions total (main apply,
+once eight intents are pending. A 30-second-old intent makes the flush
+non-cancelable, but it waits for all in-flight searches to finish and dispatches
+immediately afterward. Each batch is limited to 100 intents and uses three transactions total (main apply,
 sidecar delete, claim cleanup), rather than up to three commits per intent.
 Startup and graceful shutdown still drain immediately.
 Cache-miss responses include fixed scalar `search_phase_timing` fields for

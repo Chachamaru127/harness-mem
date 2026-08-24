@@ -202,8 +202,9 @@ boundedなSQLite spoolへ耐久保存します。main DBへの反映はmaintenan
 DB audit commitを待たず、監査の耐久性も維持します。spool backpressureは固定errorで
 fail closedし、worker進捗へquery、project、ID、pathを出しません。flush失敗は有限の
 coalesced指数backoffでretryし、未反映intentはdurable spoolに残して次回回収します。
-通常のsearchでは、pending 8件以上になってからsearch idle 2秒でmain DB反映を開始し、
-最古intentは最大30秒で必ずdispatchします。1 batchは最大100件です。main apply、sidecar
+通常のsearchでは、pending 8件以上になってからsearch idle 2秒でmain DB反映を開始します。
+最古intentが30秒へ達したflushは取消不能の待機状態にしますが、実行中searchが0になるまで
+開始せず、最後のsearch完了直後にdispatchします。1 batchは最大100件です。main apply、sidecar
 delete、claim cleanupの3 transactionへまとめ、intentごとの最大3 commitを避けます。
 startupとgraceful shutdownは待機せずdrainします。
 cache miss応答の`search_phase_timing`はwatermark/cache lookup、retrieval、durable spool

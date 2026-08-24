@@ -490,9 +490,11 @@ second concurrent maintenance I/O lane against search.
   worker durably appends one typed intent to a bounded mode-0600 sidecar SQLite
   spool with `synchronous=FULL`. The maintenance worker applies intents to the
   main database in FIFO order. Normal search traffic waits for two search-idle
-  seconds after at least eight pending intents, with a hard 30-second oldest-
-  intent dispatch bound. A new search cancels only an unstarted flush; a
-  running flush is non-preemptive. WAL checkpoint stays ahead of audit flush,
+  seconds after at least eight pending intents. At 30 seconds the oldest intent
+  makes a flush durably eligible and non-cancelable, but the flush must not
+  begin while any search is in flight; it starts immediately after the last
+  active search finishes. A new search cancels only an unstarted idle-grace
+  flush, and a running flush is non-preemptive. WAL checkpoint stays ahead of audit flush,
   which stays ahead of scheduler consolidation. Each batch is bounded to 100
   intents and uses one main claim/apply transaction, one sidecar-delete
   transaction, and one claim-cleanup transaction. Remaining batches yield
