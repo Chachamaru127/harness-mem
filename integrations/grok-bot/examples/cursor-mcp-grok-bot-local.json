@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "harness-mem-grok-bot": {
+      "url": "http://127.0.0.1:37889/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:HARNESS_MEM_MCP_TOKEN}",
+        "X-Harness-MCP-Platform": "grok-bot",
+        "Host": "127.0.0.1:37889"
+      }
+    }
+  }
+}

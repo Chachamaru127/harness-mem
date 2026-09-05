@@ -6,7 +6,9 @@ import { join } from "node:path";
 const {
   buildCodexManagedBlock,
   buildCursorHarnessConfig,
+  buildGrokBotHarnessConfig,
   CURSOR_MCP_SERVER_ID,
+  GROK_BOT_MCP_SERVER_ID,
   resolveServerSpec,
   runMcpConfigCli,
 } = require("../scripts/lib/mcp-config");
@@ -103,6 +105,28 @@ describe("mcp-config CLI", () => {
     expect(cursorHarness.headers.Authorization).toBe("Bearer ${env:HARNESS_MEM_MCP_TOKEN}");
     expect(serialized).not.toContain("super-secret-token");
     expect(cursorHarness.command).toBeUndefined();
+  });
+
+  test("builds Grok Bot HTTP MCP config with host rewrite and platform headers", () => {
+    const spec = resolveServerSpec({
+      transport: "http",
+      env: {
+        HARNESS_MEM_MCP_TOKEN: "super-secret-token",
+      },
+      url: "https://example-tailnet.ts.net/mcp",
+    });
+    const grokConfig = buildGrokBotHarnessConfig(spec, {
+      env: {
+        HARNESS_MEM_GROK_BOT_HOST_HEADER: "127.0.0.1:37889",
+      },
+    });
+    const serialized = JSON.stringify(grokConfig);
+
+    expect(grokConfig.url).toBe("https://example-tailnet.ts.net/mcp");
+    expect(grokConfig.headers.Authorization).toBe("Bearer ${env:HARNESS_MEM_MCP_TOKEN}");
+    expect(grokConfig.headers.Host).toBe("127.0.0.1:37889");
+    expect(grokConfig.headers["X-Harness-MCP-Platform"]).toBe("grok-bot");
+    expect(serialized).not.toContain("super-secret-token");
   });
 
   test("writes HTTP Claude, Codex, and Hermes config files when explicitly requested", () => {
@@ -252,6 +276,45 @@ describe("mcp-config CLI", () => {
       expect(cursorConfig.mcpServers.harness).toBeUndefined();
       expect(cursorConfig.mcpServers.unrelated).toEqual({ command: "example" });
       expect(JSON.stringify(cursorConfig)).not.toContain("/old/bin/harness-mcp-server");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  test("writes Grok Bot MCP entry to Cursor config with HTTP transport", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-mcp-config-grok-"));
+
+    try {
+      const code = runMcpConfigCli({
+        argv: [
+          "--write",
+          "--client",
+          "grokbot",
+          "--home",
+          tmpHome,
+          "--url",
+          "https://example-tailnet.ts.net/mcp",
+          "--host-header",
+          "127.0.0.1:37889",
+        ],
+        env: {
+          ...process.env,
+          HARNESS_MEM_MCP_TOKEN: "super-secret-token",
+        },
+        stdout: { write: () => {} },
+      });
+      expect(code).toBe(0);
+
+      const cursorConfig = JSON.parse(readFileSync(join(tmpHome, ".cursor", "mcp.json"), "utf8")) as {
+        mcpServers: Record<string, { url?: string; headers?: Record<string, string> }>;
+      };
+      const grokEntry = cursorConfig.mcpServers[GROK_BOT_MCP_SERVER_ID];
+      expect(grokEntry).toBeTruthy();
+      expect(grokEntry.url).toBe("https://example-tailnet.ts.net/mcp");
+      expect(grokEntry.headers?.Authorization).toBe("Bearer ${env:HARNESS_MEM_MCP_TOKEN}");
+      expect(grokEntry.headers?.Host).toBe("127.0.0.1:37889");
+      expect(grokEntry.headers?.["X-Harness-MCP-Platform"]).toBe("grok-bot");
+      expect(JSON.stringify(cursorConfig)).not.toContain("super-secret-token");
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }

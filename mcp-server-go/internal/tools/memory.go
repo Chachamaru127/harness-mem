@@ -104,7 +104,7 @@ func WorkToolDefs() []ToolDef {
 // handleMemTool wraps the inner handler with tool-use event tracking.
 func handleMemTool(name string) HandlerFunc {
 	return func(ctx context.Context, args map[string]any) types.ToolResult {
-		platform := getMCPPlatform()
+		platform := getMCPPlatform(ctx)
 		shouldTrack := platform != "" && !selfTrackSkip[name]
 		start := time.Now()
 
@@ -128,7 +128,10 @@ func handleMemTool(name string) HandlerFunc {
 	}
 }
 
-func getMCPPlatform() string {
+func getMCPPlatform(ctx context.Context) string {
+	if scoped := strings.TrimSpace(proxy.MCPPlatformFromContext(ctx)); scoped != "" {
+		return scoped
+	}
 	return strings.TrimSpace(os.Getenv("HARNESS_MEM_MCP_PLATFORM"))
 }
 

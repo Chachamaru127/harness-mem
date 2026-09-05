@@ -353,6 +353,7 @@ type observedEvent struct {
 	bodyProject      string
 	toolName         string
 	phase            string
+	platform         string
 }
 
 func TestHandleMemToolSelfTrackingCarriesRequestProjectKey(t *testing.T) {
@@ -383,6 +384,7 @@ func TestHandleMemToolSelfTrackingCarriesRequestProjectKey(t *testing.T) {
 				bodyProject:      stringValue(event["project"]),
 				toolName:         stringValue(payload["tool_name"]),
 				phase:            stringValue(payload["phase"]),
+				platform:         stringValue(event["platform"]),
 			})
 			mu.Unlock()
 			writeJSON(w, map[string]any{"ok": true})
@@ -424,6 +426,57 @@ func TestHandleMemToolSelfTrackingCarriesRequestProjectKey(t *testing.T) {
 	for key, wantCount := range want {
 		if counts[key] != wantCount {
 			t.Fatalf("self-tracking event count for %s = %d, want %d; events = %+v", key, counts[key], wantCount, got)
+		}
+	}
+}
+
+func TestHandleMemToolSelfTrackingContextPlatformBeatsEnv(t *testing.T) {
+	t.Setenv("HARNESS_MEM_MCP_PLATFORM", "codex")
+
+	var (
+		mu     sync.Mutex
+		events []observedEvent
+	)
+	setupSharedMemServer(t, defaultMemHandler(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/search":
+			writeJSON(w, map[string]any{
+				"ok":    true,
+				"items": []any{},
+				"meta":  map[string]any{"count": float64(0)},
+			})
+		case "/v1/events/record":
+			var req map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			event, _ := req["event"].(map[string]any)
+			payload, _ := event["payload"].(map[string]any)
+			mu.Lock()
+			events = append(events, observedEvent{
+				headerProjectKey: r.Header.Get("X-Harness-Project-Key"),
+				bodyProject:      stringValue(event["project"]),
+				toolName:         stringValue(payload["tool_name"]),
+				phase:            stringValue(payload["phase"]),
+				platform:         stringValue(event["platform"]),
+			})
+			mu.Unlock()
+			writeJSON(w, map[string]any{"ok": true})
+		default:
+			http.Error(w, "unexpected path: "+r.URL.Path, http.StatusNotFound)
+		}
+	}))
+
+	handler := handleMemTool("harness_mem_search")
+	ctx := proxy.ContextWithProjectKey(context.Background(), "header-project-a")
+	ctx = proxy.ContextWithMCPPlatform(ctx, "grok-bot")
+	result := handler(ctx, map[string]any{"query": "project header-project-a"})
+	if result.IsError {
+		t.Fatalf("search failed: %+v", result)
+	}
+
+	got := waitForObservedToolUseEvents(t, &mu, &events, 2)
+	for _, event := range got {
+		if event.platform != "grok-bot" {
+			t.Fatalf("self-tracking platform = %q, want grok-bot; event=%+v", event.platform, event)
 		}
 	}
 }

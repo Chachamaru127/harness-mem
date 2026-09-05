@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -219,6 +220,108 @@ func TestSecureGatewayProjectKeyFallsBackToEnv(t *testing.T) {
 	}
 }
 
+func TestSecureGatewayMCPPlatformHeaderSelfTracksWithScopedLabel(t *testing.T) {
+	t.Setenv("HARNESS_MEM_TOOLS", "core")
+	t.Setenv("HARNESS_MEM_MCP_PLATFORM", "")
+
+	var (
+		mu                sync.Mutex
+		recordedPlatforms []string
+	)
+	memSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health/ready":
+			w.WriteHeader(http.StatusOK)
+			return
+		case "/v1/search":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true,"items":[],"meta":{"count":0}}`))
+			return
+		case "/v1/events/record":
+			var req map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			event, _ := req["event"].(map[string]any)
+			if platform, ok := event["platform"].(string); ok {
+				mu.Lock()
+				recordedPlatforms = append(recordedPlatforms, platform)
+				mu.Unlock()
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+			return
+		default:
+			http.Error(w, "unexpected memory daemon request", http.StatusNotFound)
+			return
+		}
+	}))
+	defer memSrv.Close()
+	t.Setenv("HARNESS_MEM_REMOTE_URL", memSrv.URL)
+
+	ts, endpoint := startSecureGatewayTestServer(t, "gateway-secret")
+	sessionID := initializeSecureHTTPMCP(t, ts.Client(), endpoint, rawMCPRequestOptions{token: "gateway-secret"})
+
+	resp := postSecureHTTPMCP(t, ts.Client(), endpoint, sessionID, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "harness_mem_search",
+			"arguments": map[string]any{
+				"query": "grok bot context",
+			},
+		},
+	}, rawMCPRequestOptions{token: "gateway-secret", mcpPlatform: "grok-bot"})
+	if resp.Error != nil || resp.Result.IsError {
+		t.Fatalf("search failed: %+v", resp)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		count := len(recordedPlatforms)
+		got := append([]string(nil), recordedPlatforms...)
+		mu.Unlock()
+		if count >= 2 {
+			for _, platform := range got {
+				if platform != "grok-bot" {
+					t.Fatalf("recorded platform = %q, want grok-bot; all=%v", platform, got)
+				}
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	mu.Lock()
+	got := append([]string(nil), recordedPlatforms...)
+	mu.Unlock()
+	t.Fatalf("timed out waiting for self-tracked events; got=%v", got)
+}
+
+func TestNormalizeMCPPlatformLabel(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "empty", in: "", want: ""},
+		{name: "trim and lower", in: "  Grok-Bot  ", want: "grok-bot"},
+		{name: "underscore allowed", in: "grok_bot", want: "grok_bot"},
+		{name: "leading separator rejected", in: "-grok", want: ""},
+		{name: "space rejected", in: "grok bot", want: ""},
+		{name: "symbols rejected", in: "grok.bot", want: ""},
+		{name: "too long rejected", in: strings.Repeat("a", 65), want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeMCPPlatformLabel(tt.in); got != tt.want {
+				t.Fatalf("normalizeMCPPlatformLabel(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func startSecureGatewayTestServer(t *testing.T, token string) (*httptest.Server, string) {
 	t.Helper()
 	t.Setenv("HARNESS_MEM_MCP_TOKEN", token)
@@ -239,10 +342,11 @@ func startSecureGatewayTestServer(t *testing.T, token string) (*httptest.Server,
 }
 
 type rawMCPRequestOptions struct {
-	token      string
-	host       string
-	origin     string
-	projectKey string
+	token       string
+	host        string
+	origin      string
+	projectKey  string
+	mcpPlatform string
 }
 
 func rawMCPRequest(t *testing.T, client *http.Client, endpoint string, opts rawMCPRequestOptions) (*http.Response, string) {
@@ -359,6 +463,9 @@ func doSecureHTTPMCP(t *testing.T, client *http.Client, endpoint, sessionID stri
 	}
 	if opts.projectKey != "" {
 		req.Header.Set(gatewayProjectKeyHeader, opts.projectKey)
+	}
+	if opts.mcpPlatform != "" {
+		req.Header.Set(gatewayMCPPlatformHeader, opts.mcpPlatform)
 	}
 	if opts.host != "" {
 		req.Host = opts.host

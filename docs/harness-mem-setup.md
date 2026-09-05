@@ -146,7 +146,7 @@ After a successful package update, harness-mem also runs a quiet post-update rep
 
 1. Dependency checks (`bun`, `node`, `curl`, `jq`, `ripgrep`)
 2. Granite default embedding model preparation (`granite-embedding-311m-r2`; skipped with a warning when offline, CI, sandboxed, or `--skip-model-pull`)
-3. Tool wiring (Codex, OpenCode, Cursor, Claude, Antigravity)
+3. Tool wiring (Codex, OpenCode, Cursor, Claude, Grok Bot, Antigravity)
 4. Daemon start (`harness-memd`)
 5. Mem UI start (`http://127.0.0.1:37901` by default)
 6. Smoke test (unless `--skip-smoke`)
@@ -274,13 +274,22 @@ harness-mem mcp-config --transport http --client claude,codex --write
 
 # Hermes is explicit opt-in.
 harness-mem mcp-config --transport http --client hermes --write
+
+# Grok Bot is also explicit opt-in (HTTP MCP only).
+harness-mem mcp-config --transport http --client grok-bot --write
 ```
 
 The generated HTTP config points clients at `http://127.0.0.1:37889/mcp` and
 stores only the token environment variable name (`HARNESS_MEM_MCP_TOKEN`) or a
 header placeholder (`Bearer ${HARNESS_MEM_MCP_TOKEN}`). It does not write the
 secret token value into config files. `--client all` intentionally means
-Claude + Codex only; use `--client hermes` when you want Hermes YAML written.
+Claude + Codex only; use `--client hermes` or `--client grok-bot` for explicit
+Tier 3 clients.
+
+For Grok Bot remote MCP paths (for example Tailscale Serve), set
+`HARNESS_MEM_GROK_BOT_MCP_URL` and `HARNESS_MEM_GROK_BOT_HOST_HEADER` before
+running `mcp-config`/`setup` so the generated entry keeps the required Host
+rewrite.
 
 ## 3. Command Reference
 
@@ -297,7 +306,7 @@ harness-mem setup --skip-model-pull
 
 Options:
 
-- `--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>`
+- `--platform <all|codex|opencode|claude|cursor|grok-bot|antigravity|comma-list>`
 - `--skip-start`
 - `--skip-smoke`
 - `--skip-quality`
@@ -328,7 +337,7 @@ Options:
 - `--read-only`
 - `--strict-exit`
 - `--plan` (with `--fix`, prints repair intent without applying changes)
-- `--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>`
+- `--platform <all|codex|opencode|claude|cursor|grok-bot|antigravity|comma-list>`
 - `--skip-version-check`
 - `--project <path>`
 - `--quiet`
@@ -379,7 +388,7 @@ harness-mem uninstall --purge-db
 Options:
 
 - `--purge-db`
-- `--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>`
+- `--platform <all|codex|opencode|claude|cursor|grok-bot|antigravity|comma-list>`
 
 ### `import-claude-mem`
 

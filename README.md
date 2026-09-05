@@ -57,15 +57,15 @@
 
 ### 30-second version
 
-Harness-mem gives your AI coding tools the same local project memory. Claude Code and Codex get the strongest continuity path: a fresh session can start from the chain you were already working on. Cursor can join through user-scoped hooks and MCP search. Hermes can join through MCP tools and an optional MemoryProvider plugin, so the command tower can see the same developer-workflow memory without replacing its own built-in memories.
+Harness-mem gives your AI coding tools the same local project memory. Claude Code and Codex get the strongest continuity path: a fresh session can start from the chain you were already working on. Cursor can join through user-scoped hooks and MCP search. Hermes and Grok Bot can join through MCP tools (Hermes can also use an optional MemoryProvider plugin), so command-tower and desktop-assistant agents can see the same developer-workflow memory without replacing their own built-in memories.
 
 ### Why people install it
 
 - **Resume the actual thread**: the next Claude Code or Codex turn can start from the current project chain, not a generic memory dump.
-- **Share one memory lane across agents**: Claude Code, Codex, Cursor, OpenCode, and Hermes can read the same project-scoped observations through one daemon.
+- **Share one memory lane across agents**: Claude Code, Codex, Cursor, Hermes, Grok Bot, and OpenCode can read the same project-scoped observations through one daemon.
 - **Keep memory local**: project data stays in local SQLite unless you explicitly configure an external integration.
 - **Use local LLMs safely**: fact extraction defaults to `heuristic`; when you opt into LLM extraction, Ollama is loopback-only by default and cloud providers require an explicit allow flag plus credentials.
-- **Stay honest about scope**: Claude Code + Codex are Tier 1; Cursor is Tier 2; Hermes and OpenCode are experimental / opt-in paths.
+- **Stay honest about scope**: Claude Code + Codex are Tier 1; Cursor is Tier 2; Hermes, Grok Bot, and OpenCode are experimental / opt-in paths.
 
 ### 3-minute setup path
 
@@ -89,6 +89,7 @@ If Cursor is part of your workflow, use `--platform codex,claude,cursor` or run 
 - **Strongest path: Claude Code + Codex**: this is the main experience we optimize for. Shared local runtime, first-turn continuity, and the clearest install / doctor flow.
 - **Supported path: Cursor**: `setup --platform cursor` wires user-scoped `~/.cursor/hooks.json` and `~/.cursor/mcp.json` (`mcpServers.harness-mem`) for hook ingest and MCP search. It is supported, but not a Tier 1 continuity parity claim.
 - **Command-tower path: Hermes Agent**: Hermes can use Layer 1 MCP tools for explicit search/record calls and Layer 2 MemoryProvider for turn sync + prefetch. This is an opt-in experimental integration, not a replacement for Hermes' built-in `MEMORY.md`, `USER.md`, or skills.
+- **Desktop-assistant path: Grok Bot**: `setup --platform grok-bot` wires a dedicated `harness-mem-grok-bot` MCP HTTP entry with platform labeling. This is Tier 3 MCP participation only (no SessionStart/UserPromptSubmit/Stop hooks).
 - **Experimental path: OpenCode**: usable, but not the same parity promise.
 - **Codex App dogfood**: this maintainer setup also works from Codex App through the same local Codex config path. That is recorded as local dogfood, not a blanket Tier 1 App claim.
 
@@ -98,6 +99,7 @@ If Cursor is part of your workflow, use `--platform codex,claude,cursor` or run 
 - **You care about privacy** → everything stays in `~/.harness-mem/harness-mem.db`. Zero cloud calls. No API keys required.
 - **You also use Cursor** → run Cursor setup/doctor to enable hook ingest and MCP search. Cursor remains tier 2 rather than the main continuity path.
 - **You run Hermes as a local command tower** → add the Hermes MCP config or MemoryProvider plugin so Hermes can search the same project memory while keeping Hermes' own built-in memory layer intact.
+- **You use Cursor Grok Bot (or another desktop assistant MCP client)** → run `harness-mem setup --platform grok-bot`, then apply the integration README for local or Tailscale wiring (Host rewrite header required on remote Serve paths).
 - **You want better fact extraction without cloud egress** → keep the default `heuristic` mode for zero-LLM extraction, or explicitly enable local Ollama for consolidation when you want richer facts.
 
 ---
@@ -164,6 +166,7 @@ Pick the path that matches your stack. That's the whole decision.
 | **Claude Code + Codex** _(recommended first run)_ | `npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude` → `npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude` |
 | **Claude Code + Codex** _(persistent CLI)_ | `npm install -g @chachamaru127/harness-mem` → `harness-mem setup --platform codex,claude` → `harness-mem doctor --platform codex,claude` |
 | **Cursor as an additional local client** | `harness-mem setup --platform cursor` → `harness-mem doctor --platform cursor` → reload/restart Cursor if MCP discovery is cached |
+| **Cursor Grok Bot / desktop assistant agent (Tier 3 MCP-only)** | `harness-mem setup --platform grok-bot` → `harness-mem doctor --platform grok-bot` → follow [`integrations/grok-bot/`](integrations/grok-bot/) for local vs Tailscale wiring |
 | **Hermes Agent as a command tower** | `harness-mem mcp-config --transport http --client hermes --write` for Layer 1 MCP, or follow [`integrations/hermes/`](integrations/hermes/) for the optional MemoryProvider plugin |
 
 ### Claude-harness companion mode
@@ -188,6 +191,7 @@ Beyond Claude Code / Codex / Cursor, harness-mem ships ready-to-use integrations
 | LangChain | Python adapter | [`integrations/langchain/`](integrations/langchain/) |
 | CrewAI | Python adapter | [`python-sdk/harness_mem/crewai_memory.py`](python-sdk/harness_mem/crewai_memory.py) |
 | Vercel AI SDK | TypeScript adapter | [`sdk/src/vercel-ai.ts`](sdk/src/vercel-ai.ts) |
+| **Grok Bot (Cursor desktop assistant agents)** | MCP-only integration _(experimental, tier 3)_ | [`integrations/grok-bot/`](integrations/grok-bot/) |
 | **Hermes Agent** (Nous Research) | MCP tools + optional MemoryProvider plugin _(experimental, tier 3 — [tier 昇格 criteria](Plans.md#hermes-tier-criteria))_ | [`integrations/hermes/`](integrations/hermes/) |
 
 The Hermes integration has two layers:
@@ -208,8 +212,9 @@ The Hermes integration has two layers:
   3) opencode     (global: ~/.config/opencode/opencode.json)
   4) claude       (global: ~/.claude.json mcpServers)
   5) antigravity  (experimental workspace scanning)
+  6) grok-bot     (Tier 3 MCP-only via ~/.cursor/mcp.json)
   a) all
-Example: 1,2   (Enter=1,2)
+Example: 1,2,6   (Enter=1,2)
 ```
 
 No `--platform` flag is required. For CI / scripted installs you can still pass `--platform codex,claude,cursor` to skip the prompt.
@@ -353,9 +358,10 @@ back a client to stdio:
 harness-mem mcp-config --transport stdio --client claude,codex --write
 ```
 
-Hermes remains explicit opt-in: use
+Hermes and Grok Bot remain explicit opt-in: use
 `harness-mem mcp-config --transport http --client hermes --write` when you want
-Hermes YAML generated.
+Hermes YAML generated, and `harness-mem mcp-config --transport http --client grok-bot --write`
+for the Grok Bot MCP entry.
 
 ### Current behavior today
 
@@ -427,9 +433,9 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 | | harness-mem | Claude built-in memory | claude-mem | Mem0 |
 |---|:---:|:---:|:---:|:---:|
 | **Domain** | developer-workflow | generic-agent | generic-agent | general-lifelog |
-| **Supported tools** | Claude Code, Codex (Tier 1) · Cursor (Tier 2) · Hermes and OpenCode (experimental) | Claude only | Claude only | Custom API integration |
+| **Supported tools** | Claude Code, Codex (Tier 1) · Cursor (Tier 2) · Hermes, Grok Bot, and OpenCode (experimental) | Claude only | Claude only | Custom API integration |
 | **Data storage** | Local SQLite | Anthropic cloud | Local SQLite + Chroma | Cloud (self-host on paid plan) |
-| **Cross-tool memory** | Shared project-scoped local runtime + first-turn continuity on supported hook paths + Hermes MCP/MemoryProvider bridge | N/A | N/A | Manual wiring per app |
+| **Cross-tool memory** | Shared project-scoped local runtime + first-turn continuity on supported hook paths + Hermes MemoryProvider bridge + Grok Bot MCP bridge | N/A | N/A | Manual wiring per app |
 | **Setup** | `harness-mem setup` (1 command) | Built-in | npm install + config | SDK integration required |
 | **Search** | Hybrid (lexical + vector + nugget + recency + tag + graph + fact chain) | Undisclosed | FTS5 + Chroma vector | Vector-centric |
 | **MCP server cold start** | ~5ms median (Go binary, measured) | — | — | — |
@@ -666,6 +672,7 @@ The Mem UI includes an `Environment` tab that explains internal servers, install
 | **Dogfood** | Codex App | Maintainer local setup | Uses the same local Codex config path in this setup. Kept as dogfood until an App-specific reproducible smoke exists |
 | **Tier 2** | Cursor | Latest | User-scoped `~/.cursor/hooks.json` + `~/.cursor/mcp.json` (`mcpServers.harness-mem`), hook spool ingest, MCP search, and setup/doctor support. May require Cursor MCP reload/new session after setup |
 | **Tier 3** | Hermes Agent | Docs-backed integration | MCP tools + optional MemoryProvider plugin. Experimental command-tower bridge; not a replacement for Hermes built-in memory |
+| **Tier 3** | Grok Bot (Cursor desktop assistant agent) | Cursor desktop assistant MCP client | MCP Layer-1 (`search`, `timeline`, `get_observations`, `resume_pack`, record tools) with `harness-mem-grok-bot` HTTP entry and `X-Harness-MCP-Platform: grok-bot`. No Tier 1 lifecycle hooks |
 | **Tier 3** | OpenCode | Latest | Experimental. Community-contributed |
 
 ---

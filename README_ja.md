@@ -57,15 +57,15 @@
 
 ### 30秒版
 
-harness-mem は、AI コーディングツールに同じローカルのプロジェクト記憶を渡します。Claude Code と Codex は最も強い continuity path で、新しいセッションでも今の作業スレッドから始められます。Cursor は user-scope hooks と MCP 検索で参加できます。Hermes は MCP tools と任意の MemoryProvider plugin で、Hermes 自身の built-in memory を残したまま同じ developer-workflow memory を参照できます。
+harness-mem は、AI コーディングツールに同じローカルのプロジェクト記憶を渡します。Claude Code と Codex は最も強い continuity path で、新しいセッションでも今の作業スレッドから始められます。Cursor は user-scope hooks と MCP 検索で参加できます。Hermes と Grok Bot は MCP tools で参加でき（Hermes は任意の MemoryProvider plugin も利用可）、それぞれの built-in memory を残したまま同じ developer-workflow memory を参照できます。
 
 ### 何がうれしいのか
 
 - **本当の続きから始められる**: 次の Claude Code / Codex の初手が、汎用メモではなく現在の project chain から始まります。
-- **複数エージェントで1つの記憶棚を共有できる**: Claude Code、Codex、Cursor、OpenCode、Hermes が、1つの daemon を通じて同じ project observation を読めます。
+- **複数エージェントで1つの記憶棚を共有できる**: Claude Code、Codex、Cursor、Hermes、Grok Bot、OpenCode が、1つの daemon を通じて同じ project observation を読めます。
 - **記憶はローカルに残る**: 外部連携を明示設定しない限り、project data はローカル SQLite に残ります。
 - **ローカル LLM を安全に使える**: 事実抽出の既定は `heuristic`。LLM 抽出を明示した場合も既定 provider は loopback Ollama で、クラウド provider は明示 allow flag と credential が必要です。
-- **スコープを言い過ぎない**: Claude Code + Codex が Tier 1、Cursor が Tier 2、Hermes / OpenCode は experimental / opt-in です。
+- **スコープを言い過ぎない**: Claude Code + Codex が Tier 1、Cursor が Tier 2、Hermes / Grok Bot / OpenCode は experimental / opt-in です。
 
 ### 3分で試す流れ
 
@@ -89,6 +89,7 @@ Cursor も使う場合は `--platform codex,claude,cursor` にするか、別途
 - **最も強い経路: Claude Code + Codex**: ここが主戦場です。共有ローカルランタイム、first-turn continuity、setup / doctor の導線まで含めて最優先で整えています。
 - **対応済み経路: Cursor (Tier 2)**: `setup --platform cursor` が user-scope の `~/.cursor/hooks.json` と `~/.cursor/mcp.json`（`mcpServers.harness-mem`）を配線し、hooks ingest と MCP 検索を有効にします。ただし Tier 1 と同等の continuity claim ではありません。
 - **Command tower 経路: Hermes Agent**: Layer 1 MCP tools で明示検索・記録、Layer 2 MemoryProvider で turn sync / prefetch が使えます。Hermes built-in の `MEMORY.md`、`USER.md`、skills を置き換えるものではありません。
+- **Desktop assistant 経路: Grok Bot**: `setup --platform grok-bot` で `harness-mem-grok-bot` の MCP HTTP entry と platform label を配線できます。Tier 3 の MCP 参加のみで、SessionStart / UserPromptSubmit / Stop の hook はありません。
 - **実験的経路: OpenCode**: 動きますが、同じ品質保証までは置いていません。
 - **Codex App dogfood**: このメンテナ環境では、同じローカル Codex config path 経由で Codex App からも動いています。ただしこれは local dogfood であり、Codex App 全般の Tier 1 claim ではありません。
 
@@ -98,6 +99,7 @@ Cursor も使う場合は `--platform codex,claude,cursor` にするか、別途
 - **プライバシーを重視する** → すべて `~/.harness-mem/harness-mem.db` にローカル保存。クラウド通信ゼロ。API キー不要。
 - **Cursor も使っている** → Cursor setup / doctor を実行すると hooks ingest と MCP 検索が使えます。ただし主軸は Claude Code + Codex です。
 - **Hermes をローカル司令塔として使っている** → Hermes MCP config または MemoryProvider plugin を追加すると、Hermes 自身の memory layer を残したまま同じ project memory を検索できます。
+- **Cursor Grok Bot（または同等の desktop assistant MCP client）を使う** → `harness-mem setup --platform grok-bot` を実行し、local/Tailscale 配線は integration README（remote では Host rewrite header 必須）に従ってください。
 - **クラウドに出さずに事実抽出の質を上げたい** → 既定の `heuristic` のままでも動きます。必要な場合だけ local Ollama を明示有効化できます。
 
 ---
@@ -174,6 +176,7 @@ general-lifelog 競合の公開数値については、機械可読な監査証�
 | **Claude Code + Codex**（初回推奨） | `npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude` → `npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude` |
 | **Claude Code + Codex**（常用 CLI を残したい） | `npm install -g @chachamaru127/harness-mem` → `harness-mem setup --platform codex,claude` → `harness-mem doctor --platform codex,claude` |
 | **Cursor もローカルクライアントとして使う** | `harness-mem setup --platform cursor` → `harness-mem doctor --platform cursor` → 必要なら Cursor を reload / restart |
+| **Cursor Grok Bot / desktop assistant agent（Tier 3 MCP-only）** | `harness-mem setup --platform grok-bot` → `harness-mem doctor --platform grok-bot` → local/Tailscale の配線は [`integrations/grok-bot/`](integrations/grok-bot/) を参照 |
 | **Hermes Agent を command tower として使う** | Layer 1 MCP は `harness-mem mcp-config --transport http --client hermes --write`。Layer 2 MemoryProvider は [`integrations/hermes/`](integrations/hermes/) の手順を参照 |
 
 ### Claude-harness companion mode
@@ -200,8 +203,9 @@ harness-mem uninstall --platform codex,claude --purge-db
   3) opencode     (global: ~/.config/opencode/opencode.json)
   4) claude       (global: ~/.claude.json mcpServers)
   5) antigravity  (experimental workspace scanning)
+  6) grok-bot     (Tier 3 MCP-only via ~/.cursor/mcp.json)
   a) all
-入力例: 1,2   (Enter=1,2)
+入力例: 1,2,6   (Enter=1,2)
 ```
 
 `--platform` フラグは不要です。CI やスクリプトから非対話で流したいときだけ `--platform codex,claude,cursor` のように渡せます。
@@ -341,8 +345,9 @@ token の値そのものは書きません。stdio に戻す場合:
 harness-mem mcp-config --transport stdio --client claude,codex --write
 ```
 
-Hermes は明示 opt-in のままです。Hermes YAML を生成する場合は
-`harness-mem mcp-config --transport http --client hermes --write` を使います。
+Hermes / Grok Bot は明示 opt-in のままです。Hermes YAML を生成する場合は
+`harness-mem mcp-config --transport http --client hermes --write`、Grok Bot MCP entry は
+`harness-mem mcp-config --transport http --client grok-bot --write` を使います。
 
 ### 現在の挙動
 
@@ -414,9 +419,9 @@ Claude 組み込みメモリは Claude の中でしか使えません。[claude-
 | | harness-mem | Claude 組み込みメモリ | claude-mem | Mem0 |
 |---|:---:|:---:|:---:|:---:|
 | **ドメイン** | developer-workflow | generic-agent | generic-agent | general-lifelog |
-| **対応ツール** | Claude Code, Codex（Tier 1）· Cursor（Tier 2）· Hermes / OpenCode（実験的） | Claude のみ | Claude のみ | API経由でカスタム統合 |
+| **対応ツール** | Claude Code, Codex（Tier 1）· Cursor（Tier 2）· Hermes / Grok Bot / OpenCode（実験的） | Claude のみ | Claude のみ | API経由でカスタム統合 |
 | **データ保管** | ローカル SQLite | Anthropic クラウド | ローカル SQLite + Chroma | クラウド（セルフホスト有料） |
-| **クロスツール記憶共有** | プロジェクト分離された共有ローカルランタイム + 対応 hook path 上の first-turn continuity + Hermes MCP / MemoryProvider bridge | 不可 | 不可 | アプリごとに手動接続 |
+| **クロスツール記憶共有** | プロジェクト分離された共有ローカルランタイム + 対応 hook path 上の first-turn continuity + Hermes MemoryProvider bridge + Grok Bot MCP bridge | 不可 | 不可 | アプリごとに手動接続 |
 | **セットアップ** | `harness-mem setup`（1コマンド） | 組み込み | npm install + 設定編集 | SDK統合が必要 |
 | **検索方式** | ハイブリッド（lexical + vector + nugget + recency + tag + graph + fact chain） | 非公開 | FTS5 + Chroma vector | ベクター中心 |
 | **MCP サーバー起動** | ~5ms 中央値（Go バイナリ、実測） | — | — | — |
@@ -649,6 +654,7 @@ Mem UI の `Environment` タブでは、動いている内部サーバー、イ�
 | **Dogfood** | Codex App | メンテナ local setup | この setup では同じ local Codex config path を使用。App 固有の再現可能 smoke が入るまでは dogfood 扱い |
 | **Tier 2** | Cursor | 最新 | user-scope `~/.cursor/hooks.json` + `~/.cursor/mcp.json`（`mcpServers.harness-mem`）、hook spool ingest、MCP 検索、setup/doctor 対応。設定後に Cursor MCP reload / 新セッションが必要な場合あり |
 | **Tier 3** | Hermes Agent | docs準拠のintegration | MCP tools + 任意の MemoryProvider plugin。Hermes built-in memory を置き換えない experimental command-tower bridge |
+| **Tier 3** | Grok Bot（Cursor desktop assistant agent） | Cursor desktop assistant MCP client | MCP Layer-1（`search` / `timeline` / `get_observations` / `resume_pack` / record tools）を `harness-mem-grok-bot` HTTP entry と `X-Harness-MCP-Platform: grok-bot` で接続。Tier 1 lifecycle hook はなし |
 | **Tier 3** | OpenCode | 最新 | 実験的。コミュニティ貢献 |
 
 ---

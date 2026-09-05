@@ -128,7 +128,7 @@ package 更新が成功したあと、harness-mem は過去の `setup` で覚え
 
 1. 依存チェック (`bun`, `node`, `curl`, `jq`, `ripgrep`)
 2. Granite default embedding model の準備 (`granite-embedding-311m-r2`; offline / CI / sandbox / `--skip-model-pull` では warning を出して skip)
-3. tool wiring (Codex, OpenCode, Cursor, Claude, Antigravity)
+3. tool wiring (Codex, OpenCode, Cursor, Claude, Grok Bot, Antigravity)
 4. daemon 起動 (`harness-memd`)
 5. Mem UI 起動 (既定は `http://127.0.0.1:37901`)
 6. smoke test (`--skip-smoke` で skip)
@@ -234,12 +234,20 @@ harness-mem mcp-config --transport http --client claude,codex --write
 
 # Hermes は明示したときだけ YAML を書く
 harness-mem mcp-config --transport http --client hermes --write
+
+# Grok Bot も明示 opt-in（HTTP MCP only）
+harness-mem mcp-config --transport http --client grok-bot --write
 ```
 
 生成される HTTP 設定は `http://127.0.0.1:37889/mcp` を向きます。設定ファイルに書くのは
 `HARNESS_MEM_MCP_TOKEN` という環境変数名、または `Bearer ${HARNESS_MEM_MCP_TOKEN}` という
 参照文字列だけです。秘密 token の実値は書きません。`--client all` は意図的に Claude +
-Codex だけを対象にします。Hermes YAML を書く場合は `--client hermes` を明示します。
+Codex だけを対象にします。Tier 3 client（Hermes/Grok Bot）を書き込む場合は
+`--client hermes` / `--client grok-bot` を明示します。
+
+Grok Bot の remote MCP path（例: Tailscale Serve）では、`mcp-config`/`setup` 実行前に
+`HARNESS_MEM_GROK_BOT_MCP_URL` と `HARNESS_MEM_GROK_BOT_HOST_HEADER` を設定し、Host
+rewrite を固定してください。
 
 ## 3. コマンドリファレンス
 
@@ -256,7 +264,7 @@ harness-mem setup --skip-model-pull
 
 Options:
 
-- `--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>`
+- `--platform <all|codex|opencode|claude|cursor|grok-bot|antigravity|comma-list>`
 - `--skip-start`
 - `--skip-smoke`
 - `--skip-quality`
@@ -287,7 +295,7 @@ Options:
 - `--read-only`
 - `--strict-exit`
 - `--plan`（`--fix` と組み合わせると、変更せず修復予定だけ確認する）
-- `--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>`
+- `--platform <all|codex|opencode|claude|cursor|grok-bot|antigravity|comma-list>`
 - `--skip-version-check`
 - `--project <path>`
 - `--quiet`
@@ -338,7 +346,7 @@ harness-mem uninstall --purge-db
 Options:
 
 - `--purge-db`
-- `--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>`
+- `--platform <all|codex|opencode|claude|cursor|grok-bot|antigravity|comma-list>`
 
 ### `import-claude-mem`
 

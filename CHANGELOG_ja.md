@@ -7,6 +7,16 @@
 
 ## [Unreleased]
 
+### 追加
+
+- **Cursor Grok Bot / desktop assistant agents 向け Tier 3 integration package を追加**。`integrations/grok-bot/` に architecture・制約（Tier 1 hooks 非対応）・local/Tailscale MCP JSON 例・Host rewrite 参照 proxy (`examples/host-rewrite-proxy.mjs`)・Layer-1 tool contract（search/timeline/get/resume/record の使い分け）を追加。
+
+### 変更
+
+- **`setup` / `doctor` / `uninstall` が `--platform grok-bot` を管理対象としてサポート**。`grokbot` alias 正規化、対話式 setup、doctor wiring check、uninstall cleanup まで一貫して対応。
+- **`mcp-config` が `--client grok-bot` をサポート**（HTTP MCP 専用）。`~/.cursor/mcp.json` に `harness-mem-grok-bot` を生成し、token は env placeholder のみ、`X-Harness-MCP-Platform: grok-bot` と Host rewrite header を設定可能。
+- **Go MCP gateway が `X-Harness-MCP-Platform` を request context に伝搬**。self-tracking `tool_use` の `platform` provenance が header 優先で記録される。
+
 ### 修正
 
 - **daemon 停止が persistent search worker の消滅まで責任を持つようにした**。`SIGTERM` 後は最大1秒だけ待ち、残っていれば `SIGKILL`、消滅確認後にだけ SQLite close と daemon exit へ進む。POSIX の次回起動では、marked orphan の command、親、process start、canonical DB、worker token を signal 直前に再検証する。旧 unmarked orphan は同一 DB handle の `lsof` 証明も必須。Windows の孤児探索は推測で kill せず fail-open にする。

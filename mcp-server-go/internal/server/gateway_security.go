@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	gatewayAuthHeader       = "Authorization"
-	gatewayTokenHeader      = "x-harness-mem-token"
-	gatewayProjectKeyHeader = "X-Harness-Project-Key"
+	gatewayAuthHeader        = "Authorization"
+	gatewayTokenHeader       = "x-harness-mem-token"
+	gatewayProjectKeyHeader  = "X-Harness-Project-Key"
+	gatewayMCPPlatformHeader = "X-Harness-MCP-Platform"
 )
 
 type gatewaySecurityConfig struct {
@@ -109,12 +110,38 @@ func secureStreamableHTTPHandler(next http.Handler, cfg gatewaySecurityConfig) h
 		if projectKey != "" {
 			r = r.WithContext(proxy.ContextWithProjectKey(r.Context(), projectKey))
 		}
+		if platform := normalizeMCPPlatformLabel(r.Header.Get(gatewayMCPPlatformHeader)); platform != "" {
+			r = r.WithContext(proxy.ContextWithMCPPlatform(r.Context(), platform))
+		}
 		next.ServeHTTP(w, r)
 	})
 }
 
 func gatewayHTTPContextFunc(ctx context.Context, r *http.Request) context.Context {
-	return proxy.ContextWithProjectKey(ctx, proxy.ProjectKeyFromContext(r.Context()))
+	next := proxy.ContextWithProjectKey(ctx, proxy.ProjectKeyFromContext(r.Context()))
+	return proxy.ContextWithMCPPlatform(next, proxy.MCPPlatformFromContext(r.Context()))
+}
+
+func normalizeMCPPlatformLabel(raw string) string {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	if normalized == "" {
+		return ""
+	}
+	if len(normalized) > 64 {
+		return ""
+	}
+	for i, ch := range normalized {
+		isDigit := ch >= '0' && ch <= '9'
+		isLower := ch >= 'a' && ch <= 'z'
+		isSeparator := ch == '-' || ch == '_'
+		if !(isDigit || isLower || isSeparator) {
+			return ""
+		}
+		if i == 0 && isSeparator {
+			return ""
+		}
+	}
+	return normalized
 }
 
 func validGatewayToken(r *http.Request, expected string) bool {

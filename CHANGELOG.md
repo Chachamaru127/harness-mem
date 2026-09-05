@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- **Tier 3 Grok Bot integration package for Cursor desktop assistant agents**: added `integrations/grok-bot/` with architecture/limits documentation, local and Tailscale MCP JSON examples, a host-rewrite proxy reference (`examples/host-rewrite-proxy.mjs`), and a Layer-1 tool-use contract for explicit search/timeline/get/resume/record behavior.
+
+### Changed
+
+- **`setup` / `doctor` / `uninstall` now support `--platform grok-bot`**: Grok Bot wiring is first-class in managed platform selection (including `grokbot` alias normalization), setup prompts, doctor checks, and uninstall cleanup.
+- **`mcp-config` now supports `--client grok-bot` (HTTP MCP only)**: generates/updates `~/.cursor/mcp.json` with `harness-mem-grok-bot`, token placeholders, `X-Harness-MCP-Platform: grok-bot`, and configurable Host rewrite headers for remote Tailscale-style paths.
+- **Go MCP gateway now propagates scoped MCP platform labels**: `X-Harness-MCP-Platform` is normalized and passed through request context so self-tracked `tool_use` events keep client-specific provenance (header value beats process-wide env fallback).
+
 ### Fixed
 
 - **Daemon shutdown now owns the complete lifetime of its persistent search worker**: shutdown waits for `SIGTERM`, escalates to `SIGKILL` after at most one second, and confirms disappearance before closing SQLite or exiting. On POSIX, a following startup recovers a marked orphan only after revalidating its command identity, parent state, process start time, canonical database, and worker token. A legacy unmarked orphan additionally requires `lsof` proof of the same database handle; Windows orphan discovery fails open rather than guessing. Another checkout, a live child, or a reused PID is not killed.

@@ -13,6 +13,10 @@ const DEFAULT_HTTP_PATH = "/mcp";
 const DEFAULT_TOKEN_ENV_VAR = "HARNESS_MEM_MCP_TOKEN";
 const CURSOR_MCP_SERVER_ID = "harness-mem";
 const CURSOR_LEGACY_MCP_SERVER_ID = "harness";
+const GROK_BOT_MCP_SERVER_ID = "harness-mem-grok-bot";
+const DEFAULT_GROK_BOT_PLATFORM = "grok-bot";
+const GROK_BOT_PLATFORM_HEADER = "X-Harness-MCP-Platform";
+const DEFAULT_GROK_BOT_HOST_HEADER = DEFAULT_HTTP_ADDR;
 const HERMES_SAFE_TOOLS = [
   "harness_mem_search",
   "harness_mem_timeline",
@@ -317,6 +321,60 @@ function buildCursorHarnessConfig(serverSpec) {
   };
 }
 
+function normalizeGrokBotPlatformLabel(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) {
+    return DEFAULT_GROK_BOT_PLATFORM;
+  }
+  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(normalized)) {
+    return DEFAULT_GROK_BOT_PLATFORM;
+  }
+  return normalized;
+}
+
+function resolveGrokBotHostHeader(options = {}) {
+  const env = options.env || process.env;
+  const value = String(
+    options.hostHeader || env.HARNESS_MEM_GROK_BOT_HOST_HEADER || DEFAULT_GROK_BOT_HOST_HEADER
+  ).trim();
+  if (!value) {
+    return "";
+  }
+  return value;
+}
+
+function resolveGrokBotPlatformLabel(options = {}) {
+  const env = options.env || process.env;
+  return normalizeGrokBotPlatformLabel(
+    options.platformLabel || env.HARNESS_MEM_GROK_BOT_PLATFORM || DEFAULT_GROK_BOT_PLATFORM
+  );
+}
+
+function ensureHttpServerSpec(serverSpec, options = {}) {
+  if (serverSpec && serverSpec.transport === "http") {
+    return serverSpec;
+  }
+  return resolveServerSpec({ ...options, transport: "http" });
+}
+
+function buildGrokBotHarnessConfig(serverSpec, options = {}) {
+  const httpSpec = ensureHttpServerSpec(serverSpec, options);
+  const hostHeader = resolveGrokBotHostHeader(options);
+  const config = {
+    url: httpSpec.url,
+    headers: {
+      Authorization: buildCursorAuthorizationHeader(httpSpec.bearerTokenEnvVar),
+      [GROK_BOT_PLATFORM_HEADER]: resolveGrokBotPlatformLabel(options),
+    },
+  };
+  if (hostHeader) {
+    config.headers.Host = hostHeader;
+  }
+  return config;
+}
+
 function writeCursorConfig(options = {}) {
   const homeDir = resolveHomeDir(options);
   const filePath = options.filePath || path.join(homeDir, ".cursor", "mcp.json");
@@ -331,6 +389,21 @@ function writeCursorConfig(options = {}) {
 
   fs.writeFileSync(filePath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
   return { client: "cursor", status: "updated", filePath };
+}
+
+function writeGrokBotConfig(options = {}) {
+  const homeDir = resolveHomeDir(options);
+  const filePath = options.filePath || path.join(homeDir, ".cursor", "mcp.json");
+  const serverSpec = ensureHttpServerSpec(options.serverSpec, options);
+
+  ensureFileDir(filePath);
+
+  const parsed = parseJsonFile(filePath, { mcpServers: {} });
+  parsed.mcpServers = parsed.mcpServers || {};
+  parsed.mcpServers[GROK_BOT_MCP_SERVER_ID] = buildGrokBotHarnessConfig(serverSpec, options);
+
+  fs.writeFileSync(filePath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+  return { client: "grok-bot", status: "updated", filePath };
 }
 
 function escapeYamlDoubleQuoted(value) {
@@ -422,6 +495,7 @@ function parseCliArgs(argv) {
     url: undefined,
     addr: undefined,
     tokenEnvVar: undefined,
+    hostHeader: undefined,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -468,6 +542,11 @@ function parseCliArgs(argv) {
       i += 1;
       continue;
     }
+    if (arg === "--host-header") {
+      parsed.hostHeader = argv[i + 1];
+      i += 1;
+      continue;
+    }
   }
 
   if (parsed.clients.includes("all")) {
@@ -495,6 +574,11 @@ function buildPrintableSummary(results, serverSpec) {
   const claudeSnippet = JSON.stringify({ mcpServers: { harness: claudeHarness } }, null, 2);
   const cursorSnippet = JSON.stringify(
     { mcpServers: { [CURSOR_MCP_SERVER_ID]: buildCursorHarnessConfig(serverSpec) } },
+    null,
+    2
+  );
+  const grokSnippet = JSON.stringify(
+    { mcpServers: { [GROK_BOT_MCP_SERVER_ID]: buildGrokBotHarnessConfig(serverSpec) } },
     null,
     2
   );
@@ -536,6 +620,9 @@ function buildPrintableSummary(results, serverSpec) {
     "",
     "Cursor snippet:",
     cursorSnippet,
+    "",
+    "Grok Bot snippet:",
+    grokSnippet,
     "",
     "Hermes snippet:",
     hermesSnippet,
@@ -605,6 +692,36 @@ function runMcpConfigCli(options = {}) {
         }
         continue;
       }
+      if (client === "grok-bot" || client === "grokbot") {
+        const filePath = path.join(resolveHomeDir({ homeDir }), ".cursor", "mcp.json");
+        const grokServerSpec = ensureHttpServerSpec(serverSpec, {
+          env,
+          homeDir,
+          url: parsed.url,
+          addr: parsed.addr,
+          tokenEnvVar: parsed.tokenEnvVar,
+          platform: options.platform || effectivePlatform(env),
+          harnessRoot: options.harnessRoot,
+        });
+        if (parsed.write) {
+          results.push(
+            writeGrokBotConfig({
+              homeDir,
+              filePath,
+              serverSpec: grokServerSpec,
+              env,
+              hostHeader: parsed.hostHeader,
+            })
+          );
+        } else {
+          results.push({
+            client: "grok-bot",
+            status: "preview",
+            filePath,
+          });
+        }
+        continue;
+      }
       if (client === "hermes") {
         const filePath = path.join(resolveHomeDir({ homeDir }), ".hermes", "config.yaml");
         if (parsed.write) {
@@ -644,8 +761,10 @@ module.exports = {
   BEGIN_HERMES_MCP,
   END_HERMES_MCP,
   CURSOR_MCP_SERVER_ID,
+  GROK_BOT_MCP_SERVER_ID,
   buildCodexManagedBlock,
   buildCursorHarnessConfig,
+  buildGrokBotHarnessConfig,
   buildHermesManagedBlock,
   stripCodexHarnessArtifacts,
   parseCliArgs,
@@ -656,6 +775,7 @@ module.exports = {
   writeClaudeConfig,
   writeCodexConfig,
   writeCursorConfig,
+  writeGrokBotConfig,
   writeHermesConfig,
 };
 

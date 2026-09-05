@@ -1458,6 +1458,32 @@ consolidation の寄与は 28 → 23 の差分 (~5) で副次的。両者は同�
 - §159 の tick budget 機構を作り直さない。ループ構造は実測で妥当と確認済み (非 200 3 / 300、p95 14ms)。
 - 計測前に最適化を始めない。§159 では症状からの推論で 3 回誤診しており、計測ログを入れた回に当たっている。
 
+## §161 Grok Bot / desktop assistant agents Tier-3 MCP integration (2026-09-05) — cc:完了 [local]
+
+策定日: 2026-09-05（起票: product update for Cursor Grok Bot / desktop assistant agent integration）
+背景: harness-mem は Tier 1 (Claude Code / Codex) の hook continuity、Tier 2 (Cursor) の hook+MCP、Tier 3 (Hermes/OpenCode) の MCP/optional bridge を提供している。Grok Bot 系 desktop assistant agent は SessionStart / UserPromptSubmit / Stop 相当の hook surface を公開しないため Tier 1 continuity を主張できない。一方で、MCP Layer-1（search / timeline / get / resume / record）で同じ local project memory lane に参加させる需要は既に実運用で確認されている（Tailscale Serve HTTPS + Host rewrite proxy 経由）。
+
+方針:
+
+- Grok Bot は **Tier 3 experimental**（MCP Layer-1 参加）として明示し、Tier 1 parity claim はしない。
+- setup/doctor/mcp-config で `--platform grok-bot` を受け、operator が手編集なしで client wiring できる導線を追加する。
+- remote path は token + Host rewrite requirement を docs と reference proxy で固定し、実 token は config へ書かない。
+- Hermes Layer-1 と同様、agent 側へ「いつ search / timeline / get / record を呼ぶか」の明示契約（prompt/skill）を同梱する。
+
+### タスク
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S161-001 | **setup/doctor/mcp-config wiring for Grok Bot** `[tdd:required]` — `--platform grok-bot` と `mcp-config --client grok-bot` を追加し、HTTP MCP URL + headers（Authorization placeholder, Host rewrite, agent label）を managed 化する | `setup --platform grok-bot` / `doctor --platform grok-bot` / `uninstall --platform grok-bot` が動く。`mcp-config --client grok-bot --write` が Grok Bot 用 MCP entry を生成。実 token 値は書かれない。platform label (`grok-bot`) で tool-use provenance を残せる | - | cc:完了 [local] |
+| S161-002 | **integration package + docs + claim/changelog sync** `[tdd:required]` — `integrations/grok-bot/` を追加し、setup guide / README tier table / limitations / tailscale host rewrite / smoke checklist を更新する | `integrations/grok-bot/README.md` と examples があり、remote path の Host rewrite 要件と placeholder を明記。README/README_ja の Supported Tools に Tier 3 Grok Bot を追加。`docs/readme-claims*.md` と `CHANGELOG*.md [Unreleased]` が整合 | S161-001 | cc:完了 [local] |
+| S161-003 | **focused regression tests** `[tdd:required]` — platform wiring と MCP platform-label propagation の回帰を追加する | 触った surface のテスト（mcp-config CLI / setup+doctor wiring / gateway header propagation）が green。`git diff --check` green | S161-001 | cc:完了 [local] |
+
+### Non-goals / stop line
+
+- Grok Bot へ Claude/Codex Tier-1 hook continuity を偽装しない。
+- user 固有の Mac/Tailscale 設定値や token を repo へ固定しない。
+- unrelated Tier 1/Tier 2 hook path を変更しない。
+
 ## アーカイブ (完了 / 休止セクション)
 
 2026-04-13 のメンテナンスで §51〜§76 を `docs/archive/Plans-s51-s76-2026-04-13.md` に移動しました。
