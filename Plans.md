@@ -1480,4 +1480,8 @@ Plans.md は working plan（§78 + §89 + §90 + §97 + §110 + §112 + §115 + 
 
 | Task | 内容 / DoD | Status |
 |---|---|---|
-| GROK-001 | VPS の現 main ベースで Hermes / Cursor 配線を確認し、optional Grok Bot Layer 1 MCP の setup / doctor / uninstall / mcp-config、provenance、placeholder examples、日英 docs / claim maps / Unreleased を実装。focused Bun / Go tests を通して commit / push / 新規 main 向け PR を作成する。Tier 1 hooks / automatic continuity は対象外 | cc:WIP |
+| GROK-001 | VPS の現 main ベースで Hermes / Cursor 配線を確認し、optional Grok Bot Layer 1 MCP の setup / doctor / uninstall / mcp-config、provenance、placeholder examples、日英 docs / claim maps / Unreleased を実装。focused Bun / Go tests を通して commit / push / 新規 main 向け PR を作成する。Tier 1 hooks / automatic continuity は対象外 | cc:完了 [c64cb67] |
+
+検証: Bun focused 51 pass / 0 fail（7 files）、Go tools / server / proxy PASS、bash / Node syntax、diff check、npm pack dry-run（integration 全6ファイル同梱）。既存 version / VERSION は変更せず Unreleased を追加。provenance は既存 checkpoint の `platform` 引数を再利用し gateway header は追加しない。native client 設定 discovery / interpolation と VPS-to-Mac live E2E は未検証。managed export の明示 import が必要で doctor は config-only。
+
+新規 PR: https://github.com/Chachamaru127/harness-mem/pull/175 （main 向け、#174 の branch/code は再利用なし）。
