@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- **Optional Grok Bot Tier 3 integration**: `setup`, `doctor`, `uninstall --platform grok-bot` and `mcp-config --client grok-bot` manage a Layer 1 MCP JSON export for explicit client import. Includes local/remote examples, a loopback Host-rewrite proxy for Tailscale Serve, and the five-tool contract. No lifecycle hooks or Tier 1 continuity; doctor verifies config only, and live client/remote E2E remains unverified.
+
 ### Fixed
 
 - **Daemon shutdown now owns the complete lifetime of its persistent search worker**: shutdown waits for `SIGTERM`, escalates to `SIGKILL` after at most one second, and confirms disappearance before closing SQLite or exiting. On POSIX, a following startup recovers a marked orphan only after revalidating its command identity, parent state, process start time, canonical database, and worker token. A legacy unmarked orphan additionally requires `lsof` proof of the same database handle; Windows orphan discovery fails open rather than guessing. Another checkout, a live child, or a reused PID is not killed.

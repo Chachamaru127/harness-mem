@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### 追加
+
+- **任意の Grok Bot Tier 3 統合**: `setup` / `doctor` / `uninstall --platform grok-bot` と `mcp-config --client grok-bot` で、明示 client import 用 Layer 1 MCP JSON を管理する。local / remote 設定例、Tailscale Serve 用 loopback Host-rewrite proxy、5 tool 契約を同梱。lifecycle hooks / Tier 1 continuity は対象外。doctor は設定確認のみで client / remote live E2E は未検証。
+
 ### 修正
 
 - **daemon 停止が persistent search worker の消滅まで責任を持つようにした**。`SIGTERM` 後は最大1秒だけ待ち、残っていれば `SIGKILL`、消滅確認後にだけ SQLite close と daemon exit へ進む。POSIX の次回起動では、marked orphan の command、親、process start、canonical DB、worker token を signal 直前に再検証する。旧 unmarked orphan は同一 DB handle の `lsof` 証明も必須。Windows の孤児探索は推測で kill せず fail-open にする。

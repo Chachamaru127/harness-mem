@@ -333,6 +333,64 @@ function writeCursorConfig(options = {}) {
   return { client: "cursor", status: "updated", filePath };
 }
 
+// This is a managed export, not an assumed Grok Bot native config location.
+function grokBotConfigPath(options = {}) {
+  return path.join(resolveHomeDir(options), ".harness-mem", "integrations", "grok-bot", "mcp.json");
+}
+
+function buildGrokBotHarnessConfig(serverSpec) {
+  if (serverSpec.transport === "http") {
+    return { type: "http", url: serverSpec.url, headers: serverSpec.headers };
+  }
+  return {
+    type: "stdio",
+    command: serverSpec.command,
+    args: serverSpec.args,
+    env: { ...serverSpec.env, HARNESS_MEM_MCP_PLATFORM: "grok-bot" },
+  };
+}
+
+function writeGrokBotConfig(options = {}) {
+  const filePath = grokBotConfigPath(options);
+  const parsed = parseJsonFile(filePath, { mcpServers: {} });
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) ||
+      (parsed.mcpServers != null && (typeof parsed.mcpServers !== "object" || Array.isArray(parsed.mcpServers)))) {
+    throw new Error("Grok Bot MCP config must contain an mcpServers object");
+  }
+  parsed.mcpServers = parsed.mcpServers || {};
+  parsed.mcpServers["harness-mem"] = buildGrokBotHarnessConfig(options.serverSpec || resolveServerSpec(options));
+  ensureFileDir(filePath);
+  fs.writeFileSync(filePath, `${JSON.stringify(parsed, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  return { client: "grok-bot", status: "updated", filePath };
+}
+
+function checkGrokBotConfig(options = {}) {
+  try {
+    const config = parseJsonFile(grokBotConfigPath(options), {}).mcpServers?.["harness-mem"];
+    if (!config) return false;
+    if (config.type === "http") {
+      const url = new URL(config.url);
+      return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password &&
+        typeof config.headers?.Authorization === "string" &&
+        /^Bearer \S+$/.test(config.headers.Authorization) &&
+        !config.command && !config.args && !config.env;
+    }
+    return config.type === "stdio" && typeof config.command === "string" && !!config.command.trim() &&
+      Array.isArray(config.args) && config.args.length > 0 && config.args.every((arg) => typeof arg === "string") &&
+      config.env?.HARNESS_MEM_MCP_PLATFORM === "grok-bot" && !config.url && !config.headers;
+  } catch {
+    return false;
+  }
+}
+
+function removeGrokBotConfig(options = {}) {
+  const filePath = grokBotConfigPath(options);
+  if (!fs.existsSync(filePath)) return;
+  const parsed = parseJsonFile(filePath, {});
+  if (parsed.mcpServers) delete parsed.mcpServers["harness-mem"];
+  fs.writeFileSync(filePath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+}
+
 function escapeYamlDoubleQuoted(value) {
   return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
@@ -438,7 +496,7 @@ function parseCliArgs(argv) {
       const value = argv[i + 1] || "";
       parsed.clients = value
         .split(",")
-        .map((entry) => entry.trim().toLowerCase())
+        .map((entry) => entry.trim().toLowerCase().replace(/^grokbot$/, "grok-bot"))
         .filter(Boolean);
       i += 1;
       continue;
@@ -539,6 +597,9 @@ function buildPrintableSummary(results, serverSpec) {
     "",
     "Hermes snippet:",
     hermesSnippet,
+    "",
+    "Grok Bot snippet (managed export; import into your client):",
+    JSON.stringify({ mcpServers: { "harness-mem": buildGrokBotHarnessConfig(serverSpec) } }, null, 2),
     ""
   );
 
@@ -605,6 +666,12 @@ function runMcpConfigCli(options = {}) {
         }
         continue;
       }
+      if (client === "grok-bot") {
+        results.push(parsed.write
+          ? writeGrokBotConfig({ homeDir, serverSpec })
+          : { client, status: "preview", filePath: grokBotConfigPath({ homeDir }) });
+        continue;
+      }
       if (client === "hermes") {
         const filePath = path.join(resolveHomeDir({ homeDir }), ".hermes", "config.yaml");
         if (parsed.write) {
@@ -639,6 +706,11 @@ function runMcpConfigCli(options = {}) {
 }
 
 module.exports = {
+  grokBotConfigPath,
+  buildGrokBotHarnessConfig,
+  writeGrokBotConfig,
+  checkGrokBotConfig,
+  removeGrokBotConfig,
   BEGIN_CODEX_MCP,
   END_CODEX_MCP,
   BEGIN_HERMES_MCP,

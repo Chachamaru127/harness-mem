@@ -37,6 +37,7 @@
     "mcp-server/src/",
     "mcp-server/tsconfig.json",
     "mcp-server/package.json",
+    "integrations/grok-bot/",
     "hooks/",
     "codex/",
     "skills/",

@@ -629,3 +629,18 @@ Adjust the group name if your machine does not use `staff`.
 - `CHANGELOG.md`
 - `CHANGELOG_ja.md`
 - `docs/benchmarks/`
+
+## Grok Bot — Tier 3 / experimental
+
+Grok Bot uses optional Layer 1 MCP with explicit tool calls and no lifecycle hooks.
+
+```bash
+harness-mem setup --platform grok-bot --skip-model-pull
+harness-mem doctor --platform grok-bot
+# Remote-only client: generate an export without local daemon provisioning.
+harness-mem mcp-config --client grok-bot --transport http \
+  --url 'https://<mac-node>.<tailnet>.ts.net/mcp' --write
+harness-mem uninstall --platform grok-bot
+```
+
+Setup writes `~/.harness-mem/integrations/grok-bot/mcp.json` for manual client import. Doctor checks config structure only. Grok Bot is excluded from `all`. Grok Bot-only uninstall preserves the shared runtime and DB unless `--purge-db` is explicit. For gateway/token provisioning, Host rewrite, placeholder expansion, and the five-tool contract, see [the integration guide](../integrations/grok-bot/README.md). Live client / Tailscale E2E is unverified; no Tier 1 continuity claim.

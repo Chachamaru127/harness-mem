@@ -536,3 +536,18 @@ harness-mem doctor --fix
 harness-memd doctor
 curl -sS http://127.0.0.1:37901/api/health | jq '.ok'
 ```
+
+## Grok Bot — Tier 3 / experimental
+
+Grok Bot は任意の Layer 1 MCP の明示 tool call で接続します。lifecycle hooks は導入しません。
+
+```bash
+harness-mem setup --platform grok-bot --skip-model-pull
+harness-mem doctor --platform grok-bot
+# Remote-only client: generate an export without local daemon provisioning.
+harness-mem mcp-config --client grok-bot --transport http \
+  --url 'https://<mac-node>.<tailnet>.ts.net/mcp' --write
+harness-mem uninstall --platform grok-bot
+```
+
+Setup は明示 client import 用の `~/.harness-mem/integrations/grok-bot/mcp.json` を生成します。Doctor は設定構造のみ確認します。`all` には含まれません。Grok Bot 単独 uninstall は `--purge-db` を明示しなければ共有 runtime / DB を維持します。gateway / token、Host rewrite、placeholder の解決、5 tool 契約は[統合ガイド](../integrations/grok-bot/README.md)を参照してください。client / Tailscale live E2E は未検証で、Tier 1 continuity は主張しません。

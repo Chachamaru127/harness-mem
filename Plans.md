@@ -1475,3 +1475,9 @@ Plans.md は working plan（§78 + §89 + §90 + §97 + §110 + §112 + §115 + 
 - [§79〜§88 の完了セクション](docs/archive/Plans-s79-s88-2026-04-19.md)（2026-04-19 切り出し）
 - [§51〜§76 の完了セクション](docs/archive/Plans-s51-s76-2026-04-13.md)
 - [それ以前のアーカイブ](docs/archive/)
+
+## Grok Bot Tier 3 MCP integration (2026-09-05)
+
+| Task | 内容 / DoD | Status |
+|---|---|---|
+| GROK-001 | VPS の現 main ベースで Hermes / Cursor 配線を確認し、optional Grok Bot Layer 1 MCP の setup / doctor / uninstall / mcp-config、provenance、placeholder examples、日英 docs / claim maps / Unreleased を実装。focused Bun / Go tests を通して commit / push / 新規 main 向け PR を作成する。Tier 1 hooks / automatic continuity は対象外 | cc:WIP |
