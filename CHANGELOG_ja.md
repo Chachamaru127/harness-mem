@@ -9,7 +9,7 @@
 
 ### 追加
 
-- **任意の Grok Bot Tier 3 統合**: `setup` / `doctor` / `uninstall --platform grok-bot` と `mcp-config --client grok-bot` で、明示 client import 用 Layer 1 MCP JSON を管理する。local / remote 設定例、Tailscale Serve 用 loopback Host-rewrite proxy、5 tool 契約を同梱。lifecycle hooks / Tier 1 continuity は対象外。doctor は設定確認のみで client / remote live E2E は未検証。
+- **任意の Grok Bot Tier 3 統合**: `setup` / `doctor` / `uninstall --platform grok-bot` と `mcp-config --client grok-bot` で、明示 client import 用 Layer 1 MCP JSON を管理する。local / remote 設定例、Tailscale Serve 用 loopback Host-rewrite proxy、5 tool 契約を同梱。lifecycle hooks / Tier 1 continuity は対象外。doctor は設定確認のみで client / remote live E2E は未検証。default local HTTP では共有 gateway の token 作成と起動を行い、明示 remote URL では local gateway を起動しない。HTTP bearer URL は loopback 以外で `https:` を必須にする。
 
 ### 修正
 

@@ -24,9 +24,11 @@ harness-mem mcp-config --client grok-bot --transport stdio --write
 
 The managed export is `~/.harness-mem/integrations/grok-bot/mcp.json`, with server
 ID `mcpServers.harness-mem`. Import that entry into your client's MCP settings and
-reload the client. Setup defaults to stdio for Grok Bot alone; `--mcp-transport
-http` generates an HTTP export but does not provision a Grok Bot gateway.
-Use `mcp-config` for a remote-only VPS client that should not start a local daemon.
+reload the client. Setup defaults to stdio for Grok Bot alone. `--mcp-transport
+http` without a remote URL uses the default local endpoint, creates the shared
+gateway token, and starts the local gateway. An explicit remote `--url` /
+`HARNESS_MEM_MCP_URL` writes the export only and does not start a local gateway.
+`mcp-config --write` still generates config only.
 `--client grokbot` is an alias for `--client grok-bot`.
 `--platform grok-bot` is the canonical platform spelling. Grok Bot is excluded
 from both default `all` selections and must be explicitly selected.
@@ -35,7 +37,9 @@ Doctor's `grok_bot_wiring: ok:config_only` checks the export's structure. It doe
 not prove client import, token resolution, remote reachability, or live tool
 execution. Other doctor checks still inspect the local harness-mem runtime.
 
-For local HTTP, start the gateway on the daemon host first:
+For local HTTP, `setup --platform grok-bot --mcp-transport http` provisions the
+shared token and starts the gateway. Config-only generation still needs a
+running gateway on the daemon host:
 
 ```bash
 # Supply HARNESS_MEM_MCP_TOKEN through your private runtime environment.

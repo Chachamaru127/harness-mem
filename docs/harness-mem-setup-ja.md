@@ -550,4 +550,4 @@ harness-mem mcp-config --client grok-bot --transport http \
 harness-mem uninstall --platform grok-bot
 ```
 
-Setup は明示 client import 用の `~/.harness-mem/integrations/grok-bot/mcp.json` を生成します。Doctor は設定構造のみ確認します。`all` には含まれません。Grok Bot 単独 uninstall は `--purge-db` を明示しなければ共有 runtime / DB を維持します。gateway / token、Host rewrite、placeholder の解決、5 tool 契約は[統合ガイド](../integrations/grok-bot/README.md)を参照してください。client / Tailscale live E2E は未検証で、Tier 1 continuity は主張しません。
+Setup は明示 client import 用の `~/.harness-mem/integrations/grok-bot/mcp.json` を生成します。Doctor は設定構造のみ確認します。default local HTTP では共有 gateway の token 作成と probe も行いますが、明示 remote URL では local gateway を起動しません。`all` には含まれません。Grok Bot 単独 uninstall は `--purge-db` を明示しなければ共有 runtime / DB を維持します。gateway / token、Host rewrite、placeholder の解決、5 tool 契約は[統合ガイド](../integrations/grok-bot/README.md)を参照してください。client / Tailscale live E2E は未検証で、Tier 1 continuity は主張しません。

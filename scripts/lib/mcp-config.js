@@ -49,13 +49,51 @@ function ensureHttpPath(pathname) {
   return value.startsWith("/") ? value : `/${value}`;
 }
 
+const LOOPBACK_HTTP_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
+
+function isLoopbackHttpHost(hostname) {
+  const host = String(hostname || "").trim().toLowerCase().replace(/\.+$/, "");
+  return LOOPBACK_HTTP_HOSTS.has(host);
+}
+
+function assertSafeMcpHttpUrl(rawUrl) {
+  const value = String(rawUrl || "").trim();
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`Invalid MCP HTTP URL: ${rawUrl}`);
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("MCP HTTP URL must not include credentials");
+  }
+  if (parsed.protocol === "https:") {
+    return value;
+  }
+  if (parsed.protocol === "http:" && isLoopbackHttpHost(parsed.hostname)) {
+    return value;
+  }
+  throw new Error(
+    "MCP HTTP URLs must use https: unless the host is loopback (127.0.0.1, localhost, or ::1)"
+  );
+}
+
+function isSafeMcpHttpUrl(rawUrl) {
+  try {
+    assertSafeMcpHttpUrl(rawUrl);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function resolveHttpEndpoint(options = {}) {
   const env = options.env || process.env;
   if (options.url || env.HARNESS_MEM_MCP_URL) {
-    return options.url || env.HARNESS_MEM_MCP_URL;
+    return assertSafeMcpHttpUrl(options.url || env.HARNESS_MEM_MCP_URL);
   }
   const addr = options.addr || env.HARNESS_MEM_MCP_ADDR || DEFAULT_HTTP_ADDR;
-  return `http://${addr}${ensureHttpPath(options.path || env.HARNESS_MEM_MCP_PATH)}`;
+  return assertSafeMcpHttpUrl(`http://${addr}${ensureHttpPath(options.path || env.HARNESS_MEM_MCP_PATH)}`);
 }
 
 function resolveTokenEnvVar(options = {}) {
@@ -83,9 +121,10 @@ function resolveServerSpec(options = {}) {
 
   if (transport === "http") {
     const tokenEnvVar = resolveTokenEnvVar(options);
+    const url = resolveHttpEndpoint(options);
     return {
       transport: "http",
-      url: resolveHttpEndpoint(options),
+      url,
       bearerTokenEnvVar: tokenEnvVar,
       headers: {
         Authorization: buildAuthorizationHeader(tokenEnvVar),
@@ -340,6 +379,7 @@ function grokBotConfigPath(options = {}) {
 
 function buildGrokBotHarnessConfig(serverSpec) {
   if (serverSpec.transport === "http") {
+    assertSafeMcpHttpUrl(serverSpec.url);
     return { type: "http", url: serverSpec.url, headers: serverSpec.headers };
   }
   return {
@@ -358,7 +398,11 @@ function writeGrokBotConfig(options = {}) {
     throw new Error("Grok Bot MCP config must contain an mcpServers object");
   }
   parsed.mcpServers = parsed.mcpServers || {};
-  parsed.mcpServers["harness-mem"] = buildGrokBotHarnessConfig(options.serverSpec || resolveServerSpec(options));
+  const serverSpec = options.serverSpec || resolveServerSpec(options);
+  if (serverSpec.transport === "http") {
+    assertSafeMcpHttpUrl(serverSpec.url);
+  }
+  parsed.mcpServers["harness-mem"] = buildGrokBotHarnessConfig(serverSpec);
   ensureFileDir(filePath);
   fs.writeFileSync(filePath, `${JSON.stringify(parsed, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   return { client: "grok-bot", status: "updated", filePath };
@@ -369,8 +413,9 @@ function checkGrokBotConfig(options = {}) {
     const config = parseJsonFile(grokBotConfigPath(options), {}).mcpServers?.["harness-mem"];
     if (!config) return false;
     if (config.type === "http") {
+      if (!isSafeMcpHttpUrl(config.url)) return false;
       const url = new URL(config.url);
-      return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password &&
+      return !url.username && !url.password &&
         typeof config.headers?.Authorization === "string" &&
         /^Bearer \S+$/.test(config.headers.Authorization) &&
         !config.command && !config.args && !config.env;
@@ -387,7 +432,12 @@ function removeGrokBotConfig(options = {}) {
   const filePath = grokBotConfigPath(options);
   if (!fs.existsSync(filePath)) return;
   const parsed = parseJsonFile(filePath, {});
-  if (parsed.mcpServers) delete parsed.mcpServers["harness-mem"];
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) ||
+      !parsed.mcpServers || typeof parsed.mcpServers !== "object" ||
+      Array.isArray(parsed.mcpServers)) {
+    return;
+  }
+  delete parsed.mcpServers["harness-mem"];
   fs.writeFileSync(filePath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
 }
 
@@ -723,6 +773,8 @@ module.exports = {
   parseCliArgs,
   resolveClaudeTargets,
   resolveServerSpec,
+  resolveHttpEndpoint,
+  assertSafeMcpHttpUrl,
   runMcpConfigCli,
   upsertManagedBlock,
   writeClaudeConfig,

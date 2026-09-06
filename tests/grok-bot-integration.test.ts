@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 const ROOT = resolve(import.meta.dir, "..");
 const {
   grokBotConfigPath, checkGrokBotConfig, removeGrokBotConfig, runMcpConfigCli,
+  resolveServerSpec, writeGrokBotConfig, buildGrokBotHarnessConfig,
 } = require("../scripts/lib/mcp-config");
 
 function withHome(fn: (home: string) => void) {
@@ -105,10 +106,47 @@ describe("Grok Bot Tier 3 MCP", () => {
       { type: "http", url: "https://example.ts.net/mcp" },
       { type: "http", url: "file:///tmp/mcp", headers: { Authorization: "Bearer test" } },
       { type: "http", url: "https://example.ts.net/mcp", headers: { Authorization: "Bearer test" }, command: "node" },
+      { type: "http", url: "http://example.ts.net/mcp", headers: { Authorization: "Bearer test" } },
+      { type: "http", url: "http://10.0.0.8:37889/mcp", headers: { Authorization: "Bearer test" } },
     ]) {
       writeFileSync(file, JSON.stringify({ mcpServers: { "harness-mem": config } }));
       expect(checkGrokBotConfig({ homeDir: home })).toBe(false);
     }
+  }));
+
+  test("HTTP bearer URLs allow loopback http and require https elsewhere", () => withHome((home) => {
+    for (const url of ["http://127.0.0.1:37889/mcp", "http://localhost:37889/mcp", "http://[::1]:37889/mcp"]) {
+      const spec = resolveServerSpec({ transport: "http", url, env: {} });
+      expect(spec.url).toBe(url);
+      expect(spec.headers.Authorization).toBe("Bearer ${HARNESS_MEM_MCP_TOKEN}");
+      expect(buildGrokBotHarnessConfig(spec).url).toBe(url);
+      expect(writeGrokBotConfig({ homeDir: home, serverSpec: spec }).status).toBe("updated");
+      expect(checkGrokBotConfig({ homeDir: home })).toBe(true);
+    }
+
+    const remote = resolveServerSpec({ transport: "http", url: "https://example.ts.net/mcp", env: {} });
+    expect(remote.url).toBe("https://example.ts.net/mcp");
+    expect(writeGrokBotConfig({ homeDir: home, serverSpec: remote }).status).toBe("updated");
+    expect(checkGrokBotConfig({ homeDir: home })).toBe(true);
+
+    for (const url of ["http://example.ts.net/mcp", "http://192.168.1.9:37889/mcp", "http://10.0.0.8/mcp"]) {
+      expect(() => resolveServerSpec({ transport: "http", url, env: {} })).toThrow(/https|loopback/i);
+      expect(() => writeGrokBotConfig({
+        homeDir: home,
+        serverSpec: { transport: "http", url, headers: { Authorization: "Bearer ${HARNESS_MEM_MCP_TOKEN}" } },
+      })).toThrow(/https|loopback/i);
+      expect(cli(home, ["--client", "grok-bot", "--transport", "http", "--write", "--url", url]).code).toBe(1);
+      expect(checkGrokBotConfig({ homeDir: home })).toBe(true);
+    }
+  }));
+
+  test("removeGrokBotConfig leaves a null mcp.json untouched", () => withHome((home) => {
+    const file = grokBotConfigPath({ homeDir: home });
+    mkdirSync(join(file, ".."), { recursive: true });
+    writeFileSync(file, "null");
+    expect(() => removeGrokBotConfig({ homeDir: home })).not.toThrow();
+    expect(readFileSync(file, "utf8")).toBe("null");
+    expect(checkGrokBotConfig({ homeDir: home })).toBe(false);
   }));
 
   test("real shell wiring supports explicit and comma-list selection without hooks", () => withHome((home) => {
@@ -138,6 +176,32 @@ describe("Grok Bot Tier 3 MCP", () => {
     }
     const config = JSON.parse(readFileSync(grokBotConfigPath({ homeDir: home }), "utf8"));
     expect(config.mcpServers["harness-mem"].url).toBe("https://example.ts.net/mcp");
+  }));
+
+  test("local HTTP grok-bot setup provisions the shared gateway; remote URL does not", () => withHome((home) => {
+    const result = shell(home, `
+      PLATFORM=grok-bot
+      MCP_CONFIG_TRANSPORT=http
+      unset HARNESS_MEM_MCP_URL
+      setup_grok_bot_wiring
+      _grok_bot_uses_default_local_http
+      setup_has_http_tier1_config
+      MCP_HTTP_CONFIG_DETECTED=0
+      check_grok_bot_wiring
+      test "$MCP_HTTP_CONFIG_DETECTED" = 1
+
+      HARNESS_MEM_MCP_URL=https://example.ts.net/mcp
+      export HARNESS_MEM_MCP_URL
+      setup_grok_bot_wiring
+      ! _grok_bot_uses_default_local_http
+      ! setup_has_http_tier1_config
+      MCP_HTTP_CONFIG_DETECTED=0
+      check_grok_bot_wiring
+      test "$MCP_HTTP_CONFIG_DETECTED" = 0
+    `);
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(readFileSync(grokBotConfigPath({ homeDir: home }), "utf8")).mcpServers["harness-mem"].url)
+      .toBe("https://example.ts.net/mcp");
   }));
 
   test("real Grok Bot-only uninstall leaves shared runtime and database intact", () => withHome((home) => {

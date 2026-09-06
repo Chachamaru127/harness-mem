@@ -3374,6 +3374,9 @@ setup_grok_bot_wiring() {
 check_grok_bot_wiring() {
   node -e 'process.exit(require(process.argv[1]).checkGrokBotConfig({ homeDir: process.argv[2] }) ? 0 : 1)' \
     "$HARNESS_ROOT/scripts/lib/mcp-config.js" "$HOME" || return 1
+  if _grok_bot_written_config_is_local_http; then
+    MCP_HTTP_CONFIG_DETECTED=1
+  fi
   log "Grok Bot Tier 3 MCP export: OK (config only; client import/authentication and live tool calls are not verified)"
 }
 
@@ -5850,6 +5853,45 @@ _mcp_config_transport_is_http() {
   [ "$(_normalize_mcp_transport_option "$MCP_CONFIG_TRANSPORT" 2>/dev/null || printf 'stdio')" = "streamable_http" ]
 }
 
+_mcp_http_url_is_local_gateway() {
+  local url="${1:-}"
+  local expected port
+  expected="$(_mcp_gateway_endpoint_url)"
+  [ -n "$url" ] || return 1
+  [ "$url" = "$expected" ] && return 0
+  port="$(_mcp_gateway_port)"
+  case "$url" in
+    "http://127.0.0.1:${port}${MCP_GATEWAY_ENDPOINT}"|\
+    "http://localhost:${port}${MCP_GATEWAY_ENDPOINT}"|\
+    "http://[::1]:${port}${MCP_GATEWAY_ENDPOINT}")
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+_grok_bot_uses_default_local_http() {
+  is_platform_enabled grok-bot || return 1
+  _mcp_config_transport_is_http || return 1
+  if [ -n "${HARNESS_MEM_MCP_URL:-}" ]; then
+    _mcp_http_url_is_local_gateway "$HARNESS_MEM_MCP_URL"
+    return $?
+  fi
+  return 0
+}
+
+_grok_bot_written_config_is_local_http() {
+  local file url
+  file="${HOME}/.harness-mem/integrations/grok-bot/mcp.json"
+  [ -f "$file" ] || return 1
+  if command -v jq >/dev/null 2>&1; then
+    url="$(jq -r '.mcpServers["harness-mem"].url // empty' "$file" 2>/dev/null || true)"
+  else
+    url="$(node -e 'const fs=require("fs"); const parsed=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write((parsed && parsed.mcpServers && parsed.mcpServers["harness-mem"] && parsed.mcpServers["harness-mem"].url) || "")' "$file" 2>/dev/null || true)"
+  fi
+  _mcp_http_url_is_local_gateway "$url"
+}
+
 _doctor_check_mcp_gateway() {
   local transport="$1"
   local status_json gateway_status gateway_ok fix
@@ -6549,6 +6591,10 @@ setup_has_http_tier1_config() {
     fi
   fi
 
+  if is_platform_enabled grok-bot && _grok_bot_written_config_is_local_http; then
+    return 0
+  fi
+
   return 1
 }
 
@@ -6615,7 +6661,7 @@ setup_impl() {
     return 1
   fi
 
-  if _mcp_config_transport_is_http && { is_platform_enabled codex || is_platform_enabled claude; }; then
+  if _mcp_config_transport_is_http && { is_platform_enabled codex || is_platform_enabled claude || _grok_bot_uses_default_local_http; }; then
     if _ensure_mcp_gateway_token >/dev/null 2>&1; then
       _setup_record "mcp_gateway_token" "ok" ""
     else

@@ -9,7 +9,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-- **Optional Grok Bot Tier 3 integration**: `setup`, `doctor`, `uninstall --platform grok-bot` and `mcp-config --client grok-bot` manage a Layer 1 MCP JSON export for explicit client import. Includes local/remote examples, a loopback Host-rewrite proxy for Tailscale Serve, and the five-tool contract. No lifecycle hooks or Tier 1 continuity; doctor verifies config only, and live client/remote E2E remains unverified.
+- **Optional Grok Bot Tier 3 integration**: `setup`, `doctor`, `uninstall --platform grok-bot` and `mcp-config --client grok-bot` manage a Layer 1 MCP JSON export for explicit client import. Includes local/remote examples, a loopback Host-rewrite proxy for Tailscale Serve, and the five-tool contract. No lifecycle hooks or Tier 1 continuity; doctor verifies config only, and live client/remote E2E remains unverified. Default local HTTP setup now provisions the shared gateway token and starts the gateway; an explicit remote URL still does not. HTTP bearer URLs must be `https:` unless the host is loopback.
 
 ### Fixed
 
