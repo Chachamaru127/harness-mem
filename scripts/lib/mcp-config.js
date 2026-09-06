@@ -52,7 +52,7 @@ function ensureHttpPath(pathname) {
 const LOOPBACK_HTTP_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
 function isLoopbackHttpHost(hostname) {
-  const host = String(hostname || "").trim().toLowerCase().replace(/\.+$/, "");
+  const host = String(hostname || "").trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.+$/, "");
   return LOOPBACK_HTTP_HOSTS.has(host);
 }
 
@@ -663,18 +663,18 @@ function runMcpConfigCli(options = {}) {
   const stderr = options.stderr || process.stderr;
   const parsed = parseCliArgs(argv);
   const homeDir = parsed.homeDir || options.homeDir;
-  const serverSpec = resolveServerSpec({
-    env,
-    homeDir,
-    transport: parsed.transport,
-    url: parsed.url,
-    addr: parsed.addr,
-    tokenEnvVar: parsed.tokenEnvVar,
-    platform: options.platform || effectivePlatform(env),
-    harnessRoot: options.harnessRoot,
-  });
 
   try {
+    const serverSpec = resolveServerSpec({
+      env,
+      homeDir,
+      transport: parsed.transport,
+      url: parsed.url,
+      addr: parsed.addr,
+      tokenEnvVar: parsed.tokenEnvVar,
+      platform: options.platform || effectivePlatform(env),
+      harnessRoot: options.harnessRoot,
+    });
     const results = [];
     for (const client of parsed.clients) {
       if (client === "codex") {
