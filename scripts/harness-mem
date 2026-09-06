@@ -2,10 +2,10 @@
 # Unified Harness Memory helper CLI.
 #
 # Usage:
-#   scripts/harness-mem setup [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>] [--skip-start] [--skip-smoke] [--skip-quality] [--skip-model-pull]
-#   scripts/harness-mem doctor [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>] [--fix]
+#   scripts/harness-mem setup [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|grok-bot|comma-list>] [--skip-start] [--skip-smoke] [--skip-quality] [--skip-model-pull]
+#   scripts/harness-mem doctor [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|grok-bot|comma-list>] [--fix]
 #   scripts/harness-mem smoke [--project <path>]
-#   scripts/harness-mem uninstall [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>] [--purge-db]
+#   scripts/harness-mem uninstall [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|grok-bot|comma-list>] [--purge-db]
 #   scripts/harness-mem versions [--project <path>]
 #   scripts/harness-mem update
 #   scripts/harness-mem import-claude-mem --source <claude_mem.db> [--dry-run] [--import-project <name>]
@@ -17,7 +17,7 @@
 #   scripts/harness-mem cleanup-stale-mcp [--dry-run] [--execute --older-than <duration>] [--json]
 #   scripts/harness-mem telemetry status|export [--limit <n>] [--json]
 #   scripts/harness-mem mcp-gateway {start|stop|status} [--foreground] [--json]
-#   scripts/harness-mem mcp-config [--transport <stdio|http>] [--client <claude,codex,cursor,hermes|all>] [--write]
+#   scripts/harness-mem mcp-config [--transport <stdio|http>] [--client <claude,codex,cursor,hermes,grok-bot|all>] [--write]
 #   scripts/harness-mem adr new --title <title> --status <status> --options <text> --consequences <text> --supersedes <text> --source-plans "Plans.md §NNN" [--write]
 #   scripts/harness-mem model use-adaptive
 #   scripts/harness-mem work import-plans [Plans.md] [--project <path>] [--dry-run|--write]
@@ -174,7 +174,7 @@ Commands:
   telemetry status|export     Inspect local telemetry spans and metric summaries without an external collector.
   mcp-gateway start|stop|status
                               Manage the local Streamable HTTP MCP gateway.
-  mcp-config                  Print or write Claude/Codex/Cursor/Hermes MCP config snippets.
+  mcp-config                  Print or write Claude/Codex/Cursor/Hermes/Grok Bot MCP config snippets.
   adr new                     Render a BEADS-shaped ADR template. Dry-run by default; --write is explicit.
   model list                 List available models in the catalog.
   model pull <id> [--yes]    Download a model (~size confirmation required).
@@ -189,8 +189,8 @@ Commands:
 
 Common options:
   --project <path>      Target project path (default: current directory)
-  --platform <value>    all|codex|opencode|claude|cursor|antigravity or comma list (default: all)
-                        examples: codex,cursor  /  opencode,cursor
+  --platform <value>    all|codex|opencode|claude|cursor|antigravity|grok-bot or comma list (default: all)
+                        examples: codex,cursor  /  opencode,cursor (grok-bot is explicit opt-in; excluded from all)
   --dest-dir <path>     Destination directory for backup (default: same dir as DB)
   --backup-path <path>  Backup file to preverify with backup-evidence
   --backup-sha256 <hex> SHA-256 for --backup-path
@@ -272,7 +272,7 @@ Command options:
     --addr <host:port>     Override HARNESS_MEM_MCP_ADDR (default: 127.0.0.1:37889)
     --json                 Output structured JSON status
   mcp-config:
-    --client <list>         claude,codex,hermes or all. all means claude,codex; Hermes is explicit only
+    --client <list>         claude,codex,cursor,hermes,grok-bot or all. all means claude,codex; Hermes/Grok Bot are explicit only
     --transport stdio|http  Default: stdio for direct config generation. New setup defaults Claude/Codex to http.
     --url <url>             Override HTTP endpoint (default: http://127.0.0.1:37889/mcp)
     --token-env-var <name>  HTTP bearer token env var (default: HARNESS_MEM_MCP_TOKEN)
@@ -545,7 +545,7 @@ normalize_managed_platform_csv() {
           result="$(csv_append_unique "$result" "$expanded")"
         done
         ;;
-      codex|opencode|claude|cursor|antigravity)
+      codex|opencode|claude|cursor|antigravity|grok-bot)
         result="$(csv_append_unique "$result" "$normalized")"
         ;;
     esac
@@ -1297,7 +1297,7 @@ is_platform_enabled() {
     local normalized
     normalized="$(printf '%s' "$entry" | xargs)"
     [ -z "$normalized" ] && continue
-    if [ "$normalized" = "all" ] || [ "$normalized" = "$target" ]; then
+    if { [ "$normalized" = "all" ] && [ "$target" != "grok-bot" ]; } || [ "$normalized" = "$target" ]; then
       return 0
     fi
   done
@@ -1313,11 +1313,11 @@ validate_platform_selection() {
     normalized="$(printf '%s' "$entry" | xargs)"
     [ -z "$normalized" ] && continue
     case "$normalized" in
-      all|codex|opencode|claude|cursor|antigravity)
+      all|codex|opencode|claude|cursor|antigravity|grok-bot)
         seen=1
         ;;
       *)
-        fail "Invalid --platform entry: ${normalized} (allowed: all,codex,opencode,claude,cursor,antigravity)"
+        fail "Invalid --platform entry: ${normalized} (allowed: all,codex,opencode,claude,cursor,antigravity,grok-bot)"
         ;;
     esac
   done
@@ -3360,6 +3360,29 @@ check_cursor_wiring() {
   fi
 
   return "$failed"
+}
+
+# Grok Bot is Layer 1 only. Keep its managed export separate from lifecycle hooks.
+setup_grok_bot_wiring() {
+  HARNESS_MEM_HOST="$MEM_HOST" HARNESS_MEM_PORT="$MEM_PORT" HARNESS_MEM_DB_PATH="$DB_PATH" \
+    node "$HARNESS_ROOT/scripts/lib/mcp-config.js" --client grok-bot --write \
+    --home "$HOME" --transport "$MCP_CONFIG_TRANSPORT" --json >/dev/null || return 1
+  log "Grok Bot Tier 3 MCP export: ${HOME}/.harness-mem/integrations/grok-bot/mcp.json"
+  log "Import this JSON into Grok Bot; configure bearer credentials in the client for HTTP. No lifecycle hooks are installed."
+}
+
+check_grok_bot_wiring() {
+  node -e 'process.exit(require(process.argv[1]).checkGrokBotConfig({ homeDir: process.argv[2] }) ? 0 : 1)' \
+    "$HARNESS_ROOT/scripts/lib/mcp-config.js" "$HOME" || return 1
+  if _grok_bot_written_config_is_local_http; then
+    MCP_HTTP_CONFIG_DETECTED=1
+  fi
+  log "Grok Bot Tier 3 MCP export: OK (config only; client import/authentication and live tool calls are not verified)"
+}
+
+uninstall_grok_bot_wiring() {
+  node -e 'require(process.argv[1]).removeGrokBotConfig({ homeDir: process.argv[2] })' \
+    "$HARNESS_ROOT/scripts/lib/mcp-config.js" "$HOME"
 }
 
 setup_antigravity_wiring() {
@@ -5830,6 +5853,45 @@ _mcp_config_transport_is_http() {
   [ "$(_normalize_mcp_transport_option "$MCP_CONFIG_TRANSPORT" 2>/dev/null || printf 'stdio')" = "streamable_http" ]
 }
 
+_mcp_http_url_is_local_gateway() {
+  local url="${1:-}"
+  local expected port
+  expected="$(_mcp_gateway_endpoint_url)"
+  [ -n "$url" ] || return 1
+  [ "$url" = "$expected" ] && return 0
+  port="$(_mcp_gateway_port)"
+  case "$url" in
+    "http://127.0.0.1:${port}${MCP_GATEWAY_ENDPOINT}"|\
+    "http://localhost:${port}${MCP_GATEWAY_ENDPOINT}"|\
+    "http://[::1]:${port}${MCP_GATEWAY_ENDPOINT}")
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+_grok_bot_uses_default_local_http() {
+  is_platform_enabled grok-bot || return 1
+  _mcp_config_transport_is_http || return 1
+  if [ -n "${HARNESS_MEM_MCP_URL:-}" ]; then
+    _mcp_http_url_is_local_gateway "$HARNESS_MEM_MCP_URL"
+    return $?
+  fi
+  return 0
+}
+
+_grok_bot_written_config_is_local_http() {
+  local file url
+  file="${HOME}/.harness-mem/integrations/grok-bot/mcp.json"
+  [ -f "$file" ] || return 1
+  if command -v jq >/dev/null 2>&1; then
+    url="$(jq -r '.mcpServers["harness-mem"].url // empty' "$file" 2>/dev/null || true)"
+  else
+    url="$(node -e 'const fs=require("fs"); const parsed=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write((parsed && parsed.mcpServers && parsed.mcpServers["harness-mem"] && parsed.mcpServers["harness-mem"].url) || "")' "$file" 2>/dev/null || true)"
+  fi
+  _mcp_http_url_is_local_gateway "$url"
+}
+
 _doctor_check_mcp_gateway() {
   local transport="$1"
   local status_json gateway_status gateway_ok fix
@@ -6168,6 +6230,7 @@ doctor_impl() {
       opencode)    [ -f "$HOME/.config/opencode/plugins/harness-memory/index.ts" ] ;;
       claude)      check_claude_wiring 2>/dev/null ;;
       cursor)      [ -f "$HOME/.cursor/mcp.json" ] && grep -q "harness" "$HOME/.cursor/mcp.json" 2>/dev/null ;;
+      grok-bot)    [ -f "$HOME/.harness-mem/integrations/grok-bot/mcp.json" ] && grep -q '"harness-mem"' "$HOME/.harness-mem/integrations/grok-bot/mcp.json" 2>/dev/null ;;
       antigravity) [ -f "$HOME/.antigravity/config.json" ] && grep -q "harness" "$HOME/.antigravity/config.json" 2>/dev/null ;;
       *) return 1 ;;
     esac
@@ -6229,6 +6292,14 @@ doctor_impl() {
       _doctor_record "cursor_wiring" "ok" ""
     else
       _doctor_record "cursor_wiring" "missing" "harness-mem setup --platform cursor"
+      failed=1
+    fi
+  fi
+  if _should_check_platform grok-bot; then
+    if check_grok_bot_wiring; then
+      _doctor_record "grok_bot_wiring" "ok:config_only" ""
+    else
+      _doctor_record "grok_bot_wiring" "missing" "harness-mem setup --platform grok-bot"
       failed=1
     fi
   fi
@@ -6520,6 +6591,10 @@ setup_has_http_tier1_config() {
     fi
   fi
 
+  if is_platform_enabled grok-bot && _grok_bot_written_config_is_local_http; then
+    return 0
+  fi
+
   return 1
 }
 
@@ -6586,7 +6661,7 @@ setup_impl() {
     return 1
   fi
 
-  if _mcp_config_transport_is_http && { is_platform_enabled codex || is_platform_enabled claude; }; then
+  if _mcp_config_transport_is_http && { is_platform_enabled codex || is_platform_enabled claude || _grok_bot_uses_default_local_http; }; then
     if _ensure_mcp_gateway_token >/dev/null 2>&1; then
       _setup_record "mcp_gateway_token" "ok" ""
     else
@@ -6632,6 +6707,13 @@ setup_impl() {
     else
       setup_cursor_wiring
       _setup_record "cursor_wiring" "failed" "harness-mem setup --platform cursor"
+    fi
+  fi
+  if is_platform_enabled grok-bot; then
+    if setup_grok_bot_wiring; then
+      _setup_record "grok_bot_wiring" "ok" ""
+    else
+      _setup_record "grok_bot_wiring" "failed" "harness-mem setup --platform grok-bot"
     fi
   fi
   if is_platform_enabled antigravity; then
@@ -6952,6 +7034,13 @@ uninstall_antigravity_wiring() {
 }
 
 uninstall_impl() {
+  # An optional client-only removal must not stop the shared daemon or remove its runtime.
+  if [ "$(normalize_managed_platform_csv "$PLATFORM")" = "grok-bot" ] && [ "$PURGE_DB" -eq 0 ]; then
+    uninstall_grok_bot_wiring || return 1
+    forget_auto_update_repair_platforms "$PLATFORM"
+    log "Removed Grok Bot managed MCP entry; remove any imported copy in the client separately"
+    return 0
+  fi
   if check_cmd bun; then
     HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
       HARNESS_MEM_HOST="$MEM_HOST" \
@@ -6971,6 +7060,9 @@ uninstall_impl() {
   fi
   if is_platform_enabled cursor; then
     uninstall_cursor_wiring
+  fi
+  if is_platform_enabled grok-bot; then
+    uninstall_grok_bot_wiring || return 1
   fi
   if is_platform_enabled antigravity; then
     uninstall_antigravity_wiring

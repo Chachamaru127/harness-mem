@@ -54,17 +54,24 @@ describe("search quality integration", () => {
   test("hybrid scoring formula remains consistent and recency affects rank", () => {
     const { core, dir } = createCore("scoring");
     try {
+      // Recency uses a 90-day half-life against Date.now(). Fixed calendar
+      // timestamps (e.g. 2026-02-14) age out and let hash-vector / nugget
+      // noise outrank the newer row. Keep the pair relative so recency stays
+      // the intended rank signal.
+      const nowMs = Date.now();
+      const newTs = new Date(nowMs - 60_000).toISOString();
+      const oldTs = new Date(nowMs - 400 * 24 * 60 * 60 * 1000).toISOString();
       core.recordEvent(
         makeEvent({
           event_id: "sq-old",
-          ts: "2025-01-01T00:00:00.000Z",
+          ts: oldTs,
           payload: { content: "release checklist automation baseline old run" },
         })
       );
       core.recordEvent(
         makeEvent({
           event_id: "sq-new",
-          ts: "2026-02-14T00:00:00.000Z",
+          ts: newTs,
           payload: { content: "release checklist automation baseline new run" },
         })
       );
@@ -79,6 +86,12 @@ describe("search quality integration", () => {
       expect(result.ok).toBe(true);
       const items = asItems(result);
       expect(items.length).toBeGreaterThanOrEqual(2);
+      const newer = items.find((item) => String(item.id).includes("sq-new"));
+      const older = items.find((item) => String(item.id).includes("sq-old"));
+      expect(newer).toBeDefined();
+      expect(older).toBeDefined();
+      expect(Number((newer?.scores as Record<string, unknown> | undefined)?.recency ?? 0))
+        .toBeGreaterThan(Number((older?.scores as Record<string, unknown> | undefined)?.recency ?? 0));
       expect(String(items[0].id)).toContain("sq-new");
       expect((result.meta as Record<string, unknown>).latest_interaction).toBeDefined();
 

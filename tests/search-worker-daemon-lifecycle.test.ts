@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { canonicalDatabaseIdentity } from "../memory-server/src/core/search-worker-lifecycle";
@@ -45,6 +45,15 @@ async function waitFor<T>(label: string, probe: () => T | null, timeoutMs = 10_0
   throw new Error(`${label} not met within ${timeoutMs}ms`);
 }
 
+function latchArmed(path: string): boolean {
+  if (!existsSync(path)) return false;
+  try {
+    return readFileSync(path, "utf8").includes("armed");
+  } catch {
+    return false;
+  }
+}
+
 function workerRows(dbPath: string): Array<{ pid: number; ppid: number; command: string }> {
   const id = canonicalDatabaseIdentity(dbPath);
   const result = Bun.spawnSync(["ps", "-axo", "pid=,ppid=,command="], {
@@ -63,7 +72,42 @@ function workerRows(dbPath: string): Array<{ pid: number; ppid: number; command:
   });
 }
 
-function spawnDaemon(home: string, dbPath: string, port: number): ReturnType<typeof Bun.spawn> {
+function spawnWorker(home: string, dbPath: string, latchReadyPath: string): ReturnType<typeof Bun.spawn> {
+  const proc = Bun.spawn([
+    process.execPath,
+    "run",
+    WORKER,
+    "--harness-mem-search-worker",
+    `--harness-mem-db-id=${canonicalDatabaseIdentity(dbPath)}`,
+    `--harness-mem-parent-pid=${process.pid}`,
+    "--harness-mem-worker-token=lifecycle-init",
+  ], {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      NODE_ENV: "test",
+      HARNESS_MEM_SEARCH_CHILD_PROCESS: "1",
+      HARNESS_MEM_SEARCH_WORKER_PROCESS: "1",
+      HARNESS_MEM_TEST_SEARCH_WORKER_SHUTDOWN_DELAY_MS: "300",
+      HARNESS_MEM_TEST_SIGNAL_LATCH_READY: latchReadyPath,
+      HOME: home,
+      HARNESS_MEM_HOME: home,
+      HARNESS_MEM_DB_PATH: dbPath,
+      HARNESS_MEM_OTEL_ENABLED: "false",
+    },
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  cleanupPids.add(proc.pid);
+  return proc;
+}
+
+function spawnDaemon(
+  home: string,
+  dbPath: string,
+  port: number,
+  extraEnv: Record<string, string> = {},
+): ReturnType<typeof Bun.spawn> {
   const proc = Bun.spawn([process.execPath, "run", DAEMON], {
     cwd: ROOT,
     env: {
@@ -78,6 +122,7 @@ function spawnDaemon(home: string, dbPath: string, port: number): ReturnType<typ
       HOME: home,
       HARNESS_MEM_HOME: home,
       HARNESS_MEM_DB_PATH: dbPath,
+      ...extraEnv,
       HARNESS_MEM_HOST: "127.0.0.1",
       HARNESS_MEM_PORT: String(port),
       HARNESS_MEM_ENABLE_CLAUDE_CODE_INGEST: "false",
@@ -96,13 +141,31 @@ function spawnDaemon(home: string, dbPath: string, port: number): ReturnType<typ
 }
 
 describe("daemon search-worker lifecycle", () => {
+  test("SIGTERM during worker init still awaits the graceful drain", async () => {
+    if (process.platform === "win32") return;
+    const home = mkdtempSync(join(tmpdir(), "harness-mem-worker-init-term-"));
+    cleanupPaths.push(home);
+    const dbPath = join(home, "memory.db");
+    const latchReadyPath = join(home, "signal-latch-ready");
+    const worker = spawnWorker(home, dbPath, latchReadyPath);
+    await waitFor("signal latch armed before core init", () => latchArmed(latchReadyPath) ? true : null);
+
+    const shutdownStartedAt = Date.now();
+    worker.kill("SIGTERM");
+    expect(await worker.exited).toBe(0);
+    expect(Date.now() - shutdownStartedAt).toBeGreaterThanOrEqual(250);
+    cleanupPids.delete(worker.pid);
+  }, 30_000);
+
   test("SIGKILL orphan is reaped by the next same-DB daemon, whose shutdown awaits its worker", async () => {
     if (process.platform === "win32") return;
     const home = mkdtempSync(join(tmpdir(), "harness-mem-daemon-lifecycle-"));
     cleanupPaths.push(home);
     const dbPath = join(home, "memory.db");
+    const latchReadyPath = join(home, "signal-latch-ready");
+    const latchEnv = { HARNESS_MEM_TEST_SIGNAL_LATCH_READY: latchReadyPath };
     const firstPort = 46_000 + Math.floor(Math.random() * 1_000);
-    const first = spawnDaemon(home, dbPath, firstPort);
+    const first = spawnDaemon(home, dbPath, firstPort, latchEnv);
     const firstWorker = await waitFor("first worker start", () =>
       workerRows(dbPath).find((row) => row.ppid === first.pid) ?? null,
     );
@@ -120,14 +183,17 @@ describe("daemon search-worker lifecycle", () => {
     cleanupPids.delete(first.pid);
     await waitFor("first worker orphan", () => workerRows(dbPath).find((row) => row.pid === firstWorker.pid && row.ppid <= 1) ?? null);
 
-    const second = spawnDaemon(home, dbPath, 47_000 + Math.floor(Math.random() * 1_000));
-    const secondWorker = await waitFor("replacement cleanup and start", () => {
-      if (running(firstWorker.pid)) return null;
+    rmSync(latchReadyPath, { force: true });
+    const second = spawnDaemon(home, dbPath, 47_000 + Math.floor(Math.random() * 1_000), latchEnv);
+    const secondWorker = await waitFor("replacement cleanup and signal latch", () => {
+      if (running(firstWorker.pid) || !latchArmed(latchReadyPath)) return null;
       return workerRows(dbPath).find((row) => row.ppid === second.pid) ?? null;
     });
     cleanupPids.delete(firstWorker.pid);
     cleanupPids.add(secondWorker.pid);
 
+    // Latch file means SIGTERM is queued even while HarnessMemCore is still
+    // initializing. Shutdown must still await the 300ms worker drain.
     const shutdownStartedAt = Date.now();
     second.kill("SIGTERM");
     expect(await second.exited).toBe(0);
