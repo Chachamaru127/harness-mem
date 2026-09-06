@@ -1481,7 +1481,7 @@ Plans.md は working plan（§78 + §89 + §90 + §97 + §110 + §112 + §115 + 
 | Task | 内容 / DoD | Status |
 |---|---|---|
 | GROK-001 | VPS の現 main ベースで Hermes / Cursor 配線を確認し、optional Grok Bot Layer 1 MCP の setup / doctor / uninstall / mcp-config、provenance、placeholder examples、日英 docs / claim maps / Unreleased を実装。focused Bun / Go tests を通して commit / push / 新規 main 向け PR を作成する。Tier 1 hooks / automatic continuity は対象外 | cc:完了 [c64cb67] |
-| GROK-002 | PR #175 merge blockers: (1) CWE-319 — `http:` + Bearer は loopback のみ、非 loopback は `https:` 必須、(2) `removeGrokBotConfig` の null/non-object 安全化、(3) Grok Bot の default local HTTP では token / gateway start / doctor probe を実行し、明示 remote URL では local gateway を起動しない、(4) `periodic-ingest-worker` stall テストの 5000ms flake を安定化 | cc:WIP |
+| GROK-002 | PR #175 merge blockers: (1) CWE-319 — `http:` + Bearer は loopback のみ、非 loopback は `https:` 必須、(2) `removeGrokBotConfig` の null/non-object 安全化、(3) Grok Bot の default local HTTP では token / gateway start / doctor probe を実行し、明示 remote URL では local gateway を起動しない、(4) `periodic-ingest-worker` stall テストの 5000ms flake を安定化 | cc:完了 [local] |
 
 検証: Bun focused 51 pass / 0 fail（7 files）、Go tools / server / proxy PASS、bash / Node syntax、diff check、npm pack dry-run（integration 全6ファイル同梱）。既存 version / VERSION は変更せず Unreleased を追加。provenance は既存 checkpoint の `platform` 引数を再利用し gateway header は追加しない。native client 設定 discovery / interpolation と VPS-to-Mac live E2E は未検証。managed export の明示 import が必要で doctor は config-only。
 
