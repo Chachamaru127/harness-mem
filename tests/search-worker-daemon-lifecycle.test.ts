@@ -45,6 +45,15 @@ async function waitFor<T>(label: string, probe: () => T | null, timeoutMs = 10_0
   throw new Error(`${label} not met within ${timeoutMs}ms`);
 }
 
+function latchArmed(path: string): boolean {
+  if (!existsSync(path)) return false;
+  try {
+    return readFileSync(path, "utf8").includes("armed");
+  } catch {
+    return false;
+  }
+}
+
 function workerRows(dbPath: string): Array<{ pid: number; ppid: number; command: string }> {
   const id = canonicalDatabaseIdentity(dbPath);
   const result = Bun.spawnSync(["ps", "-axo", "pid=,ppid=,command="], {
@@ -93,7 +102,12 @@ function spawnWorker(home: string, dbPath: string, latchReadyPath: string): Retu
   return proc;
 }
 
-function spawnDaemon(home: string, dbPath: string, port: number): ReturnType<typeof Bun.spawn> {
+function spawnDaemon(
+  home: string,
+  dbPath: string,
+  port: number,
+  extraEnv: Record<string, string> = {},
+): ReturnType<typeof Bun.spawn> {
   const proc = Bun.spawn([process.execPath, "run", DAEMON], {
     cwd: ROOT,
     env: {
@@ -108,6 +122,7 @@ function spawnDaemon(home: string, dbPath: string, port: number): ReturnType<typ
       HOME: home,
       HARNESS_MEM_HOME: home,
       HARNESS_MEM_DB_PATH: dbPath,
+      ...extraEnv,
       HARNESS_MEM_HOST: "127.0.0.1",
       HARNESS_MEM_PORT: String(port),
       HARNESS_MEM_ENABLE_CLAUDE_CODE_INGEST: "false",
@@ -133,14 +148,7 @@ describe("daemon search-worker lifecycle", () => {
     const dbPath = join(home, "memory.db");
     const latchReadyPath = join(home, "signal-latch-ready");
     const worker = spawnWorker(home, dbPath, latchReadyPath);
-    await waitFor("signal latch armed before core init", () => {
-      if (!existsSync(latchReadyPath)) return null;
-      try {
-        return readFileSync(latchReadyPath, "utf8").includes("armed") ? true : null;
-      } catch {
-        return null;
-      }
-    });
+    await waitFor("signal latch armed before core init", () => latchArmed(latchReadyPath) ? true : null);
 
     const shutdownStartedAt = Date.now();
     worker.kill("SIGTERM");
@@ -154,8 +162,10 @@ describe("daemon search-worker lifecycle", () => {
     const home = mkdtempSync(join(tmpdir(), "harness-mem-daemon-lifecycle-"));
     cleanupPaths.push(home);
     const dbPath = join(home, "memory.db");
+    const latchReadyPath = join(home, "signal-latch-ready");
+    const latchEnv = { HARNESS_MEM_TEST_SIGNAL_LATCH_READY: latchReadyPath };
     const firstPort = 46_000 + Math.floor(Math.random() * 1_000);
-    const first = spawnDaemon(home, dbPath, firstPort);
+    const first = spawnDaemon(home, dbPath, firstPort, latchEnv);
     const firstWorker = await waitFor("first worker start", () =>
       workerRows(dbPath).find((row) => row.ppid === first.pid) ?? null,
     );
@@ -173,17 +183,17 @@ describe("daemon search-worker lifecycle", () => {
     cleanupPids.delete(first.pid);
     await waitFor("first worker orphan", () => workerRows(dbPath).find((row) => row.pid === firstWorker.pid && row.ppid <= 1) ?? null);
 
-    const second = spawnDaemon(home, dbPath, 47_000 + Math.floor(Math.random() * 1_000));
-    const secondWorker = await waitFor("replacement cleanup and start", () => {
-      if (running(firstWorker.pid)) return null;
+    rmSync(latchReadyPath, { force: true });
+    const second = spawnDaemon(home, dbPath, 47_000 + Math.floor(Math.random() * 1_000), latchEnv);
+    const secondWorker = await waitFor("replacement cleanup and signal latch", () => {
+      if (running(firstWorker.pid) || !latchArmed(latchReadyPath)) return null;
       return workerRows(dbPath).find((row) => row.ppid === second.pid) ?? null;
     });
     cleanupPids.delete(firstWorker.pid);
     cleanupPids.add(secondWorker.pid);
 
-    // The replacement worker is visible in `ps` before HarnessMemCore init
-    // finishes. SIGTERM here must still drain (300ms test delay), not hit
-    // default termination (~10ms) because handlers were not armed yet.
+    // Latch file means SIGTERM is queued even while HarnessMemCore is still
+    // initializing. Shutdown must still await the 300ms worker drain.
     const shutdownStartedAt = Date.now();
     second.kill("SIGTERM");
     expect(await second.exited).toBe(0);
