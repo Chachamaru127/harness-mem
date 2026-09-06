@@ -7,6 +7,7 @@
  * fresh Bun process per search.
  */
 
+import { bindSearchWorkerShutdown } from "./search-worker-signal-latch";
 import { createInterface } from "node:readline";
 import { HarnessMemCore, getConfig } from "../core/harness-mem-core";
 import { initializeTelemetry, recordRecallTelemetry, resolveHarnessMemVersion, shutdownTelemetry } from "../telemetry/otel";
@@ -226,8 +227,11 @@ async function main(): Promise<void> {
   const exitAfterShutdown = (reason: string): void => {
     void shutdown(reason).finally(() => process.exit(0));
   };
-  process.once("SIGTERM", () => exitAfterShutdown("SIGTERM"));
-  process.once("SIGINT", () => exitAfterShutdown("SIGINT"));
+  const queuedSignal = bindSearchWorkerShutdown(exitAfterShutdown);
+  if (queuedSignal) {
+    exitAfterShutdown(queuedSignal);
+    return;
+  }
 
   const warmupState: SearchWorkerWarmupState = {
     done: false,
