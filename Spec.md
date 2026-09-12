@@ -385,6 +385,38 @@ profile and harness-mem keeps memory growth under configured thresholds without
 blocking `/health/ready`, while still giving the user an understandable audit
 trail and a restore window before irreversible purge.
 
+## File Reference Isolation
+
+While the memory database and required runtime assets remain accessible,
+workspace and ingest-source filesystem stalls must not prevent startup,
+project-scoped search, or direct event recording and readback.
+
+- Project identity on request paths uses persisted, confirmed mappings and
+  filesystem-free string handling. Existing stored project keys remain usable
+  with an empty mapping registry; startup must not probe historical paths.
+- Realpath, Git-root discovery, directory enumeration and source reads run in
+  bounded dedicated child processes without a connection to the memory DB.
+  The DB owner applies confirmed results; no source I/O runs under a DB write
+  transaction. Request completion never waits indefinitely for child exit.
+- An unknown path retains its full independent identity and an unresolved
+  state. A timeout is not evidence of absence. Basename guesses, widening a
+  strict scope, or silently remapping existing records are forbidden. A changed
+  or conflicting alias remains explicit and does not silently merge projects.
+- Reader/resolver queues and process slots are finite. A child whose exit has
+  not been confirmed still occupies its slot. Stale replies cannot mutate
+  current state. Exhausting all reader slots pauses ingest, not direct writes
+  or search; a spare slot permits healthy inputs to proceed.
+- Durable ingest offsets and parser context advance only after acknowledged
+  successful event persistence. Retries preserve existing dedupe and privacy
+  semantics. Unreadable files remain pending; undiscovered files cannot be
+  claimed caught up. IPC and diagnostics are bounded and do not expose private
+  content in errors or telemetry.
+- Acceptance includes permanent synchronous reference stalls, cold restart,
+  empty and persisted mappings, partial/all reader exhaustion, 1000 repeated
+  requests, project isolation, stale replies, lost ACK and replay, plus actual
+  search and record readback. DB/storage failure itself is outside this
+  continuity guarantee and must never be reported as a successful save.
+
 ## Periodic Ingest Budget
 
 Timer-driven ingest — any source pulled in on a recurring background schedule

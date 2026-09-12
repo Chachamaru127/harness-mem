@@ -132,7 +132,7 @@ function shouldRedact(tags: string[]): boolean {
   return tags.includes("redact") || tags.includes("mask");
 }
 
-function redactContent(raw: string, tags: string[]): string {
+export function redactContent(raw: string, tags: string[]): string {
   if (!shouldRedact(tags)) {
     return raw;
   }
@@ -1281,6 +1281,34 @@ export class EventRecorder {
       .run(JSON.stringify(event), reason.slice(0, 500), current, current, current);
   }
 
+  private prepareObservationStorage(event: EventEnvelope, privacyTags: string[]) {
+    const redactedPayload = redactContent(JSON.stringify(parseJsonSafe(event.payload)), privacyTags);
+    const observationBase = this.buildObservationFromEvent(event, redactedPayload);
+    observationBase.content = stripPrivateBlocks(observationBase.content) ?? observationBase.content;
+    const redactedContent = redactContent(observationBase.content, privacyTags);
+    const rawModeEnabled = process.env["HARNESS_MEM_RAW_MODE"] === "1";
+    const rawText: string | null = rawModeEnabled
+      ? (stripPrivateBlocks(
+          (() => {
+            const p = parseJsonSafe(event.payload);
+            return typeof p.content === "string" ? p.content.trim() :
+                   typeof p.prompt === "string" ? p.prompt.trim() :
+                   typeof p.command === "string" ? p.command.trim() :
+                   null;
+          })()
+        ) ?? null)
+      : null;
+    return { redactedPayload, observationBase, redactedContent, rawText };
+  }
+
+  /** Use exactly the privacy-filtered source passed to upsertVector. */
+  getEventEmbeddingSource(event: EventEnvelope): string | null {
+    const privacyTags = normalizeTags(event.privacy_tags);
+    if (!this.deps.config.captureEnabled || isBlockedTag(privacyTags)) return null;
+    const { rawText, redactedContent } = this.prepareObservationStorage(event, privacyTags);
+    return rawText ?? redactedContent;
+  }
+
   // ---------------------------------------------------------------------------
   // パブリック API
   // ---------------------------------------------------------------------------
@@ -1346,17 +1374,13 @@ export class EventRecorder {
 
     const timestamp = event.ts || nowIso();
     const payload = parseJsonSafe(event.payload);
-    const payloadText = JSON.stringify(payload);
-    const redactedPayload = redactContent(payloadText, privacyTags);
+    const { redactedPayload, observationBase, redactedContent, rawText } =
+      this.prepareObservationStorage(event, privacyTags);
 
     const dedupeHash = (event.dedupe_hash || buildDedupeHash(event)).trim();
     const eventId = (event.event_id || generateEventId()).trim();
     const persistedMetadataJson = persistableEventMetadataJson(event.metadata);
 
-    const observationBase = this.buildObservationFromEvent(event, redactedPayload);
-    // S78-E01: Strip <private>...</private> blocks before embedding and storage.
-    observationBase.content = stripPrivateBlocks(observationBase.content) ?? observationBase.content;
-    const redactedContent = redactContent(observationBase.content, privacyTags);
     const observationType = this.classifyObservation(event.event_type, observationBase.title, observationBase.content);
     const memoryType = this.classifyMemoryType(event.event_type, observationBase.title, observationBase.content);
     const contentDedupeHash = buildContentDedupeHash(event, observationType, redactedContent);
@@ -1364,22 +1388,6 @@ export class EventRecorder {
     let current = "";
     let degradedEmbeddingWarning: string | null = null;
     const deferEmbedding = options.deferEmbedding === true && event.event_type === "checkpoint";
-
-    // S78-B01: Verbatim raw storage — HARNESS_MEM_RAW_MODE=1 の時のみ raw_text を保存する。
-    // raw_text は payload の verbatim content（stripPrivateBlocks 適用済み）。
-    // embedding は raw_text が存在する場合は raw_text から生成する（より高信号）。
-    const rawModeEnabled = process.env["HARNESS_MEM_RAW_MODE"] === "1";
-    const rawText: string | null = rawModeEnabled
-      ? (stripPrivateBlocks(
-          (() => {
-            const p = parseJsonSafe(event.payload);
-            return typeof p.content === "string" ? p.content.trim() :
-                   typeof p.prompt === "string" ? p.prompt.trim() :
-                   typeof p.command === "string" ? p.command.trim() :
-                   null;
-          })()
-        ) ?? null)
-      : null;
 
     // IMP-009: Signal Extraction
     const signalScore = extractSignalScore(observationBase.content);

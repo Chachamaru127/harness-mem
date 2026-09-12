@@ -218,3 +218,17 @@ bun test memory-server/tests/unit/postgres-adapter.test.ts
 | **integration** | `memory-server/tests/integration/` | 全 PR |
 | **ui** | `harness-mem-ui/tests/` | UI 変更 PR |
 | **benchmark** | `tests/benchmarks/` + `memory-server/tests/benchmark/` | スケジュール or 手動 |
+
+
+## File reference isolation regression
+
+```bash
+bun test memory-server/tests/unit/project-registry.test.ts memory-server/tests/unit/project-path-resolver.test.ts memory-server/tests/unit/reference-process-ledger.test.ts memory-server/tests/unit/project-reference-core.test.ts memory-server/tests/unit/project-selection-roundtrip.test.ts
+bun test memory-server/tests/core-split/source-reader-isolation.test.ts memory-server/tests/integration/file-reference-isolation.test.ts memory-server/tests/integration/health-source-reference.test.ts memory-server/tests/integration/source-reader-lost-ack.test.ts
+```
+
+The tests preserve original project IDs, inject permanent source and resolver stalls,
+verify HTTP record/search after cold restart, bound 1,000 requests, retain unconfirmed
+process reservations, and test save-ACK replay. The FIFO test is POSIX-specific.
+The normal six-source ingest integration suites and UI selection/SSE suites remain
+required regression checks after changes to these paths.

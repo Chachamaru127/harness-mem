@@ -1340,42 +1340,42 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         request.method === "POST" &&
         (url.pathname === "/v1/ingest/codex-history" || url.pathname === "/v1/ingest/codex-sessions")
       ) {
-        return jsonResponse(core.ingestCodexHistory());
+        return jsonResponse(await core.ingestCodexHistory());
       }
 
       if (
         request.method === "POST" &&
         (url.pathname === "/v1/ingest/opencode-history" || url.pathname === "/v1/ingest/opencode-sessions")
       ) {
-        return jsonResponse(core.ingestOpencodeHistory());
+        return jsonResponse(await core.ingestOpencodeHistory());
       }
 
       if (
         request.method === "POST" &&
         (url.pathname === "/v1/ingest/cursor-history" || url.pathname === "/v1/ingest/cursor-events")
       ) {
-        return jsonResponse(core.ingestCursorHistory());
+        return jsonResponse(await core.ingestCursorHistory());
       }
 
       if (
         request.method === "POST" &&
         (url.pathname === "/v1/ingest/antigravity-history" || url.pathname === "/v1/ingest/antigravity-files")
       ) {
-        return jsonResponse(core.ingestAntigravityHistory());
+        return jsonResponse(await core.ingestAntigravityHistory());
       }
 
       if (
         request.method === "POST" &&
         (url.pathname === "/v1/ingest/gemini-history" || url.pathname === "/v1/ingest/gemini-events")
       ) {
-        return jsonResponse(core.ingestGeminiHistory());
+        return jsonResponse(await core.ingestGeminiHistory());
       }
 
       if (
         request.method === "POST" &&
         (url.pathname === "/v1/ingest/claude-code-history" || url.pathname === "/v1/ingest/claude-code-sessions")
       ) {
-        return jsonResponse(core.ingestClaudeCodeHistory());
+        return jsonResponse(await core.ingestClaudeCodeHistory());
       }
 
       if (request.method === "POST" && url.pathname === "/v1/ingest/hermes-state") {

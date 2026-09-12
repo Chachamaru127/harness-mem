@@ -18,7 +18,8 @@ function createRuntime(name: string): {
   const workspaceRoot = join(dir, "antigravity-project");
   mkdirSync(workspaceRoot, { recursive: true });
   const project = realpathSync(workspaceRoot);
-  const normalizedProject = realpathSync(dir);
+  // File Reference Isolation preserves the actual workspace, not its configured Codex ancestor.
+  const normalizedProject = project;
 
   const config: Config = {
     dbPath: join(dir, "harness-mem.db"),
@@ -113,6 +114,17 @@ describe("antigravity files ingest integration", () => {
       expect(feed.items.length).toBe(2);
       expect(feed.items.every((item) => item.platform === "antigravity")).toBe(true);
       expect(feed.items.every((item) => item.project === normalizedProject)).toBe(true);
+      const parentFeedRes = await fetch(`${baseUrl}/v1/feed?project=${encodeURIComponent(realpathSync(runtime.dir))}&limit=20&include_private=false`);
+      expect(parentFeedRes.ok).toBe(true);
+      const parentFeed = await parentFeedRes.json() as {
+        ok: boolean;
+        items: unknown[];
+        meta: { project_resolution?: { state: string } };
+      };
+      expect(parentFeed.ok).toBe(true);
+      expect(parentFeed.items).toHaveLength(0);
+      expect(parentFeed.meta.project_resolution?.state).toBe("unresolved");
+
 
       appendFileSync(designResponsePath, "\n\n## Refined\nHandle edge cases.", "utf8");
       const now = new Date();

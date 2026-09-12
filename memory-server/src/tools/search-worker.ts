@@ -80,7 +80,7 @@ function recallScope(request: SearchRequest): "project_session" | "project" | "s
 async function warmWorker(core: HarnessMemCore): Promise<{ warmup_ms: number; warmup_error?: string }> {
   const startedAt = performance.now();
   try {
-    await core.primeEmbedding(
+    await core.warmEmbedding(
       process.env.HARNESS_MEM_SEARCH_WORKER_PRIME_TEXT || "harness mem search worker warmup",
       "query",
     );

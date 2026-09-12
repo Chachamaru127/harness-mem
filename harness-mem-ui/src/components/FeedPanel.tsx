@@ -261,7 +261,7 @@ function shouldCollapseConsecutiveItems(base: FeedItem, next: FeedItem): boolean
     baseType === nextType &&
     baseTitle === nextTitle &&
     normalizeText(base.platform) === normalizeText(next.platform) &&
-    normalizeText(base.canonical_project || base.project) === normalizeText(next.canonical_project || next.project) &&
+    (base.project || "") === (next.project || "") &&
     normalizeText(base.session_id) === normalizeText(next.session_id) &&
     gapMs <= CONSECUTIVE_SAME_CARD_COLLAPSE_GAP_MS
   );
@@ -325,8 +325,7 @@ function collapseClaudeToolUseItems(items: FeedItem[], language: UiLanguage): Fe
       }
 
       const sameProject =
-        (next.canonical_project || next.project || "") ===
-        (current.canonical_project || current.project || "");
+        (next.project || "") === (current.project || "");
       const sameSession = (next.session_id || "") === (current.session_id || "");
       const prev = run[run.length - 1];
       const gapMs = Math.abs(toEpochMs(prev?.created_at) - toEpochMs(next.created_at));
@@ -395,14 +394,17 @@ interface ConversationTurn {
   hiddenMetaCount: number;
 }
 
+function sessionIdentity(item: FeedItem): string {
+  return JSON.stringify([item.project || "", normalizeText(item.platform), item.session_id || ""]);
+}
+
 function groupBySession(categorizedItems: Array<{ item: FeedItem; category: FeedCategoryId }>): SessionGroupEntry[] {
   const groups: SessionGroupEntry[] = [];
-  const keyOf = (item: FeedItem): string => item.session_id || "__no_session__";
 
   for (const entry of categorizedItems) {
-    const key = keyOf(entry.item);
+    const key = sessionIdentity(entry.item);
     const last = groups[groups.length - 1];
-    const lastKey = last ? (last.sessionId ?? "__no_session__") : null;
+    const lastKey = last ? sessionIdentity(last.items[0].item) : null;
     if (lastKey === key && last) {
       last.items.push(entry);
     } else {
@@ -422,7 +424,7 @@ function buildConversationTurns(items: FeedItem[]): ConversationTurn[] {
   const pendingBySession = new Map<string, { responses: FeedItem[]; hiddenMetaCount: number }>();
 
   for (const item of items) {
-    const sessionKey = item.session_id || "__no_session__";
+    const sessionKey = sessionIdentity(item);
     const pending = pendingBySession.get(sessionKey) || { responses: [], hiddenMetaCount: 0 };
     pendingBySession.set(sessionKey, pending);
 
@@ -715,7 +717,7 @@ export function FeedPanel(props: FeedPanelProps) {
               );
             })
           : sessionGroups.map((group) => {
-              const groupKey = group.sessionId ?? "__no_session__";
+              const groupKey = group.items[0].item.id;
               const cards = group.items.map(({ item, category }) => {
                 const content = resolveCardContent(item, category);
                 const platform = normalizePlatformBadge(item.platform);

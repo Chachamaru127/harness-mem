@@ -43,6 +43,7 @@ export function useSSE(options: UseSseOptions) {
       sourceRef.current = source;
 
       const handleData = (eventName: string, event: MessageEvent<string>) => {
+        if (unmounted || sourceRef.current !== source) return;
         try {
           const parsed = JSON.parse(event.data) as Record<string, unknown>;
           onEventRef.current({ event: eventName, data: parsed });

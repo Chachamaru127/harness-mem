@@ -34,7 +34,7 @@ const INGEST_WORKER = resolve(import.meta.dir, "../../src/tools/periodic-ingest-
  */
 function sliceMethodBody(source: string, startMarker: string, endMarker: string): string {
   // クラスメンバはインデント 2。コメント行 (` * ...`) や本文中の言及とは一致しない。
-  const asDeclaration = (marker: string) => `\n  ${marker}`;
+  const asDeclaration = (marker: string) => `\n  ${marker.startsWith("private ") ? marker.replace("private ", "private async ") : `async ${marker}`}`;
   const start = source.indexOf(asDeclaration(startMarker));
   expect(start, `開始マーカーが宣言として見つからない: ${startMarker}`).toBeGreaterThan(-1);
   const end = source.indexOf(asDeclaration(endMarker), start);
@@ -159,13 +159,13 @@ describe("§159-003e ingest read slice", () => {
       expect(body).toMatch(/while \(\s*nextReadOffset < fileSize/);
       expect(body).toContain("readSync(");
       expect(body).toContain('pending.toString("utf8")');
-      expect(body).toContain("this.recordIngestEvent(");
+      expect(body).toContain("await this.recordSourceEvent(");
       expect(body).toContain("Date.now() - startedAtMs > budgetMs");
     }
 
     const declarations = extractMethodDeclarations(source);
-    expect(getMethodBody(source, declarations, "recordIngestEvent"))
-      .toContain("this.deps.recordEvent(event, options)");
+    expect(getMethodBody(source, declarations, "recordSourceEvent"))
+      .toContain("await this.deps.recordEventQueued(event, options)");
   });
 
   test("最初のスライスは budget 超過済みでも処理する", () => {
@@ -239,7 +239,7 @@ describe("§159-003c codex ingest tick budget", () => {
     expect(source).toContain('codex: () => this.ingestCodexHistoryTick()');
     expect(source).not.toContain('this.runTick("codex", () => this.ingestCodexHistory())');
 
-    const apiStart = source.indexOf("ingestCodexHistory(): ApiResponse");
+    const apiStart = source.indexOf("ingestCodexHistory(): Promise<ApiResponse>");
     const apiBody = source.slice(apiStart, apiStart + 1400);
     expect(apiBody).toContain("budgetMs: Infinity");
     expect(apiBody).toContain("maxBytesPerFile: Infinity");
@@ -288,8 +288,8 @@ describe("§159-003c codex ingest tick budget", () => {
     const source = readFileSync(COORDINATOR, "utf8");
 
     expect(source).toContain("HARNESS_MEM_SLOW_TICK_LOG_MS");
-    expect(source).toContain("private runTick(");
-    expect(source).toContain("blocked the event loop for");
+    expect(source).toContain("private async runTick(");
+    expect(source).toContain("took ${elapsed}ms");
     // 各 periodic job が worker scheduler を通り、worker 内で runTick を通ること
     const declarations = extractMethodDeclarations(source);
     expectPeriodicDispatcherContract(
@@ -413,7 +413,7 @@ function extractRunTickCalls(source: string): RunTickCall[] {
   const decls = extractMethodDeclarations(source);
   const dispatcher = getMethodBody(source, decls, "runPeriodicIngestTickLocal");
   if (dispatcher) {
-    const mapping = /^ {6}(\w+):\s*\(\)\s*=>\s*this\.(\w+)\(/gm;
+    const mapping = /^\s+(\w+):\s*(?:async\s+)?\(\)\s*=>\s*(?:\(await\s+)?this\.(\w+)\(/gm;
     while ((m = mapping.exec(dispatcher))) {
       calls.push({ label: m[1] as string, fnName: m[2] as string });
     }
@@ -430,9 +430,9 @@ function getMethodBody(source: string, decls: MethodDecl[], name: string): strin
 }
 
 function expectPeriodicDispatcherContract(dispatcher: string): void {
-  const runTick = dispatcher.indexOf("return this.runTick(source, () => {");
+  const runTick = dispatcher.indexOf("return await this.runTick(source, async () => {");
   const firstReadinessGate = dispatcher.indexOf("assertContentDedupeClaimsReady(this.deps.db)");
-  const job = dispatcher.indexOf("const jobFailure = jobs[source]()");
+  const job = dispatcher.indexOf("const jobFailure = await jobs[source]()");
   const secondReadinessGate = dispatcher.indexOf(
     "assertContentDedupeClaimsReady(this.deps.db)",
     firstReadinessGate + 1,
@@ -544,7 +544,7 @@ describe("§160-005c runTick 到達性による ingest budget 網羅検査", () 
       .toContain("this.ingestCoord.runPeriodicIngestTickLocal(source)");
     const dispatcher = getMethodBody(coordinatorSource, coordinatorDecls, "runPeriodicIngestTickLocal") ?? "";
     for (const call of extractRunTickCalls(coordinatorSource)) {
-      expect(dispatcher).toContain(`${call.label}: () => this.${call.fnName}()`);
+      expect(dispatcher).toContain(`this.${call.fnName}()`);
     }
     expectPeriodicDispatcherContract(dispatcher);
   });

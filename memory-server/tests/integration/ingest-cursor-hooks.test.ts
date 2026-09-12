@@ -56,7 +56,7 @@ function createRuntime(name: string): {
 }
 
 describe("cursor hooks ingest integration", () => {
-  test("stops offset at failed recordEvent line and retries it on next ingest", () => {
+  test("stops offset at failed recordEvent line and retries it on next ingest", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-cursor-hooks-retry-"));
     const cursorEventsPath = join(dir, "cursor", "events.jsonl");
     mkdirSync(join(dir, "cursor"), { recursive: true });
@@ -137,14 +137,14 @@ describe("cursor hooks ingest integration", () => {
     const coordinator = new IngestCoordinator({
       db,
       config,
-      recordEvent: (event) => {
+      recordEventQueued: async (event) => {
         recorded.push(event);
         if (failSecondPrompt && event.payload?.prompt === secondPrompt) {
           return failResponse();
         }
         return okResponse();
       },
-      recordEventQueued: async () => okResponse(),
+      recordEvent: () => okResponse(),
       upsertSessionSummary: () => {},
       heartbeatPath: join(dir, "heartbeat.json"),
       isShuttingDown: () => false,
@@ -154,7 +154,7 @@ describe("cursor hooks ingest integration", () => {
 
     try {
       const failedLineOffset = Buffer.byteLength(`${firstLine}\n`, "utf8");
-      const firstIngest = coordinator.ingestCursorHistory();
+      const firstIngest = (await coordinator.ingestCursorHistory());
       expect(firstIngest.ok).toBe(true);
       expect(firstIngest.items[0]).toMatchObject({
         events_imported: 1,
@@ -162,9 +162,9 @@ describe("cursor hooks ingest integration", () => {
         hooks_events_failed: 1,
         retry_offset: failedLineOffset,
       });
-      expect((firstIngest.items[0] as { last_record_error?: string }).last_record_error).toContain(
-        "write embedding is unavailable"
-      );
+      // File Reference Isolation: arbitrary owner errors never cross source IPC.
+      expect((firstIngest.items[0] as { last_record_error?: string }).last_record_error).toBe("recordEvent failed");
+      expect(JSON.stringify(firstIngest)).not.toContain("local ONNX model is still warming up");
       expect(recorded.map((event) => event.payload?.prompt)).toEqual([
         "cursor hook retry first prompt",
         secondPrompt,
@@ -177,7 +177,7 @@ describe("cursor hooks ingest integration", () => {
 
       recorded.length = 0;
       failSecondPrompt = false;
-      const secondIngest = coordinator.ingestCursorHistory();
+      const secondIngest = (await coordinator.ingestCursorHistory());
       expect(secondIngest.ok).toBe(true);
       expect(secondIngest.items[0]).toMatchObject({
         events_imported: 1,
@@ -209,7 +209,7 @@ describe("cursor hooks ingest integration", () => {
    * 完走する側の契約は core-split の「明示 API は tick budget で打ち切られない」
    * が持つ。scheduler がどちらを呼ぶかは ingest-tick-budget の構造 lock が持つ。
    */
-  test("bounds cursor hook ingest work per timer run and resumes from deferred offset", () => {
+  test("bounds cursor hook ingest work per timer run and resumes from deferred offset", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-cursor-hooks-bounded-"));
     const cursorEventsPath = join(dir, "cursor", "events.jsonl");
     mkdirSync(join(dir, "cursor"), { recursive: true });
@@ -270,11 +270,11 @@ describe("cursor hooks ingest integration", () => {
     const coordinator = new IngestCoordinator({
       db,
       config,
-      recordEvent: (event) => {
+      recordEventQueued: async (event) => {
         recorded.push(event);
         return okResponse();
       },
-      recordEventQueued: async () => okResponse(),
+      recordEvent: () => okResponse(),
       upsertSessionSummary: () => {},
       heartbeatPath: join(dir, "heartbeat.json"),
       isShuttingDown: () => false,
@@ -283,8 +283,8 @@ describe("cursor hooks ingest integration", () => {
     });
 
     // timer が呼ぶのと同じ形 (override なし) で leaf を直接叩く。
-    const timerRun = () =>
-      (coordinator as unknown as {
+    const timerRun = async () =>
+      (await (coordinator as unknown as {
         ingestCursorHooksEvents: () => {
           eventsImported: number;
           eventsFailed: number;
@@ -292,11 +292,11 @@ describe("cursor hooks ingest integration", () => {
           hooksEventsImported: number;
           retryOffset?: number;
         };
-      }).ingestCursorHooksEvents();
+      }).ingestCursorHooksEvents());
 
     try {
       const deferredOffset = Buffer.byteLength(`${lines.slice(0, 50).join("\n")}\n`, "utf8");
-      const firstIngest = timerRun();
+      const firstIngest = (await timerRun());
       expect(firstIngest).toMatchObject({
         eventsImported: 50,
         hooksEventsImported: 50,
@@ -312,7 +312,7 @@ describe("cursor hooks ingest integration", () => {
       expect(offsetAfterFirst?.offset).toBe(deferredOffset);
 
       recorded.length = 0;
-      const secondIngest = timerRun();
+      const secondIngest = (await timerRun());
       expect(secondIngest).toMatchObject({
         eventsImported: 5,
         hooksEventsImported: 5,

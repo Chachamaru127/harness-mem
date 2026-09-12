@@ -787,11 +787,14 @@ npx -y --package @chachamaru127/harness-mem harness-mem setup
 harness-mem doctor --fix
 ```
 
-### Same workspace appears as both `harness-mem` and `/.../harness-mem`
+### Workspace references stall or the same folder name appears twice
 
-```bash
-harness-memd restart
-```
+Search and direct recording use saved project identities. Filesystem discovery runs in
+separate bounded processes, so an unavailable project folder or conversation log can
+remain pending while memory stays usable. Use the complete identifier returned by the
+project list; restarting does not merge a short name with a path. See
+[File reference isolation](docs/file-reference-isolation.md) for unresolved identities,
+reader limits, and `health.reference_io` diagnostics.
 
 ### You already used `sudo` and ownership is broken
 

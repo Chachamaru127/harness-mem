@@ -193,7 +193,11 @@ describe("harness-memd guardrails", () => {
     expect(worker).toContain('await core.primeEmbedding(request.query || "", "query")');
     expect(worker).toContain("void warmWorker(core).then");
     expect(worker).toContain("isEmbeddingReady(core)");
-    expect(worker).toContain("const response = core.search(effectiveRequest)");
+    expect(worker).toContain("response = core.search(effectiveRequest)");
+    expect(worker).toContain("await core.warmEmbedding(");
+    const entry = readFileSync(resolve(ROOT, "memory-server/src/index.ts"), "utf8");
+    expect(entry).toContain('await core.warmEmbedding("__eager_warmup__", "passage")');
+    expect(entry).toContain('await core.warmEmbedding("__eager_warmup__", "query")');
   });
 
   test("local ONNX model load is lazy and sync warnings do not leak text", () => {

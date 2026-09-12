@@ -9,6 +9,8 @@
 
 ### 修正
 
+- **プロジェクトや会話ログの参照停止を検索と直接記録から分離した**。保存済み識別子、DB非接続の参照子、上限付き待ち行列、保存確認後のoffset更新、再起動を跨ぐ実行枠予約を導入。未確認や競合を明示し、UI選択では完全な識別子を保持する。healthも会話ログを探索しない。
+
 - **成功searchごとのaudit flushをやめ、idle時のtrue batchで反映する**。通常trafficはpending 8件以上かつsearch idle 2秒で開始する。最古intentが30秒へ達したflushは取消不能にするが、実行中searchが0になるまで開始せず、その直後にdispatchする。1 batchは最大100件とし、batch全体をmain claim/apply、sidecar delete、claim cleanupの3 transactionへまとめる。新しいsearchはidle起因の未開始flushだけをcancelし、実行中flushは中断しない。startup/shutdownの即時drain、失敗時の有限retry、応答前`synchronous=FULL`耐久性は維持する。本番latencyは再検証待ち。
 - **strict-project cache missでproject全factsのscanとevent payload lookupを避けるようにした**。active factsは既存observation-first indexを明示使用し、latest interactionのevent typeは小さい`(event_id, event_type)` covering indexから読む。既存aggregateと応答ABIを維持したまま、latest SQL/materializeとfacts tokenize/load/scoringをprivacy-safeに分解する。45万rows・1.86GBのsynthetic migrationはindex作成576.03ms、index 12.79MB、checkpoint前WAL 12.87MB。warm synthetic値は本番上限ではなく、1.60GBの本番event tableはcold/競合I/Oで長くなり得るため、承認済みrestart時に実測する。
 - **recall-generation triggerが運用向け変更件数を水増ししないようにした**。forget-policyのeviction/audit/TTL、consolidationのfact/link、memory compression、project alias migrationは、trigger書き込みを含むBun `Statement.run().changes`ではなく、top-level statementだけを数えるSQLite `changes()`を使う。実際のarchive/update対象は正しく、API・audit・telemetryの表示件数だけを修正する。

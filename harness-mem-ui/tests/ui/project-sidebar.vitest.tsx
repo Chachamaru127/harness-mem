@@ -1,7 +1,16 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { vi } from "vitest";
 import { ProjectSidebar } from "../../src/components/ProjectSidebar";
 
 describe("ProjectSidebar", () => {
+  test("same-basename projects have distinct labels and preserve the full selected value", () => {
+    const onSelectProject = vi.fn();
+    render(<ProjectSidebar projects={["/a/repo", "/b/repo"].map((project) => ({ project, canonical_project: project, display_name: "repo", observations: 1, sessions: 1, updated_at: null }))} loading={false} selectedProject="/a/repo" language="en" onSelectProject={onSelectProject} />);
+    fireEvent.click(screen.getByText("a/repo"));
+    fireEvent.click(screen.getByText("b/repo"));
+    expect(onSelectProject.mock.calls.map((args) => args[0])).toEqual(["/a/repo", "/b/repo"]);
+  });
+
   test("shows stale project stats as refreshing instead of zero-count stats", () => {
     render(
       <ProjectSidebar

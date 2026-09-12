@@ -35,6 +35,26 @@ function expandAllGroups(container: HTMLElement): void {
 }
 
 describe("FeedPanel", () => {
+  test("same-basename projects never collapse cards or group matching session IDs together", () => {
+    const items = ["/a/repo", "/b/repo"].map((project, index) => ({
+      ...claudeToolUse(index), id: `separate-${index}`, project, canonical_project: "repo", title: "Same event",
+    }));
+    const { container } = render(<FeedPanel items={items} compact={false} language="en" loading={false} error="" hasMore={false} onLoadMore={() => undefined} />);
+    expect(container.querySelectorAll(".session-group-header")).toHaveLength(2);
+    expandAllGroups(container);
+    expect(container.querySelectorAll(".feed-card")).toHaveLength(2);
+  });
+
+  test("conversation pairing does not attach another project's response with the same session ID", () => {
+    const items: FeedItem[] = [
+      { id: "response-b", project: "/b/repo", canonical_project: "repo", session_id: "shared", platform: "claude", event_type: "assistant_response", content: "Response from B", created_at: "2026-02-16T03:12:00.000Z" },
+      { id: "prompt-a", project: "/a/repo", canonical_project: "repo", session_id: "shared", platform: "claude", event_type: "user_prompt", content: "Prompt from A", created_at: "2026-02-16T03:11:00.000Z" },
+    ];
+    const { container } = render(<FeedPanel items={items} compact={false} language="en" loading={false} error="" hasMore={false} onLoadMore={() => undefined} />);
+    expect(container.querySelectorAll(".conversation-card")).toHaveLength(0);
+    expect(container.querySelectorAll(".session-group-header")).toHaveLength(2);
+  });
+
   test("collapses consecutive claude tool_use records into one summary card", () => {
     const items: FeedItem[] = [
       claudeToolUse(1),

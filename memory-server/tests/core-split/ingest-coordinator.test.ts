@@ -68,7 +68,7 @@ function makeDeps(overrides: Partial<IngestCoordinatorDeps> = {}): IngestCoordin
     antigravityIngestEnabled: false,
     geminiIngestEnabled: false,
   });
-  return {
+  const deps = {
     db,
     config,
     recordEvent: mock(() => makeOkResponse()),
@@ -79,7 +79,9 @@ function makeDeps(overrides: Partial<IngestCoordinatorDeps> = {}): IngestCoordin
     processRetryQueue: mock(() => undefined),
     runConsolidation: mock(async () => undefined),
     ...overrides,
-  };
+  } as IngestCoordinatorDeps;
+  deps.recordEventQueued ??= async (event, options) => deps.recordEvent(event, options);
+  return deps;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +97,7 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
     coordinator = new IngestCoordinator(deps);
   });
 
-  test("one periodic tick scopes the per-session ensure cache", () => {
+  test("one periodic tick scopes the per-session ensure cache", async () => {
     const decisions: boolean[] = [];
     deps = makeDeps({
       recordEvent: mock((event) => {
@@ -119,10 +121,10 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
     };
     const event = makeEvent({ session_id: "same-session" });
 
-    internals.runTick("codex", () => {
+    (await internals.runTick("codex", () => {
       deps.recordEvent(event);
       deps.recordEvent({ ...event, event_id: "second-event", dedupe_hash: "second-hash" });
-    });
+    }));
 
     expect(decisions).toEqual([true, false]);
 
@@ -130,16 +132,16 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
     expect(decisions).toEqual([true, false, true]);
   });
 
-  test("all six periodic sources propagate the first structured record failure", () => {
+  test("all six periodic sources propagate the first structured record failure", async () => {
     const recordEvent = mock(() => makeErrResponse(
       "database contention detail must not cross worker protocol",
       "sqlite_busy",
       true,
     ));
     deps = makeDeps({ recordEvent });
-    coordinator = new IngestCoordinator(deps);
+    coordinator = new IngestCoordinator(deps, { readerProcess: true });
     const internals = coordinator as unknown as {
-      recordIngestEvent: IngestCoordinatorDeps["recordEvent"];
+      recordSourceEvent: IngestCoordinatorDeps["recordEvent"];
       ingestCodexHistoryTick: () => void;
       ingestOpencodeHistoryTick: () => void;
       ingestCursorHistoryTick: () => void;
@@ -151,22 +153,22 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
         filesSkippedBackfill: number;
       };
     };
-    const invokeRecord = () => {
-      internals.recordIngestEvent(makeEvent(), { allowQueue: false });
-      internals.recordIngestEvent(makeEvent({ event_id: "must-not-run-after-failure" }), { allowQueue: false });
+    const invokeRecord = async () => {
+      (await internals.recordSourceEvent(makeEvent(), { allowQueue: false }));
+      (await internals.recordSourceEvent(makeEvent({ event_id: "must-not-run-after-failure" }), { allowQueue: false }));
     };
     internals.ingestCodexHistoryTick = invokeRecord;
     internals.ingestOpencodeHistoryTick = invokeRecord;
     internals.ingestCursorHistoryTick = invokeRecord;
     internals.ingestAntigravityHistoryTick = invokeRecord;
     internals.ingestGeminiHistoryTick = invokeRecord;
-    internals.ingestClaudeCodeSessions = () => {
-      invokeRecord();
+    internals.ingestClaudeCodeSessions = async () => {
+      (await invokeRecord());
       return { eventsImported: 0, filesScanned: 1, filesSkippedBackfill: 0 };
     };
 
     for (const source of ["codex", "opencode", "cursor", "antigravity", "gemini", "claude_code"] as const) {
-      expect(coordinator.runPeriodicIngestTickLocal(source)).toEqual({
+      expect((await coordinator.runPeriodicIngestTickLocal(source))).toEqual({
         ok: false,
         error_code: "sqlite_busy",
         retryable: true,
@@ -175,19 +177,19 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
     expect(recordEvent).toHaveBeenCalledTimes(6);
   });
 
-  test("runTick types thrown failures and maintenance remains available while claims are not-ready", () => {
+  test("runTick types thrown failures and maintenance remains available while claims are not-ready", async () => {
     const internals = coordinator as unknown as {
       runTick: (label: string, fn: () => void) => unknown;
     };
     const busy = new Error("private database detail") as Error & { code?: string; errno?: number };
     busy.code = "SQLITE_LOCKED";
     busy.errno = 6;
-    expect(internals.runTick("maintenance", () => { throw busy; })).toEqual({
+    expect((await internals.runTick("maintenance", () => { throw busy; }))).toEqual({
       ok: false,
       error_code: "sqlite_busy",
       retryable: true,
     });
-    expect(internals.runTick("maintenance", () => { throw new Error("private internal detail"); })).toEqual({
+    expect((await internals.runTick("maintenance", () => { throw new Error("private internal detail"); }))).toEqual({
       ok: false,
       error_code: "record_write_failed",
       retryable: true,
@@ -196,17 +198,17 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
     deps.db.exec("UPDATE mem_meta SET value = 'not_ready' WHERE key = 'dedupe_claims.readiness'");
     let retryQueueRuns = 0;
     let checkpointRuns = 0;
-    expect(internals.runTick("retry_queue", () => { retryQueueRuns += 1; })).toEqual({ ok: true });
-    expect(internals.runTick("wal_checkpoint", () => { checkpointRuns += 1; })).toEqual({ ok: true });
+    expect((await internals.runTick("retry_queue", () => { retryQueueRuns += 1; }))).toEqual({ ok: true });
+    expect((await internals.runTick("wal_checkpoint", () => { checkpointRuns += 1; }))).toEqual({ ok: true });
     expect({ retryQueueRuns, checkpointRuns }).toEqual({ retryQueueRuns: 1, checkpointRuns: 1 });
-    expect(coordinator.runPeriodicIngestTickLocal("codex")).toEqual({
+    expect((await coordinator.runPeriodicIngestTickLocal("codex"))).toEqual({
       ok: false,
       error_code: "dedupe_claims_rebuild_required",
       retryable: true,
     });
   });
 
-  test("periodic Codex enumeration failure preserves progress until repair", () => {
+  test("periodic Codex enumeration failure preserves progress until repair", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-codex-list-fail-"));
     const sessionsRoot = join(dir, "sessions");
     writeFileSync(sessionsRoot, "not-a-directory", "utf8");
@@ -228,8 +230,8 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
     });
     const coordinator = new IngestCoordinator(deps);
     try {
-      expect(coordinator.ingestCodexHistory().ok).toBe(true);
-      expect(coordinator.runPeriodicIngestTickLocal("codex")).toEqual({
+      expect((await coordinator.ingestCodexHistory()).ok).toBe(true);
+      expect((await coordinator.runPeriodicIngestTickLocal("codex"))).toEqual({
         ok: false,
         error_code: "record_write_failed",
         retryable: true,
@@ -253,16 +255,16 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
         },
       }) + "\n", "utf8");
 
-      expect(coordinator.runPeriodicIngestTickLocal("codex")).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("codex"))).toEqual({ ok: true });
       expect(recorded).toHaveLength(1);
-      expect(coordinator.runPeriodicIngestTickLocal("codex")).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("codex"))).toEqual({ ok: true });
       expect(recorded).toHaveLength(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("periodic OpenCode message and session enumeration failures preserve progress until repair", () => {
+  test("periodic OpenCode message and session enumeration failures preserve progress until repair", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-list-fail-"));
     const storageRoot = join(dir, "storage");
     const messageRoot = join(storageRoot, "message");
@@ -287,8 +289,8 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
     });
     const coordinator = new IngestCoordinator(deps);
     try {
-      expect(coordinator.ingestOpencodeHistory().ok).toBe(true);
-      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({
+      expect((await coordinator.ingestOpencodeHistory()).ok).toBe(true);
+      expect((await coordinator.runPeriodicIngestTickLocal("opencode"))).toEqual({
         ok: false,
         error_code: "record_write_failed",
         retryable: true,
@@ -306,7 +308,7 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
         time: { created: Date.now() - 1000 },
         summary: { title: "repair opencode enumeration" },
       }), "utf8");
-      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({
+      expect((await coordinator.runPeriodicIngestTickLocal("opencode"))).toEqual({
         ok: false,
         error_code: "record_write_failed",
         retryable: true,
@@ -321,16 +323,16 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
         id: "ses_list",
         directory: dir,
       }), "utf8");
-      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("opencode"))).toEqual({ ok: true });
       expect(recorded).toHaveLength(1);
-      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("opencode"))).toEqual({ ok: true });
       expect(recorded).toHaveLength(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("periodic Antigravity markdown and planner enumeration failures preserve progress until repair", () => {
+  test("periodic Antigravity markdown and planner enumeration failures preserve progress until repair", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-list-fail-"));
     const workspaceRoot = join(dir, "workspace");
     const checkpointRoot = join(workspaceRoot, "docs", "checkpoints");
@@ -357,8 +359,8 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
     });
     const coordinator = new IngestCoordinator(deps);
     try {
-      expect(coordinator.ingestAntigravityHistory().ok).toBe(true);
-      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({
+      expect((await coordinator.ingestAntigravityHistory()).ok).toBe(true);
+      expect((await coordinator.runPeriodicIngestTickLocal("antigravity"))).toEqual({
         ok: false,
         error_code: "record_write_failed",
         retryable: true,
@@ -367,7 +369,7 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
 
       rmSync(checkpointRoot);
       mkdirSync(checkpointRoot);
-      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({
+      expect((await coordinator.runPeriodicIngestTickLocal("antigravity"))).toEqual({
         ok: false,
         error_code: "record_write_failed",
         retryable: true,
@@ -383,16 +385,16 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
         "2026-08-19 00:00:00.000 [info] Requesting planner with 1 chat messages\n",
         "utf8",
       );
-      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("antigravity"))).toEqual({ ok: true });
       expect(recorded).toHaveLength(1);
-      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("antigravity"))).toEqual({ ok: true });
       expect(recorded).toHaveLength(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("Codex rollout and legacy lanes share one periodic budget", () => {
+  test("Codex rollout and legacy lanes share one periodic budget", async () => {
     const previous = process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
     process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = "20";
     deps = makeDeps({ config: createTestConfig({ codexHistoryEnabled: true }) });
@@ -414,7 +416,7 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
       return {};
     };
     try {
-      internals.ingestCodexHistoryTick();
+      (await internals.ingestCodexHistoryTick());
     } finally {
       if (previous === undefined) delete process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
       else process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = previous;
@@ -441,22 +443,22 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
     expect(restartedInternals.codexLegacyFirst).toBe(true);
   });
 
-  test("正常応答を返す（実データなしでも ok=true）", () => {
-    const res = coordinator.ingestCodexHistory();
+  test("正常応答を返す（実データなしでも ok=true）", async () => {
+    const res = (await coordinator.ingestCodexHistory());
     expect(res.ok).toBe(true);
   });
 
-  test("無効なパスでもクラッシュしない", () => {
-    const res = coordinator.ingestCodexHistory();
+  test("無効なパスでもクラッシュしない", async () => {
+    const res = (await coordinator.ingestCodexHistory());
     expect(typeof res.ok).toBe("boolean");
   });
 
-  test("レスポンスに meta が含まれる", () => {
-    const res = coordinator.ingestCodexHistory();
+  test("レスポンスに meta が含まれる", async () => {
+    const res = (await coordinator.ingestCodexHistory());
     expect(res.meta).toBeTruthy();
   });
 
-  test("does not advance Codex rollout offset past a failed event write", () => {
+  test("does not advance Codex rollout offset past a failed event write", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-ingest-coordinator-"));
     const sessionsRoot = join(dir, "codex-sessions");
     const dayDir = join(sessionsRoot, "2026", "03", "14");
@@ -515,7 +517,7 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
     const failingCoordinator = new IngestCoordinator(failingDeps);
 
     try {
-      const first = failingCoordinator.ingestCodexHistory();
+      const first = (await failingCoordinator.ingestCodexHistory());
       expect(first.ok).toBe(true);
       expect(first.items[0]?.events_imported).toBe(0);
 
@@ -528,7 +530,7 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
 
       failingDeps.recordEvent = mock(() => makeOkResponse());
       const retryCoordinator = new IngestCoordinator(failingDeps);
-      const second = retryCoordinator.ingestCodexHistory();
+      const second = (await retryCoordinator.ingestCodexHistory());
       expect(second.ok).toBe(true);
       expect(second.items[0]?.events_imported).toBe(2);
     } finally {
@@ -536,7 +538,7 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
     }
   });
 
-  test("Codex rollout keeps context at the failed entry boundary and retries exactly once", () => {
+  test("Codex rollout keeps context at the failed entry boundary and retries exactly once", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-codex-context-fail-"));
     const sessionsRoot = join(dir, "codex-sessions");
     const dayDir = join(sessionsRoot, "2026", "08", "19");
@@ -575,7 +577,7 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
       }),
     });
     try {
-      const first = new IngestCoordinator(deps).runPeriodicIngestTickLocal("codex");
+      const first = (await new IngestCoordinator(deps).runPeriodicIngestTickLocal("codex"));
       expect(first).toEqual({ ok: false, error_code: "sqlite_busy", retryable: true });
       const failedProject = seenProjects[0];
       expect(failedProject).toBeTruthy();
@@ -588,12 +590,12 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
         seenProjects.push(event.project);
         return makeOkResponse();
       });
-      expect(new IngestCoordinator(deps).runPeriodicIngestTickLocal("codex")).toEqual({ ok: true });
+      expect((await new IngestCoordinator(deps).runPeriodicIngestTickLocal("codex"))).toEqual({ ok: true });
       expect(seenProjects).toEqual([failedProject as string, failedProject as string]);
       expect(db.query<{ offset: number }, [string]>(
         "SELECT offset FROM mem_ingest_offsets WHERE source_key = ?",
       ).get(sourceKey)?.offset).toBe(statSync(rolloutPath).size);
-      expect(new IngestCoordinator(deps).runPeriodicIngestTickLocal("codex")).toEqual({ ok: true });
+      expect((await new IngestCoordinator(deps).runPeriodicIngestTickLocal("codex"))).toEqual({ ok: true });
       expect(seenProjects).toHaveLength(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -638,7 +640,7 @@ describe("ingest-coordinator: ingestLegacyCodexHistoryFile (§160-005b)", () => 
     return historyPath;
   }
 
-  test("読み込み上限より大きいファイルでも statSync の実サイズを基準に最後まで進む", () => {
+  test("読み込み上限より大きいファイルでも statSync の実サイズを基準に最後まで進む", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-legacy-codex-history-"));
     try {
       const lines = Array.from({ length: 8 }, (_, i) =>
@@ -659,7 +661,7 @@ describe("ingest-coordinator: ingestLegacyCodexHistoryFile (§160-005b)", () => 
       });
       const coordinator = new IngestCoordinator(deps) as unknown as LegacyCoordinator;
 
-      const summary = coordinator.ingestLegacyCodexHistoryFile({ budgetMs: Infinity });
+      const summary = (await coordinator.ingestLegacyCodexHistoryFile({ budgetMs: Infinity }));
       expect(summary.historyEventsImported).toBe(8);
 
       const sourceKey = `codex_history:${dir}`;
@@ -672,7 +674,7 @@ describe("ingest-coordinator: ingestLegacyCodexHistoryFile (§160-005b)", () => 
     }
   });
 
-  test("recordEvent が失敗した行より先へ offset を進めず、再試行で拾い直す", () => {
+  test("recordEvent が失敗した行より先へ offset を進めず、再試行で拾い直す", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-legacy-codex-history-fail-"));
     try {
       const lines = [
@@ -694,7 +696,7 @@ describe("ingest-coordinator: ingestLegacyCodexHistoryFile (§160-005b)", () => 
         }),
       });
 
-      const first = new IngestCoordinator(deps).ingestCodexHistory();
+      const first = (await new IngestCoordinator(deps).ingestCodexHistory());
       expect(first.ok).toBe(true);
       expect(first.items[0]?.history_events_imported).toBe(0);
 
@@ -706,7 +708,7 @@ describe("ingest-coordinator: ingestLegacyCodexHistoryFile (§160-005b)", () => 
       expect(offsetAfterFailure?.offset ?? -1).toBeLessThan(fileSize);
 
       deps.recordEvent = mock(() => makeOkResponse());
-      const second = new IngestCoordinator(deps).ingestCodexHistory();
+      const second = (await new IngestCoordinator(deps).ingestCodexHistory());
       expect(second.ok).toBe(true);
       expect(second.items[0]?.history_events_imported).toBe(3);
 
@@ -719,7 +721,7 @@ describe("ingest-coordinator: ingestLegacyCodexHistoryFile (§160-005b)", () => 
     }
   });
 
-  test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", () => {
+  test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-legacy-codex-history-budget-"));
     try {
       const lines = [
@@ -749,7 +751,7 @@ describe("ingest-coordinator: ingestLegacyCodexHistoryFile (§160-005b)", () => 
       });
       const coordinator = new IngestCoordinator(deps) as unknown as LegacyCoordinator;
 
-      const firstTick = coordinator.ingestLegacyCodexHistoryFile({ budgetMs: 1 });
+      const firstTick = (await coordinator.ingestLegacyCodexHistoryFile({ budgetMs: 1 }));
       expect(firstTick.historyEventsImported).toBe(1);
 
       const sourceKey = `codex_history:${dir}`;
@@ -759,7 +761,7 @@ describe("ingest-coordinator: ingestLegacyCodexHistoryFile (§160-005b)", () => 
       expect(offsetAfterFirstTick?.offset ?? -1).toBeGreaterThan(0);
       expect(offsetAfterFirstTick?.offset ?? -1).toBeLessThan(fileSize);
 
-      const secondTick = coordinator.ingestLegacyCodexHistoryFile({ budgetMs: Infinity });
+      const secondTick = (await coordinator.ingestLegacyCodexHistoryFile({ budgetMs: Infinity }));
       expect(secondTick.historyEventsImported).toBe(3);
 
       const offsetAfterSecondTick = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
@@ -775,7 +777,7 @@ describe("ingest-coordinator: ingestLegacyCodexHistoryFile (§160-005b)", () => 
     }
   });
 
-  test("offset がファイルサイズを超えていたら 0 にリセットして先頭から取り込み直す", () => {
+  test("offset がファイルサイズを超えていたら 0 にリセットして先頭から取り込み直す", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-legacy-codex-history-truncate-"));
     try {
       const longLines = Array.from({ length: 5 }, (_, i) =>
@@ -789,7 +791,7 @@ describe("ingest-coordinator: ingestLegacyCodexHistoryFile (§160-005b)", () => 
         config: createTestConfig({ codexHistoryEnabled: true, codexProjectRoot: dir, codexSessionsRoot: join(dir, "codex-sessions") }),
       });
 
-      const before = new IngestCoordinator(deps).ingestCodexHistory();
+      const before = (await new IngestCoordinator(deps).ingestCodexHistory());
       expect(before.items[0]?.history_events_imported).toBe(5);
 
       const sourceKey = `codex_history:${dir}`;
@@ -805,7 +807,7 @@ describe("ingest-coordinator: ingestLegacyCodexHistoryFile (§160-005b)", () => 
       const sizeAfterTruncate = statSync(historyPath).size;
       expect(sizeAfterTruncate).toBeLessThan(sizeBeforeTruncate);
 
-      const after = new IngestCoordinator(deps).ingestCodexHistory();
+      const after = (await new IngestCoordinator(deps).ingestCodexHistory());
       expect(after.items[0]?.history_events_imported).toBe(1);
 
       const offsetAfterTruncate = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
@@ -817,7 +819,7 @@ describe("ingest-coordinator: ingestLegacyCodexHistoryFile (§160-005b)", () => 
     }
   });
 
-  test("明示 API (ingestCodexHistory) は budget / read slice を極小に設定していても legacy を完走させる", () => {
+  test("明示 API (ingestCodexHistory) は budget / read slice を極小に設定していても legacy を完走させる", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-legacy-codex-history-explicit-"));
     const ORIGINAL_BUDGET = process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
     try {
@@ -838,7 +840,7 @@ describe("ingest-coordinator: ingestLegacyCodexHistoryFile (§160-005b)", () => 
         config: createTestConfig({ codexHistoryEnabled: true, codexProjectRoot: dir, codexSessionsRoot: join(dir, "codex-sessions") }),
       });
 
-      const res = new IngestCoordinator(deps).ingestCodexHistory();
+      const res = (await new IngestCoordinator(deps).ingestCodexHistory());
       expect(res.ok).toBe(true);
       expect(res.items[0]?.history_events_imported).toBe(6);
 
@@ -868,13 +870,13 @@ describe("ingest-coordinator: ingestOpencodeHistory", () => {
     coordinator = new IngestCoordinator(deps);
   });
 
-  test("正常応答を返す（opencodeIngestEnabled=false でもクラッシュしない）", () => {
-    const res = coordinator.ingestOpencodeHistory();
+  test("正常応答を返す（opencodeIngestEnabled=false でもクラッシュしない）", async () => {
+    const res = (await coordinator.ingestOpencodeHistory());
     expect(typeof res.ok).toBe("boolean");
   });
 
-  test("存在しないパスでもクラッシュしない", () => {
-    const res = coordinator.ingestOpencodeHistory();
+  test("存在しないパスでもクラッシュしない", async () => {
+    const res = (await coordinator.ingestOpencodeHistory());
     expect(typeof res.ok).toBe("boolean");
   });
 });
@@ -945,7 +947,7 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
     }
   }
 
-  test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", () => {
+  test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-db-budget-"));
     try {
       const dbPath = join(dir, "opencode.db");
@@ -972,7 +974,7 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
       });
       const coordinator = new IngestCoordinator(deps) as unknown as DbCoordinator;
 
-      const firstTick = coordinator.ingestOpencodeDbMessages({ budgetMs: 1 });
+      const firstTick = (await coordinator.ingestOpencodeDbMessages({ budgetMs: 1 }));
       expect(firstTick.dbEventsImported).toBe(1);
 
       const sourceKey = `opencode_db_message:${dbPath}`;
@@ -981,7 +983,7 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
       } | null;
       expect(offsetAfterFirstTick?.offset).toBe(1);
 
-      const secondTick = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity });
+      const secondTick = (await coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity }));
       expect(secondTick.dbEventsImported).toBe(3);
 
       const offsetAfterSecondTick = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
@@ -997,7 +999,7 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
     }
   });
 
-  test("recordEvent が失敗した行より先へ offset を進めず、再試行で拾い直す", () => {
+  test("recordEvent が失敗した行より先へ offset を進めず、再試行で拾い直す", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-db-fail-"));
     try {
       const dbPath = join(dir, "opencode.db");
@@ -1019,7 +1021,7 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
       });
       const coordinator = new IngestCoordinator(deps) as unknown as DbCoordinator;
 
-      const first = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity });
+      const first = (await coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity }));
       expect(first.dbEventsImported).toBe(0);
 
       const sourceKey = `opencode_db_message:${dbPath}`;
@@ -1029,7 +1031,7 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
       // 1 行目 (m1) が失敗しているので、成功した行が 1 件も無く offset は永続化されない
       expect(offsetAfterFailure).toBeNull();
 
-      const second = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity });
+      const second = (await coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity }));
       expect(second.dbEventsImported).toBe(3);
 
       const offsetAfterRetry = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
@@ -1041,7 +1043,7 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
     }
   });
 
-  test("periodic OpenCode DB propagates SQLITE_BUSY while malformed rows remain skippable", () => {
+  test("periodic OpenCode DB propagates SQLITE_BUSY while malformed rows remain skippable", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-db-busy-"));
     const dbPath = join(dir, "opencode.db");
     setupOpencodeDb(dbPath);
@@ -1060,7 +1062,7 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
     try {
       locker.exec("PRAGMA journal_mode = DELETE");
       locker.exec("BEGIN EXCLUSIVE");
-      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({
+      expect((await coordinator.runPeriodicIngestTickLocal("opencode"))).toEqual({
         ok: false,
         error_code: "sqlite_busy",
         retryable: true,
@@ -1073,7 +1075,7 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
       } finally {
         source.close(false);
       }
-      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("opencode"))).toEqual({ ok: true });
       expect(deps.recordEvent).not.toHaveBeenCalled();
 
       const brokenSource = new Database(dbPath, { create: false, strict: false });
@@ -1082,7 +1084,7 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
       } finally {
         brokenSource.close(false);
       }
-      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({
+      expect((await coordinator.runPeriodicIngestTickLocal("opencode"))).toEqual({
         ok: false,
         error_code: "record_write_failed",
         retryable: true,
@@ -1094,7 +1096,7 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
     }
   });
 
-  test("periodic OpenCode DB does not write or advance when the part query fails", () => {
+  test("periodic OpenCode DB does not write or advance when the part query fails", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-part-fail-"));
     const dbPath = join(dir, "opencode.db");
     setupOpencodeDb(dbPath);
@@ -1119,12 +1121,12 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
     const coordinator = new IngestCoordinator(deps);
     const sourceKey = `opencode_db_message:${dbPath}`;
     try {
-      expect(coordinator.ingestOpencodeHistory().ok).toBe(true);
+      expect((await coordinator.ingestOpencodeHistory()).ok).toBe(true);
       expect(recordedPrompts).toEqual(["title-needs-part"]);
       db.query("DELETE FROM mem_ingest_offsets WHERE source_key = ?").run(sourceKey);
       recordedPrompts.length = 0;
 
-      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({
+      expect((await coordinator.runPeriodicIngestTickLocal("opencode"))).toEqual({
         ok: false,
         error_code: "record_write_failed",
         retryable: true,
@@ -1138,16 +1140,16 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
         .run(JSON.stringify({ type: "text", text: "repaired exact prompt" }));
       repaired.close(false);
 
-      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("opencode"))).toEqual({ ok: true });
       expect(recordedPrompts).toEqual(["repaired exact prompt"]);
-      expect(coordinator.runPeriodicIngestTickLocal("opencode")).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("opencode"))).toEqual({ ok: true });
       expect(recordedPrompts).toHaveLength(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("1 tick の読み込み行数は maxRows で上限を持つ (budget が無制限でも打ち切る)", () => {
+  test("1 tick の読み込み行数は maxRows で上限を持つ (budget が無制限でも打ち切る)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-db-maxrows-"));
     try {
       const dbPath = join(dir, "opencode.db");
@@ -1167,23 +1169,23 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
       // Spec.md「## Periodic Ingest Budget」: 時間 budget だけでは読み込み量の上限
       // にならない (budget チェックの前に全行をメモリへロードし終えているため)。
       // budgetMs を無制限にしても maxRows だけで打ち切れることを確認する。
-      const firstTick = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity, maxRows: 2 });
+      const firstTick = (await coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity, maxRows: 2 }));
       expect(firstTick.dbEventsImported).toBe(2);
 
-      const secondTick = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity, maxRows: 2 });
+      const secondTick = (await coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity, maxRows: 2 }));
       expect(secondTick.dbEventsImported).toBe(2);
 
-      const thirdTick = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity, maxRows: 2 });
+      const thirdTick = (await coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity, maxRows: 2 }));
       expect(thirdTick.dbEventsImported).toBe(1);
 
-      const fourthTick = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity, maxRows: 2 });
+      const fourthTick = (await coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity, maxRows: 2 }));
       expect(fourthTick.dbEventsImported).toBe(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("hasOffset が無く直近データも無い場合は maxRow まで進み、以後の新規行から再開する (早期リターン経路)", () => {
+  test("hasOffset が無く直近データも無い場合は maxRow まで進み、以後の新規行から再開する (早期リターン経路)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-db-earlyreturn-"));
     try {
       const dbPath = join(dir, "opencode.db");
@@ -1199,7 +1201,7 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
       });
       const coordinator = new IngestCoordinator(deps) as unknown as DbCoordinator;
 
-      const first = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity });
+      const first = (await coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity }));
       expect(first.dbEventsImported).toBe(0);
       expect(first.filesSkippedBackfill).toBe(1);
 
@@ -1215,7 +1217,7 @@ describe("ingest-coordinator: ingestOpencodeDbMessages (§160-007)", () => {
       const recentTs = Date.now() - 1000;
       insertMessage(dbPath, { id: "m_new_1", role: "user", timeCreated: recentTs });
 
-      const second = coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity });
+      const second = (await coordinator.ingestOpencodeDbMessages({ budgetMs: Infinity }));
       expect(second.dbEventsImported).toBe(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -1270,7 +1272,7 @@ describe("ingest-coordinator: ingestOpencodeStorageMessages (§160-007)", () => 
     return messagePath;
   }
 
-  test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", () => {
+  test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-storage-budget-"));
     try {
       const storageRoot = join(dir, "opencode-storage");
@@ -1297,10 +1299,10 @@ describe("ingest-coordinator: ingestOpencodeStorageMessages (§160-007)", () => 
       });
       const coordinator = new IngestCoordinator(deps) as unknown as StorageCoordinator;
 
-      const firstTick = coordinator.ingestOpencodeStorageMessages({ budgetMs: 1 });
+      const firstTick = (await coordinator.ingestOpencodeStorageMessages({ budgetMs: 1 }));
       expect(firstTick.storageEventsImported).toBe(1);
 
-      const secondTick = coordinator.ingestOpencodeStorageMessages({ budgetMs: Infinity });
+      const secondTick = (await coordinator.ingestOpencodeStorageMessages({ budgetMs: Infinity }));
       expect(secondTick.storageEventsImported).toBe(3);
 
       expect(recordedHashes.length).toBe(4);
@@ -1310,7 +1312,7 @@ describe("ingest-coordinator: ingestOpencodeStorageMessages (§160-007)", () => 
     }
   });
 
-  test("recordEvent が失敗したファイルの offset を進めず、後続ファイルは同一 tick 内で処理を続ける", () => {
+  test("recordEvent が失敗したファイルの offset を進めず、後続ファイルは同一 tick 内で処理を続ける", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-storage-fail-"));
     try {
       const storageRoot = join(dir, "opencode-storage");
@@ -1332,7 +1334,7 @@ describe("ingest-coordinator: ingestOpencodeStorageMessages (§160-007)", () => 
       });
       const coordinator = new IngestCoordinator(deps) as unknown as StorageCoordinator;
 
-      const first = coordinator.ingestOpencodeStorageMessages({ budgetMs: Infinity });
+      const first = (await coordinator.ingestOpencodeStorageMessages({ budgetMs: Infinity }));
       // msg_1 は失敗するが、msg_2 / msg_3 は同一 tick 内で処理が続く
       expect(first.storageEventsImported).toBe(2);
 
@@ -1352,7 +1354,7 @@ describe("ingest-coordinator: ingestOpencodeStorageMessages (§160-007)", () => 
       } | null;
       expect(offsetMsg2?.offset).toBe(fileSize2);
 
-      const second = coordinator.ingestOpencodeStorageMessages({ budgetMs: Infinity });
+      const second = (await coordinator.ingestOpencodeStorageMessages({ budgetMs: Infinity }));
       expect(second.storageEventsImported).toBe(1);
 
       const fileSize1 = statSync(msg1Path).size;
@@ -1365,7 +1367,7 @@ describe("ingest-coordinator: ingestOpencodeStorageMessages (§160-007)", () => 
     }
   });
 
-  test("読み込み上限より大きい 1 メッセージでも statSync の実サイズを基準に複数スライスにまたがって完走する", () => {
+  test("読み込み上限より大きい 1 メッセージでも statSync の実サイズを基準に複数スライスにまたがって完走する", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-storage-slice-"));
     const ORIGINAL_READ_SLICE = process.env.HARNESS_MEM_INGEST_READ_SLICE_BYTES;
     try {
@@ -1393,7 +1395,7 @@ describe("ingest-coordinator: ingestOpencodeStorageMessages (§160-007)", () => 
       });
       const coordinator = new IngestCoordinator(deps) as unknown as StorageCoordinator;
 
-      const result = coordinator.ingestOpencodeStorageMessages({ budgetMs: Infinity });
+      const result = (await coordinator.ingestOpencodeStorageMessages({ budgetMs: Infinity }));
       expect(result.storageEventsImported).toBe(1);
 
       const sourceKey = `opencode_rollout:${msgPath}`;
@@ -1410,7 +1412,7 @@ describe("ingest-coordinator: ingestOpencodeStorageMessages (§160-007)", () => 
 });
 
 describe("ingest-coordinator: ingestOpencodeHistory は明示 API として budget 無制限で完走する (§160-007)", () => {
-  test("tick 用の budget を極小に設定していても DB 経路とファイル経路の両方を完走させる", () => {
+  test("tick 用の budget を極小に設定していても DB 経路とファイル経路の両方を完走させる", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-opencode-explicit-"));
     const ORIGINAL_BUDGET = process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
     const recentTs = Date.now() - 1000;
@@ -1472,7 +1474,7 @@ describe("ingest-coordinator: ingestOpencodeHistory は明示 API として budg
         }),
       });
 
-      const res = new IngestCoordinator(deps).ingestOpencodeHistory();
+      const res = (await new IngestCoordinator(deps).ingestOpencodeHistory());
       expect(res.ok).toBe(true);
       expect(res.items[0]?.db_events_imported).toBe(6);
       expect(res.items[0]?.storage_events_imported).toBe(4);
@@ -1512,7 +1514,7 @@ describe("ingest-coordinator: 明示 API は tick budget で打ち切られな�
     });
   }
 
-  test("ingestGeminiHistory は budget=1ms でも全イベントを取り込む", () => {
+  test("ingestGeminiHistory は budget=1ms でも全イベントを取り込む", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-gemini-explicit-"));
     try {
       const lines = Array.from({ length: 12 }, (_, i) =>
@@ -1535,7 +1537,7 @@ describe("ingest-coordinator: 明示 API は tick budget で打ち切られな�
         recordEvent: slowRecordEvent(),
       });
 
-      const res = new IngestCoordinator(deps).ingestGeminiHistory();
+      const res = (await new IngestCoordinator(deps).ingestGeminiHistory());
       expect(res.ok).toBe(true);
       expect(res.items[0]?.events_imported).toBe(12);
     } finally {
@@ -1547,7 +1549,7 @@ describe("ingest-coordinator: 明示 API は tick budget で打ち切られな�
    * cursor は §159 で budget を入れた時点から明示 API と timer が同じ関数のままで、
    * 0.29.4 として出荷されていた。antigravity / gemini と同じ欠陥。
    */
-  test("ingestCursorHistory は budget=1ms でも全イベントを取り込む", () => {
+  test("ingestCursorHistory は budget=1ms でも全イベントを取り込む", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-cursor-explicit-"));
     try {
       const lines = Array.from({ length: 12 }, (_, i) =>
@@ -1570,7 +1572,7 @@ describe("ingest-coordinator: 明示 API は tick budget で打ち切られな�
         recordEvent: slowRecordEvent(),
       });
 
-      const res = new IngestCoordinator(deps).ingestCursorHistory();
+      const res = (await new IngestCoordinator(deps).ingestCursorHistory());
       expect(res.ok).toBe(true);
       expect(res.items[0]?.hooks_events_imported).toBe(12);
     } finally {
@@ -1584,7 +1586,7 @@ describe("ingest-coordinator: 明示 API は tick budget で打ち切られな�
    * 120 件中 50 件しか入らない**ので、時間 budget の検査だけでは検出できない。
    * 上限を超える件数で「完走する」ことを別途固定する。
    */
-  test("ingestCursorHistory は件数上限 (50) を超える backlog も完走する", () => {
+  test("ingestCursorHistory は件数上限 (50) を超える backlog も完走する", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-cursor-maxevents-"));
     try {
       const lines = Array.from({ length: 120 }, (_, i) =>
@@ -1606,7 +1608,7 @@ describe("ingest-coordinator: 明示 API は tick budget で打ち切られな�
         recordEvent: mock(() => makeOkResponse()),
       });
 
-      const res = new IngestCoordinator(deps).ingestCursorHistory();
+      const res = (await new IngestCoordinator(deps).ingestCursorHistory());
       expect(res.ok).toBe(true);
       expect(res.items[0]?.hooks_events_imported).toBe(120);
     } finally {
@@ -1614,7 +1616,7 @@ describe("ingest-coordinator: 明示 API は tick budget で打ち切られな�
     }
   });
 
-  test("ingestAntigravityHistory は budget=1ms でも全イベントを取り込む", () => {
+  test("ingestAntigravityHistory は budget=1ms でも全イベントを取り込む", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-explicit-"));
     try {
       const logDir = join(dir, "ws-explicit", "google.antigravity", "1", "exthost1", "output_logging_x");
@@ -1633,7 +1635,7 @@ describe("ingest-coordinator: 明示 API は tick budget で打ち切られな�
         recordEvent: slowRecordEvent(),
       });
 
-      const res = new IngestCoordinator(deps).ingestAntigravityHistory();
+      const res = (await new IngestCoordinator(deps).ingestAntigravityHistory());
       expect(res.ok).toBe(true);
       expect(res.items[0]?.log_events_imported).toBe(12);
     } finally {
@@ -1647,7 +1649,7 @@ describe("ingest-coordinator: 明示 API は tick budget で打ち切られな�
    * 使い切ると 2 つ目以降が永久に処理されない。root の並びにも round-robin を
    * 掛けてあることを固定する。
    */
-  test("timer 経路は budget を root 間で共有しつつ round-robin で全 root に到達する", () => {
+  test("timer 経路は budget を root 間で共有しつつ round-robin で全 root に到達する", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-roots-"));
     try {
       // root-a は「常に未処理分が残る」よう多数のファイルを持たせる。1 root あたり
@@ -1695,9 +1697,9 @@ describe("ingest-coordinator: 明示 API は tick budget で打ち切られな�
       };
 
       // 3 tick 回せば、飢餓が無い限り 3 root すべてに到達する。
-      coordinator.ingestAntigravityHistoryTick();
-      coordinator.ingestAntigravityHistoryTick();
-      coordinator.ingestAntigravityHistoryTick();
+      (await coordinator.ingestAntigravityHistoryTick());
+      (await coordinator.ingestAntigravityHistoryTick());
+      (await coordinator.ingestAntigravityHistoryTick());
 
       expect(new Set(visitedRoots).size).toBe(3);
     } finally {
@@ -1719,13 +1721,13 @@ describe("ingest-coordinator: ingestCursorHistory", () => {
     coordinator = new IngestCoordinator(deps);
   });
 
-  test("cursorIngestEnabled=false でもクラッシュしない", () => {
-    const res = coordinator.ingestCursorHistory();
+  test("cursorIngestEnabled=false でもクラッシュしない", async () => {
+    const res = (await coordinator.ingestCursorHistory());
     expect(typeof res.ok).toBe("boolean");
   });
 
-  test("レスポンスが ApiResponse 構造を持つ", () => {
-    const res = coordinator.ingestCursorHistory();
+  test("レスポンスが ApiResponse 構造を持つ", async () => {
+    const res = (await coordinator.ingestCursorHistory());
     expect(res).toHaveProperty("ok");
     expect(res).toHaveProperty("items");
     expect(res).toHaveProperty("meta");
@@ -1745,13 +1747,13 @@ describe("ingest-coordinator: ingestAntigravityHistory", () => {
     coordinator = new IngestCoordinator(deps);
   });
 
-  test("antigravityIngestEnabled=false でもクラッシュしない", () => {
-    const res = coordinator.ingestAntigravityHistory();
+  test("antigravityIngestEnabled=false でもクラッシュしない", async () => {
+    const res = (await coordinator.ingestAntigravityHistory());
     expect(typeof res.ok).toBe("boolean");
   });
 
-  test("レスポンスが ApiResponse 構造を持つ", () => {
-    const res = coordinator.ingestAntigravityHistory();
+  test("レスポンスが ApiResponse 構造を持つ", async () => {
+    const res = (await coordinator.ingestAntigravityHistory());
     expect(res).toHaveProperty("ok");
     expect(res).toHaveProperty("items");
     expect(res).toHaveProperty("meta");
@@ -1771,13 +1773,13 @@ describe("ingest-coordinator: ingestGeminiHistory", () => {
     coordinator = new IngestCoordinator(deps);
   });
 
-  test("正常応答を返す", () => {
-    const res = coordinator.ingestGeminiHistory();
+  test("正常応答を返す", async () => {
+    const res = (await coordinator.ingestGeminiHistory());
     expect(typeof res.ok).toBe("boolean");
   });
 
-  test("レスポンスが ApiResponse 構造を持つ", () => {
-    const res = coordinator.ingestGeminiHistory();
+  test("レスポンスが ApiResponse 構造を持つ", async () => {
+    const res = (await coordinator.ingestGeminiHistory());
     expect(res).toHaveProperty("ok");
     expect(res).toHaveProperty("items");
     expect(res).toHaveProperty("meta");
@@ -1820,7 +1822,7 @@ describe("ingest-coordinator: ingestGeminiEvents (§160-007)", () => {
     return eventsPath;
   }
 
-  test("読み込み上限より大きいファイルでも statSync の実サイズを基準に最後まで進む", () => {
+  test("読み込み上限より大きいファイルでも statSync の実サイズを基準に最後まで進む", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-gemini-events-"));
     try {
       const lines = Array.from({ length: 8 }, (_, i) =>
@@ -1847,7 +1849,7 @@ describe("ingest-coordinator: ingestGeminiEvents (§160-007)", () => {
       });
       const coordinator = new IngestCoordinator(deps) as unknown as GeminiLeafCoordinator;
 
-      const summary = coordinator.ingestGeminiEvents({ budgetMs: Infinity });
+      const summary = (await coordinator.ingestGeminiEvents({ budgetMs: Infinity }));
       expect(summary.eventsImported).toBe(8);
 
       const sourceKey = `gemini_events:${eventsPath}`;
@@ -1860,7 +1862,7 @@ describe("ingest-coordinator: ingestGeminiEvents (§160-007)", () => {
     }
   });
 
-  test("recordEvent が失敗した行より先へ offset を進めず、再試行で拾い直す", () => {
+  test("recordEvent が失敗した行より先へ offset を進めず、再試行で拾い直す", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-gemini-events-fail-"));
     try {
       const lines = [
@@ -1883,7 +1885,7 @@ describe("ingest-coordinator: ingestGeminiEvents (§160-007)", () => {
       });
       const coordinator = new IngestCoordinator(deps) as unknown as GeminiLeafCoordinator;
 
-      const first = coordinator.ingestGeminiEvents({ budgetMs: Infinity });
+      const first = (await coordinator.ingestGeminiEvents({ budgetMs: Infinity }));
       expect(first.eventsImported).toBe(0);
 
       const sourceKey = `gemini_events:${eventsPath}`;
@@ -1895,7 +1897,7 @@ describe("ingest-coordinator: ingestGeminiEvents (§160-007)", () => {
       expect(offsetAfterFailure).toBeNull();
       expect(offsetAfterFailure?.offset ?? 0).toBeLessThan(fileSize);
 
-      const second = coordinator.ingestGeminiEvents({ budgetMs: Infinity });
+      const second = (await coordinator.ingestGeminiEvents({ budgetMs: Infinity }));
       expect(second.eventsImported).toBe(3);
 
       const offsetAfterRetry = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
@@ -1907,7 +1909,7 @@ describe("ingest-coordinator: ingestGeminiEvents (§160-007)", () => {
     }
   });
 
-  test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", () => {
+  test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-gemini-events-budget-"));
     try {
       const lines = [
@@ -1937,7 +1939,7 @@ describe("ingest-coordinator: ingestGeminiEvents (§160-007)", () => {
       });
       const coordinator = new IngestCoordinator(deps) as unknown as GeminiLeafCoordinator;
 
-      const firstTick = coordinator.ingestGeminiEvents({ budgetMs: 1 });
+      const firstTick = (await coordinator.ingestGeminiEvents({ budgetMs: 1 }));
       expect(firstTick.eventsImported).toBe(1);
 
       const sourceKey = `gemini_events:${eventsPath}`;
@@ -1947,7 +1949,7 @@ describe("ingest-coordinator: ingestGeminiEvents (§160-007)", () => {
       expect(offsetAfterFirstTick?.offset ?? -1).toBeGreaterThan(0);
       expect(offsetAfterFirstTick?.offset ?? -1).toBeLessThan(fileSize);
 
-      const secondTick = coordinator.ingestGeminiEvents({ budgetMs: Infinity });
+      const secondTick = (await coordinator.ingestGeminiEvents({ budgetMs: Infinity }));
       expect(secondTick.eventsImported).toBe(3);
 
       const offsetAfterSecondTick = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
@@ -2004,7 +2006,7 @@ describe("ingest-coordinator: ingestAntigravityLogEvents (§160-007)", () => {
     return logPath;
   }
 
-  test("recordEvent が失敗した行より先へ offset を進めず、再試行で拾い直す", () => {
+  test("recordEvent が失敗した行より先へ offset を進めず、再試行で拾い直す", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-log-fail-"));
     try {
       const lines = [
@@ -2027,7 +2029,7 @@ describe("ingest-coordinator: ingestAntigravityLogEvents (§160-007)", () => {
       });
       const coordinator = new IngestCoordinator(deps) as unknown as AntigravityLogCoordinator;
 
-      const first = coordinator.ingestAntigravityLogEvents({ budgetMs: Infinity });
+      const first = (await coordinator.ingestAntigravityLogEvents({ budgetMs: Infinity }));
       expect(first.logEventsImported).toBe(0);
 
       const sourceKey = `antigravity_log:${logPath}`;
@@ -2039,7 +2041,7 @@ describe("ingest-coordinator: ingestAntigravityLogEvents (§160-007)", () => {
       expect(offsetAfterFailure).toBeNull();
       expect(offsetAfterFailure?.offset ?? 0).toBeLessThan(fileSize);
 
-      const second = coordinator.ingestAntigravityLogEvents({ budgetMs: Infinity });
+      const second = (await coordinator.ingestAntigravityLogEvents({ budgetMs: Infinity }));
       expect(second.logEventsImported).toBe(3);
 
       const offsetAfterRetry = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
@@ -2051,7 +2053,7 @@ describe("ingest-coordinator: ingestAntigravityLogEvents (§160-007)", () => {
     }
   });
 
-  test("periodic Antigravity propagates nested storage and exthost I/O failures before offset advance", () => {
+  test("periodic Antigravity propagates nested storage and exthost I/O failures before offset advance", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-nested-io-"));
     const storageRoot = join(dir, "workspace-storage");
     writeFileSync(storageRoot, "not-a-directory", "utf8");
@@ -2081,7 +2083,7 @@ describe("ingest-coordinator: ingestAntigravityLogEvents (§160-007)", () => {
     const coordinator = new IngestCoordinator(deps);
     const sourceKey = `antigravity_log:${logPath}`;
     try {
-      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({
+      expect((await coordinator.runPeriodicIngestTickLocal("antigravity"))).toEqual({
         ok: false,
         error_code: "record_write_failed",
         retryable: true,
@@ -2091,7 +2093,7 @@ describe("ingest-coordinator: ingestAntigravityLogEvents (§160-007)", () => {
 
       rmSync(storageRoot);
       mkdirSync(storageRoot);
-      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({
+      expect((await coordinator.runPeriodicIngestTickLocal("antigravity"))).toEqual({
         ok: false,
         error_code: "record_write_failed",
         retryable: true,
@@ -2101,16 +2103,16 @@ describe("ingest-coordinator: ingestAntigravityLogEvents (§160-007)", () => {
 
       rmSync(exthostLog, { recursive: true });
       writeFileSync(exthostLog, "workspaceStorage/aaaaaaaa\n", "utf8");
-      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("antigravity"))).toEqual({ ok: true });
       expect(recorded).toHaveLength(1);
-      expect(coordinator.runPeriodicIngestTickLocal("antigravity")).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("antigravity"))).toEqual({ ok: true });
       expect(recorded).toHaveLength(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", () => {
+  test("budget 超過で打ち切った次の tick が続きから再開する (取りこぼしも重複もしない)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-log-budget-"));
     try {
       const lines = [
@@ -2138,7 +2140,7 @@ describe("ingest-coordinator: ingestAntigravityLogEvents (§160-007)", () => {
       });
       const coordinator = new IngestCoordinator(deps) as unknown as AntigravityLogCoordinator;
 
-      const firstTick = coordinator.ingestAntigravityLogEvents({ budgetMs: 1 });
+      const firstTick = (await coordinator.ingestAntigravityLogEvents({ budgetMs: 1 }));
       expect(firstTick.logEventsImported).toBe(1);
 
       const sourceKey = `antigravity_log:${logPath}`;
@@ -2148,7 +2150,7 @@ describe("ingest-coordinator: ingestAntigravityLogEvents (§160-007)", () => {
       expect(offsetAfterFirstTick?.offset ?? -1).toBeGreaterThan(0);
       expect(offsetAfterFirstTick?.offset ?? -1).toBeLessThan(fileSize);
 
-      const secondTick = coordinator.ingestAntigravityLogEvents({ budgetMs: Infinity });
+      const secondTick = (await coordinator.ingestAntigravityLogEvents({ budgetMs: Infinity }));
       expect(secondTick.logEventsImported).toBe(3);
 
       const offsetAfterSecondTick = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
@@ -2163,7 +2165,7 @@ describe("ingest-coordinator: ingestAntigravityLogEvents (§160-007)", () => {
     }
   });
 
-  test("budget 超過で打ち切ったファイル走査は次 tick で round-robin の続きから再開し、後続ファイルが永久にスキップされない", () => {
+  test("budget 超過で打ち切ったファイル走査は次 tick で round-robin の続きから再開し、後続ファイルが永久にスキップされない", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-log-roundrobin-"));
     try {
       const logPathA = setupAntigravityLogFile(dir, "a-ws", plannerLine("2026-07-29 00:00:00.000", 1) + "\n");
@@ -2189,7 +2191,7 @@ describe("ingest-coordinator: ingestAntigravityLogEvents (§160-007)", () => {
 
       // budgetMs を極小にすると、1 ファイル目 (a-ws, 進捗保証で必ず処理される) の後、
       // 2 ファイル目 (b-ws) に着手する前に budget 超過で打ち切られるはず。
-      const firstTick = coordinator.ingestAntigravityLogEvents({ budgetMs: 1 });
+      const firstTick = (await coordinator.ingestAntigravityLogEvents({ budgetMs: 1 }));
       expect(firstTick.logEventsImported).toBe(1);
 
       const sourceKeyA = `antigravity_log:${logPathA}`;
@@ -2201,7 +2203,7 @@ describe("ingest-coordinator: ingestAntigravityLogEvents (§160-007)", () => {
       // 単に「まだ来ていない」状態であることを row の有無で確認する)。
       expect(offsetB).toBeNull();
 
-      const secondTick = coordinator.ingestAntigravityLogEvents({ budgetMs: Infinity });
+      const secondTick = (await coordinator.ingestAntigravityLogEvents({ budgetMs: Infinity }));
       expect(secondTick.logEventsImported).toBe(1);
 
       const offsetBAfter = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKeyB) as {
@@ -2233,7 +2235,7 @@ describe("ingest-coordinator: ingestAntigravityWorkspace (§160-007)", () => {
     return filePath;
   }
 
-  test("recordEvent が失敗した時に offset を進めず、再試行で拾い直す", () => {
+  test("recordEvent が失敗した時に offset を進めず、再試行で拾い直す", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-workspace-fail-"));
     try {
       const filePath = setupAntigravityCheckpointFile(dir, "checkpoint-one.md", "# Checkpoint One\n\nSome content.\n");
@@ -2250,7 +2252,7 @@ describe("ingest-coordinator: ingestAntigravityWorkspace (§160-007)", () => {
       });
       const coordinator = new IngestCoordinator(deps) as unknown as AntigravityWorkspaceCoordinator;
 
-      const first = coordinator.ingestAntigravityWorkspace(dir, { budgetMs: Infinity });
+      const first = (await coordinator.ingestAntigravityWorkspace(dir, { budgetMs: Infinity }));
       expect(first.checkpointEventsImported).toBe(0);
 
       const sourceKey = `antigravity_file:${filePath}`;
@@ -2260,7 +2262,7 @@ describe("ingest-coordinator: ingestAntigravityWorkspace (§160-007)", () => {
       // recordEvent が完了していないので offset は進まない (row 無し、または fileSize 未満)。
       expect(offsetAfterFailure === null || offsetAfterFailure.offset < statSync(filePath).size).toBe(true);
 
-      const second = coordinator.ingestAntigravityWorkspace(dir, { budgetMs: Infinity });
+      const second = (await coordinator.ingestAntigravityWorkspace(dir, { budgetMs: Infinity }));
       expect(second.checkpointEventsImported).toBe(1);
 
       const offsetAfterRetry = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKey) as {
@@ -2275,7 +2277,7 @@ describe("ingest-coordinator: ingestAntigravityWorkspace (§160-007)", () => {
   // §160-007 レビュー指摘: budget は経過時間でしか判定できず、readFileSync でファイル
   // 全文を読み終えるまで一度もチェックが走らない。1 ファイルが maxBytesPerFile を
   // 超える場合は読まずにスキップし、かつそれが観測可能であることを固定する。
-  test("maxBytesPerFile を超えるファイルは読まずにスキップし、summary カウンタと console.warn の両方で観測できる", () => {
+  test("maxBytesPerFile を超えるファイルは読まずにスキップし、summary カウンタと console.warn の両方で観測できる", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-workspace-toolarge-"));
     const originalWarn = console.warn;
     const warnMessages: string[] = [];
@@ -2297,7 +2299,7 @@ describe("ingest-coordinator: ingestAntigravityWorkspace (§160-007)", () => {
       const coordinator = new IngestCoordinator(deps) as unknown as AntigravityWorkspaceCoordinator;
 
       // maxBytesPerFile をファイルサイズより小さく設定 → readFileSync に到達せずスキップされるはず。
-      const skipped = coordinator.ingestAntigravityWorkspace(dir, { budgetMs: Infinity, maxBytesPerFile: 50 });
+      const skipped = (await coordinator.ingestAntigravityWorkspace(dir, { budgetMs: Infinity, maxBytesPerFile: 50 }));
       expect(skipped.filesSkippedTooLarge).toBe(1);
       expect(skipped.checkpointEventsImported).toBe(0);
       expect(skipped.eventsImported).toBe(0);
@@ -2315,7 +2317,7 @@ describe("ingest-coordinator: ingestAntigravityWorkspace (§160-007)", () => {
 
       // maxBytesPerFile を引き上げれば (運用者が設定を変える、または既定値のままの通常運用)、
       // このファイルは失われておらず取り込める — offset を進めなかったことの裏付け。
-      const recovered = coordinator.ingestAntigravityWorkspace(dir, { budgetMs: Infinity, maxBytesPerFile: Infinity });
+      const recovered = (await coordinator.ingestAntigravityWorkspace(dir, { budgetMs: Infinity, maxBytesPerFile: Infinity }));
       expect(recovered.checkpointEventsImported).toBe(1);
       expect(recovered.filesSkippedTooLarge).toBe(0);
 
@@ -2329,7 +2331,7 @@ describe("ingest-coordinator: ingestAntigravityWorkspace (§160-007)", () => {
     }
   });
 
-  test("budget 超過で打ち切ったファイル走査は次 tick で round-robin の続きから再開し、後続ファイルが永久にスキップされない", () => {
+  test("budget 超過で打ち切ったファイル走査は次 tick で round-robin の続きから再開し、後続ファイルが永久にスキップされない", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-antigravity-workspace-roundrobin-"));
     try {
       const filePathA = setupAntigravityCheckpointFile(dir, "checkpoint-a.md", "# Checkpoint A\n\nContent A.\n");
@@ -2353,7 +2355,7 @@ describe("ingest-coordinator: ingestAntigravityWorkspace (§160-007)", () => {
 
       // 進捗保証で 1 ファイル目 (checkpoint-a.md) は必ず処理されるが、2 ファイル目に
       // 着手する前に budget 超過で打ち切られるはず。
-      const firstTick = coordinator.ingestAntigravityWorkspace(dir, { budgetMs: 1 });
+      const firstTick = (await coordinator.ingestAntigravityWorkspace(dir, { budgetMs: 1 }));
       expect(firstTick.checkpointEventsImported).toBe(1);
 
       const sourceKeyA = `antigravity_file:${filePathA}`;
@@ -2363,7 +2365,7 @@ describe("ingest-coordinator: ingestAntigravityWorkspace (§160-007)", () => {
       expect(offsetA?.offset).toBe(statSync(filePathA).size);
       expect(offsetB).toBeNull();
 
-      const secondTick = coordinator.ingestAntigravityWorkspace(dir, { budgetMs: Infinity });
+      const secondTick = (await coordinator.ingestAntigravityWorkspace(dir, { budgetMs: Infinity }));
       expect(secondTick.checkpointEventsImported).toBe(1);
 
       const offsetBAfter = db.query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`).get(sourceKeyB) as {
@@ -2471,7 +2473,7 @@ describe("ingest-coordinator: Claude Code timer startup", () => {
     }
   });
 
-  test("delays Claude Code ingest startup until the configured interval", () => {
+  test("delays Claude Code ingest startup until the configured interval", async () => {
     const originalSetTimeout = globalThis.setTimeout;
     const originalClearTimeout = globalThis.clearTimeout;
     const originalSetInterval = globalThis.setInterval;
@@ -2498,7 +2500,7 @@ describe("ingest-coordinator: Claude Code timer startup", () => {
           claudeCodeIngestIntervalMs: 12345,
         }),
       });
-      const coordinator = new IngestCoordinator(deps);
+      const coordinator = new IngestCoordinator(deps, { readerProcess: true });
       const ingestSpy = mock(() => makeOkResponse());
       (coordinator as unknown as { ingestClaudeCodeSessions: () => ApiResponse }).ingestClaudeCodeSessions = ingestSpy;
 
@@ -2507,6 +2509,7 @@ describe("ingest-coordinator: Claude Code timer startup", () => {
       expect(timeoutDelays).toContain(12345);
       expect(timeoutDelays).not.toContain(0);
       expect(intervalDelays).toContain(12345);
+      await (coordinator as unknown as { ingestRun: Promise<void> }).ingestRun;
       expect(ingestSpy).toHaveBeenCalledTimes(1);
       coordinator.stopTimers();
     } finally {
@@ -2519,7 +2522,7 @@ describe("ingest-coordinator: Claude Code timer startup", () => {
 });
 
 describe("ingest-coordinator: Claude Code record rejection boundaries", () => {
-  test("a failed file retains the scan cursor and is retried before later files", () => {
+  test("a failed file retains the scan cursor and is retried before later files", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-claude-failed-cursor-"));
     const projectDir = join(dir, "projects", "-tmp-cursor-project");
     mkdirSync(projectDir, { recursive: true });
@@ -2536,7 +2539,7 @@ describe("ingest-coordinator: Claude Code record rejection boundaries", () => {
     };
     writeClaudeUser(failedPath, "ffffffff-ffff-4fff-8fff-ffffffffffff", "failed file must retry first");
     writeClaudeUser(laterPath, "11111111-1111-4111-8111-111111111111", "later file must remain later");
-    const sameMtime = new Date("2026-08-19T00:00:00.000Z");
+    const sameMtime = new Date();
     utimesSync(failedPath, sameMtime, sameMtime);
     utimesSync(laterPath, sameMtime, sameMtime);
 
@@ -2566,7 +2569,7 @@ describe("ingest-coordinator: Claude Code record rejection boundaries", () => {
     const previousBudget = process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
     process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = "1";
     try {
-      expect(coordinator.runPeriodicIngestTickLocal("claude_code")).toEqual({
+      expect((await coordinator.runPeriodicIngestTickLocal("claude_code"))).toEqual({
         ok: false,
         error_code: "sqlite_busy",
         retryable: true,
@@ -2576,11 +2579,11 @@ describe("ingest-coordinator: Claude Code record rejection boundaries", () => {
         "SELECT offset FROM mem_ingest_offsets WHERE source_key = ?",
       ).get(`claude_code:${failedPath}`)?.offset).toBe(0);
 
-      expect(coordinator.runPeriodicIngestTickLocal("claude_code")).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("claude_code"))).toEqual({ ok: true });
       expect(recorded).toEqual(["failed file must retry first"]);
-      expect(coordinator.runPeriodicIngestTickLocal("claude_code")).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("claude_code"))).toEqual({ ok: true });
       expect(recorded).toEqual(["failed file must retry first", "later file must remain later"]);
-      expect(coordinator.runPeriodicIngestTickLocal("claude_code")).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("claude_code"))).toEqual({ ok: true });
       expect(recorded).toHaveLength(2);
     } finally {
       if (previousBudget === undefined) delete process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
@@ -2634,7 +2637,7 @@ describe("ingest-coordinator: Claude Code record rejection boundaries", () => {
     const sourceKey = `claude_code:${filePath}`;
 
     try {
-      const failed = coordinator.runPeriodicIngestTickLocal("claude_code");
+      const failed = (await coordinator.runPeriodicIngestTickLocal("claude_code"));
       expect(failed).toEqual({
         ok: false,
         error_code: "dedupe_claims_rebuild_required",
@@ -2652,8 +2655,8 @@ describe("ingest-coordinator: Claude Code record rejection boundaries", () => {
       `).get(`claude_code_context:${sourceKey}`)).toBeNull();
 
       rebuildContentDedupeClaimsProjection(core.getRawDb());
-      expect(coordinator.runPeriodicIngestTickLocal("claude_code")).toEqual({ ok: true });
-      expect(coordinator.runPeriodicIngestTickLocal("claude_code")).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("claude_code"))).toEqual({ ok: true });
+      expect((await coordinator.runPeriodicIngestTickLocal("claude_code"))).toEqual({ ok: true });
       expect(core.getRawDb().query<{ count: number }, []>(`
         SELECT COUNT(*) AS count FROM mem_observations
         WHERE content = 'import after projection repair'
@@ -2668,7 +2671,7 @@ describe("ingest-coordinator: Claude Code record rejection boundaries", () => {
     }
   });
 
-  test("a non-readiness record rejection is a non-retryable typed source failure", () => {
+  test("a non-readiness record rejection is a non-retryable typed source failure", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-claude-source-reject-"));
     const projectDir = join(dir, "projects", "-tmp-rejected-project");
     mkdirSync(projectDir, { recursive: true });
@@ -2692,7 +2695,7 @@ describe("ingest-coordinator: Claude Code record rejection boundaries", () => {
       )),
     });
     try {
-      expect(new IngestCoordinator(deps).runPeriodicIngestTickLocal("claude_code")).toEqual({
+      expect((await new IngestCoordinator(deps).runPeriodicIngestTickLocal("claude_code"))).toEqual({
         ok: false,
         error_code: "dedupe_project_mismatch",
         retryable: false,
@@ -2707,7 +2710,7 @@ describe("ingest-coordinator: Claude Code record rejection boundaries", () => {
     }
   });
 
-  test("a transient structured record failure preserves its code and retry boundary", () => {
+  test("a transient structured record failure preserves its code and retry boundary", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-claude-source-retry-"));
     const filePath = join(
       dir,
@@ -2736,7 +2739,7 @@ describe("ingest-coordinator: Claude Code record rejection boundaries", () => {
       )),
     });
     try {
-      expect(new IngestCoordinator(deps).runPeriodicIngestTickLocal("claude_code")).toEqual({
+      expect((await new IngestCoordinator(deps).runPeriodicIngestTickLocal("claude_code"))).toEqual({
         ok: false,
         error_code: "embedding_temporarily_unavailable",
         retryable: true,
@@ -2830,5 +2833,84 @@ describe("ingest-coordinator: verifyClaudeMemImport", () => {
     const res = coordinator.verifyClaudeMemImport({ job_id: "" });
     expect(res.ok).toBe(false);
     expect(res.error).toBeTruthy();
+  });
+});
+
+describe("ingest-coordinator: asynchronous source writes", () => {
+  function makeSource(recordEventQueued: IngestCoordinatorDeps["recordEventQueued"]) {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-async-source-"));
+    const eventsPath = join(dir, "gemini-events.jsonl");
+    writeFileSync(eventsPath, JSON.stringify({
+      event_type: "user_prompt", session_id: "async-session", project: "async-project",
+      ts: new Date().toISOString(), payload: { content: "await this unique source body" },
+    }) + "\n");
+    const deps = makeDeps({
+      config: createTestConfig({ geminiIngestEnabled: true, geminiEventsPath: eventsPath, geminiBackfillHours: 24 }),
+      recordEventQueued,
+    });
+    const coordinator = new IngestCoordinator(deps);
+    const offset = () => deps.db.query<{ offset: number }, [string]>(
+      "SELECT offset FROM mem_ingest_offsets WHERE source_key = ?",
+    ).get(`gemini_events:${eventsPath}`)?.offset ?? 0;
+    return { dir, eventsPath, deps, coordinator, offset };
+  }
+
+  test("periodic and explicit runs serialize before reading offsets and wait for durable success", async () => {
+    let release!: () => void;
+    let started!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    const entered = new Promise<void>((resolve) => { started = resolve; });
+    const record = mock(async (_event: EventEnvelope, options?: { allowQueue: boolean }) => {
+      expect(options).toEqual({ allowQueue: false });
+      started();
+      await waiting;
+      return makeOkResponse();
+    });
+    const source = makeSource(record);
+    try {
+      const tick = source.coordinator.runPeriodicIngestTickLocal("gemini");
+      await entered;
+      const explicit = source.coordinator.ingestGeminiHistory();
+      await Promise.resolve();
+      expect(source.offset()).toBe(0);
+      expect(record).toHaveBeenCalledTimes(1);
+      release();
+      expect(await tick).toEqual({ ok: true });
+      expect((await explicit).ok).toBe(true);
+      expect(source.offset()).toBe(statSync(source.eventsPath).size);
+      expect(record).toHaveBeenCalledTimes(1);
+    } finally {
+      release();
+      source.deps.db.close();
+      rmSync(source.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("prime rejection and queue saturation retain the offset and retry the record", async () => {
+    for (const kind of ["embedding", "queue_full"] as const) {
+      let failed = true;
+      const source = makeSource(async () => {
+        if (failed) {
+          if (kind === "queue_full") return "queue_full";
+          const error = new Error("provider details must not enter the worker reply");
+          error.name = "EmbeddingReadinessError";
+          throw error;
+        }
+        return makeOkResponse();
+      });
+      try {
+        expect(await source.coordinator.runPeriodicIngestTickLocal("gemini")).toEqual({
+          ok: false, retryable: true,
+          error_code: kind === "embedding" ? "embedding_temporarily_unavailable" : "record_write_failed",
+        });
+        expect(source.offset()).toBe(0);
+        failed = false;
+        expect(await source.coordinator.runPeriodicIngestTickLocal("gemini")).toEqual({ ok: true });
+        expect(source.offset()).toBe(statSync(source.eventsPath).size);
+      } finally {
+        source.deps.db.close();
+        rmSync(source.dir, { recursive: true, force: true });
+      }
+    }
   });
 });

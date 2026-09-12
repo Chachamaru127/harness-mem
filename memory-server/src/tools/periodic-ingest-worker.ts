@@ -25,6 +25,7 @@ function writeReply(
 async function main(): Promise<void> {
   const core = new HarnessMemCore({ ...getConfig(), backgroundWorkersEnabled: false });
   let stopping = false;
+  let embeddingWarmed = false;
   const shutdown = async (signal: string) => {
     if (stopping) return;
     stopping = true;
@@ -42,6 +43,15 @@ async function main(): Promise<void> {
       try {
         const request = parseEnvelope(line);
         id = request.id;
+        if (!embeddingWarmed) {
+          try {
+            await core.warmEmbedding("harness mem ingest warmup", "passage");
+            embeddingWarmed = true;
+          } catch {
+            writeReply(id, { ok: false, error_code: "embedding_temporarily_unavailable", retryable: true });
+            continue;
+          }
+        }
         const testDelayMs = process.env.NODE_ENV === "test"
           ? Number(process.env.HARNESS_MEM_TEST_INGEST_WORKER_BLOCK_MS || 0)
           : 0;
@@ -56,7 +66,7 @@ async function main(): Promise<void> {
           `).get(iterations);
           testDb.close();
         }
-        writeReply(id, core.runPeriodicIngestTickLocal(request.source));
+        writeReply(id, await core.runPeriodicIngestTickLocal(request.source));
       } catch {
         writeReply(id, { ok: false, error_code: "worker_failure" });
       }

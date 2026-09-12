@@ -17,7 +17,12 @@
  */
 
 import { Database } from "bun:sqlite";
-import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, statSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, statSync, beginSourceFile, sourceRead, SourceReaderDeferredError,
+  readSourceWorkspaceFile as resolveWorkspaceRootFromWorkspaceFile,
+  readSourceWorkspaceJson as resolveWorkspaceRootFromWorkspaceJson } from "./source-reader-fs";
+import { SourceReaderPool, type SourceReaderOptions } from "./source-reader-client";
+import { isReaderMetaKey, isReaderOffsetKey, sanitizeReaderEvent, sanitizeReaderContext, type SourceReaderOperation } from "./source-reader-protocol";
 import { basename, dirname, join, resolve } from "node:path";
 import type { ApiResponse, Config, EventEnvelope, RecordEventErrorCode } from "./types.js";
 import {
@@ -46,8 +51,6 @@ import {
   nowIso,
   parseJsonSafe,
   resolveHomePath,
-  resolveWorkspaceRootFromWorkspaceFile,
-  resolveWorkspaceRootFromWorkspaceJson,
   toArraySafe,
   visibilityFilterSql,
 } from "./core-utils.js";
@@ -621,10 +624,22 @@ export class IngestCoordinator {
   private periodicRecordFailure: PeriodicIngestTickFailure | null = null;
   private collectingPeriodicRecordFailures = false;
 
-  private recordIngestEvent(
+  private ingestRun: Promise<void> = Promise.resolve();
+
+  private runIngestExclusive<T>(run: () => Promise<T>): Promise<T> {
+    const next = this.ingestRun.then(run);
+    this.ingestRun = next.then(() => undefined, () => undefined);
+    return next;
+  }
+
+  private recordIngestEvent(event: EventEnvelope, options: { allowQueue: boolean }): ApiResponse {
+    return this.deps.recordEvent(event, options);
+  }
+
+  private async recordSourceEvent(
     event: EventEnvelope,
     options: { allowQueue: boolean },
-  ): ApiResponse {
+  ): Promise<ApiResponse> {
     if (this.collectingPeriodicRecordFailures && this.periodicRecordFailure) {
       return {
         ok: false,
@@ -635,7 +650,22 @@ export class IngestCoordinator {
         retryable: this.periodicRecordFailure.retryable,
       };
     }
-    const result = this.deps.recordEvent(event, options);
+    let result: ApiResponse;
+    try {
+      const queued = await this.deps.recordEventQueued(event, options);
+      result = queued === "queue_full"
+        ? { ...makeErrorResponse(performance.now(), "record queue full", {}), error_code: "record_write_failed", retryable: true }
+        : queued;
+    } catch (error) {
+      recordSqliteError(error);
+      result = {
+        ...makeErrorResponse(performance.now(), "source record write failed", {}),
+        error_code: error instanceof Error && error.name === "EmbeddingReadinessError"
+          ? "embedding_temporarily_unavailable"
+          : sqliteErrorCodes(error).busyOrLocked ? "sqlite_busy" : "record_write_failed",
+        retryable: true,
+      };
+    }
     if (this.collectingPeriodicRecordFailures && !result.ok && this.periodicRecordFailure === null) {
       this.periodicRecordFailure = {
         ok: false,
@@ -647,6 +677,7 @@ export class IngestCoordinator {
   }
 
   private propagatePeriodicOperationalFailure(error: unknown): void {
+    if (error instanceof SourceReaderDeferredError) return;
     if (this.collectingPeriodicRecordFailures && this.periodicRecordFailure === null) throw error;
   }
 
@@ -679,11 +710,64 @@ export class IngestCoordinator {
   private readonly schedulerMetaAvailable: boolean;
   private codexLegacyFirst: boolean;
 
-  constructor(private readonly deps: IngestCoordinatorDeps) {
+  private readonly readerPool: SourceReaderPool | null;
+
+  constructor(private readonly deps: IngestCoordinatorDeps, readerOptions: SourceReaderOptions & { readerProcess?: boolean } = {}) {
+    let memoryIdentity: { device: string; inode: string } | undefined;
+    if (!readerOptions.readerProcess) {
+      const main = deps.db.query<{ name: string; file: string }, []>("PRAGMA database_list").all().find((row) => row.name === "main");
+      if (main?.file) {
+        const identity = statSync(main.file, { bigint: true });
+        memoryIdentity = { device: String(identity.dev), inode: String(identity.ino) };
+      }
+    }
+    this.readerPool = readerOptions.readerProcess ? null : new SourceReaderPool(deps.config, (operation) => this.handleReaderOperation(operation), readerOptions, memoryIdentity);
     this.schedulerMetaAvailable = Boolean(this.deps.db
       .query("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'mem_meta'")
       .get());
     this.codexLegacyFirst = this.readSchedulerInt("codex_legacy_first") === 1;
+  }
+
+  readerStatus() { return this.readerPool?.snapshot() ?? null; }
+
+  private async handleReaderOperation(operation: SourceReaderOperation): Promise<unknown> {
+    if (!operation || typeof operation !== "object") throw new Error("source_reader_operation_denied");
+    if (operation.op === "meta_available") return this.schedulerMetaAvailable ? { present: 1 } : null;
+    if (operation.op === "record") {
+      const event = operation.event;
+      if (!event || typeof event !== "object" || typeof event.project !== "string" || typeof event.session_id !== "string") throw new Error("source_reader_event_invalid");
+      const result = await this.recordSourceEvent(sanitizeReaderEvent(event), { allowQueue: false });
+      return { ok: result.ok, error_code: result.error_code, retryable: result.retryable, meta: { deduped: Boolean(result.meta?.deduped) } };
+    }
+    const key = operation.key;
+    if (typeof key !== "string" || Buffer.byteLength(key) > 16 * 1024) throw new Error("source_reader_key_invalid");
+    if (operation.op === "meta_get") {
+      if (!isReaderMetaKey(key)) throw new Error("source_reader_operation_denied");
+      const row = this.deps.db.query("SELECT value FROM mem_meta WHERE key = ?").get(key) as { value: string } | null;
+      if (row && (key.startsWith("codex_rollout_context:") || key.startsWith("claude_code_context:"))) {
+        return { value: JSON.stringify(sanitizeReaderContext(JSON.parse(row.value))) };
+      }
+      return row;
+    }
+    if (operation.op === "meta_set") {
+      if (!key.startsWith("ingest.scheduler.") || typeof operation.value !== "string" || !/^\d{1,16}$/.test(operation.value)) throw new Error("source_reader_operation_denied");
+      this.deps.db.query("INSERT INTO mem_meta(key,value,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at").run(key, operation.value, nowIso());
+      return true;
+    }
+    if (!isReaderOffsetKey(key)) throw new Error("source_reader_operation_denied");
+    if (operation.op === "offset_get") return this.deps.db.query("SELECT offset FROM mem_ingest_offsets WHERE source_key = ?").get(key);
+    if (operation.op !== "offset_commit" || !Number.isSafeInteger(operation.offset) || operation.offset < 0) throw new Error("source_reader_operation_denied");
+    if (operation.expected !== null && (!Number.isSafeInteger(operation.expected) || operation.expected < 0)) throw new Error("source_reader_operation_denied");
+    const context = operation.context;
+    if (context && (typeof context.value !== "string" || Buffer.byteLength(context.value) > 64 * 1024 || ![`codex_rollout_context:${key}`, `claude_code_context:${key}`].includes(context.key))) throw new Error("source_reader_context_invalid");
+    const contextValue = context ? JSON.stringify(sanitizeReaderContext(JSON.parse(context.value))) : null;
+    this.deps.db.transaction(() => {
+      const current = this.deps.db.query<{ offset: number }, [string]>("SELECT offset FROM mem_ingest_offsets WHERE source_key = ?").get(key)?.offset ?? null;
+      if (current !== operation.expected) throw new Error("source_reader_cursor_conflict");
+      if (context) this.deps.db.query("INSERT INTO mem_meta(key,value,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at").run(context.key, contextValue, nowIso());
+      this.updateIngestOffset(key, operation.offset);
+    })();
+    return true;
   }
 
   private schedulerMetaKey(key: string): string {
@@ -723,21 +807,18 @@ export class IngestCoordinator {
   }
 
   /**
-   * §159-003c: 同期 tick の所要時間を測り、閾値超過だけを記録する。
-   *
-   * これらの job は event loop 上で同期実行されるため、所要時間 = /health が
-   * 応答できない時間。既存の `try { ... } catch {}` と同じく例外は飲み込む
-   * (post-shutdown の DB エラーで daemon を落とさないため)。
+   * Measure total tick time, including asynchronous embedding preparation.
+   * Preserve fixed retryable errors across the worker protocol.
    */
-  private runTick(
+  private async runTick(
     label: string,
-    fn: () => PeriodicIngestTickFailure | void
-  ): PeriodicIngestTickResult {
+    fn: () => PeriodicIngestTickFailure | void | Promise<PeriodicIngestTickFailure | void>
+  ): Promise<PeriodicIngestTickResult> {
     const startedAt = Date.now();
     const telemetry = beginIngestTickTelemetry(label);
     let result: PeriodicIngestTickResult = { ok: true };
     try {
-      result = fn() ?? { ok: true };
+      result = (await fn()) ?? { ok: true };
     } catch (error) {
       recordSqliteError(error);
       if (error instanceof Error && error.message === "content dedupe claims require rebuild") {
@@ -755,34 +836,40 @@ export class IngestCoordinator {
       const elapsed = Date.now() - startedAt;
       endIngestTickTelemetry(telemetry, this.deps.db, elapsed, resolveSlowTickLogMs());
       if (elapsed >= resolveSlowTickLogMs()) {
-        console.warn(`[ingest] slow tick: ${label} blocked the event loop for ${elapsed}ms`);
+        console.warn(`[ingest] slow tick: ${label} took ${elapsed}ms`);
       }
     }
     return result;
   }
 
-  runPeriodicIngestTickLocal(source: PeriodicIngestSource): PeriodicIngestTickResult {
-    const jobs: Record<PeriodicIngestSource, () => PeriodicIngestTickFailure | void> = {
-      codex: () => this.ingestCodexHistoryTick(),
-      opencode: () => this.ingestOpencodeHistoryTick(),
-      cursor: () => this.ingestCursorHistoryTick(),
-      antigravity: () => this.ingestAntigravityHistoryTick(),
-      gemini: () => this.ingestGeminiHistoryTick(),
-      claude_code: () => this.ingestClaudeCodeSessions().failure,
-    };
-    this.periodicRecordFailure = null;
-    this.collectingPeriodicRecordFailures = true;
-    try {
-      return this.runTick(source, () => {
-        assertContentDedupeClaimsReady(this.deps.db);
-        const jobFailure = jobs[source]();
-        assertContentDedupeClaimsReady(this.deps.db);
-        return this.periodicRecordFailure ?? jobFailure;
-      });
-    } finally {
-      this.collectingPeriodicRecordFailures = false;
+  async runPeriodicIngestTickLocal(source: PeriodicIngestSource): Promise<PeriodicIngestTickResult> {
+    if (this.readerPool) return this.runTick(source, async () => {
+      const result = await this.readerPool!.run(source, "periodic") as PeriodicIngestTickResult;
+      return result.ok ? undefined : result;
+    });
+    return this.runIngestExclusive(async () => {
+      const jobs: Record<PeriodicIngestSource, () => Promise<PeriodicIngestTickFailure | void>> = {
+        codex: () => this.ingestCodexHistoryTick(),
+        opencode: () => this.ingestOpencodeHistoryTick(),
+        cursor: () => this.ingestCursorHistoryTick(),
+        antigravity: () => this.ingestAntigravityHistoryTick(),
+        gemini: () => this.ingestGeminiHistoryTick(),
+        claude_code: async () => (await this.ingestClaudeCodeSessions()).failure,
+      };
       this.periodicRecordFailure = null;
-    }
+      this.collectingPeriodicRecordFailures = true;
+      try {
+        return await this.runTick(source, async () => {
+          assertContentDedupeClaimsReady(this.deps.db);
+          const jobFailure = await jobs[source]();
+          assertContentDedupeClaimsReady(this.deps.db);
+          return this.periodicRecordFailure ?? jobFailure;
+        });
+      } finally {
+        this.collectingPeriodicRecordFailures = false;
+        this.periodicRecordFailure = null;
+      }
+    });
   }
 
   private schedulePeriodicIngest(source: PeriodicIngestSource): void {
@@ -899,6 +986,7 @@ export class IngestCoordinator {
 
   /** 全タイマーを停止する (shutdown 時に呼ぶ) */
   stopTimers(): void {
+    void this.readerPool?.stop();
     if (this.heartbeatTimer) { clearInterval(this.heartbeatTimer); this.heartbeatTimer = null; }
     if (this.ingestTimer) { clearInterval(this.ingestTimer); this.ingestTimer = null; }
     if (this.opencodeIngestTimer) { clearInterval(this.opencodeIngestTimer); this.opencodeIngestTimer = null; }
@@ -1159,13 +1247,14 @@ export class IngestCoordinator {
     const map = new Map<string, string>();
     const sessionFiles = listOpencodeSessionFiles(
       sessionsRoot,
-      (error) => this.propagatePeriodicOperationalFailure(error),
+      (error) => { if (error instanceof SourceReaderDeferredError) throw error; this.propagatePeriodicOperationalFailure(error); },
     );
     for (const filePath of sessionFiles) {
       let raw = "";
       try {
         raw = readFileSync(filePath, "utf8");
       } catch (error) {
+        if (error instanceof SourceReaderDeferredError) throw error;
         this.propagatePeriodicOperationalFailure(error);
         continue;
       }
@@ -1297,6 +1386,7 @@ export class IngestCoordinator {
         isDirectory: () => boolean;
       }>;
     } catch (error) {
+      if (error instanceof SourceReaderDeferredError) throw error;
       this.propagatePeriodicOperationalFailure(error);
       return [];
     }
@@ -1435,10 +1525,10 @@ export class IngestCoordinator {
   // Codex ingest メソッド（core から移動）
   // ---------------------------------------------------------------------------
 
-  private ingestCodexSessionsRollouts(options?: {
+  private async ingestCodexSessionsRollouts(options?: {
     budgetMs?: number;
     maxBytesPerFile?: number;
-  }): CodexIngestSummary {
+  }): Promise<CodexIngestSummary> {
     const summary = emptyCodexIngestSummary();
     // §159-003c: 本番実測でこの tick が 11.9〜15.0 秒 event loop を塞いでいた
     // (`[ingest] slow tick: codex ...`)。claude_code と同型の budget を入れる。
@@ -1482,6 +1572,7 @@ export class IngestCoordinator {
       }
       filesVisited += 1;
       summary.filesScanned += 1;
+      beginSourceFile(rolloutPath);
       const sourceKey = `codex_rollout:${resolve(rolloutPath)}`;
 
       let fileSize = 0;
@@ -1611,7 +1702,7 @@ export class IngestCoordinator {
                 break;
               }
               processed += 1;
-              const result = this.recordIngestEvent(
+              const result = await this.recordSourceEvent(
                 {
                   platform: "codex",
                   project: entry.project,
@@ -1682,7 +1773,7 @@ export class IngestCoordinator {
    * insert ループ」の形にそろえる (context 追跡や複数ファイルの round-robin は
    * legacy には無いので、その部分だけ削って移植する)。
    */
-  private ingestLegacyCodexHistoryFile(options?: { budgetMs?: number; maxBytesPerFile?: number }): CodexIngestSummary {
+  private async ingestLegacyCodexHistoryFile(options?: { budgetMs?: number; maxBytesPerFile?: number }): Promise<CodexIngestSummary> {
     const summary = emptyCodexIngestSummary();
     const historyPath = join(this.deps.config.codexProjectRoot, ".codex", "history.jsonl");
     if (!existsSync(historyPath)) {
@@ -1703,6 +1794,7 @@ export class IngestCoordinator {
       return summary;
     }
 
+    beginSourceFile(historyPath);
     const sourceKey = `codex_history:${resolve(this.deps.config.codexProjectRoot)}`;
     const offsetRow = this.deps.db
       .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
@@ -1788,7 +1880,7 @@ export class IngestCoordinator {
               break;
             }
             entryIndex += 1;
-            const result = this.recordIngestEvent(
+            const result = await this.recordSourceEvent(
               {
                 platform: "codex",
                 project,
@@ -1842,7 +1934,7 @@ export class IngestCoordinator {
    * scheduler が公開 API をそのまま呼ぶと budget が無効化される (実測で 12〜16 秒の
    * ブロックが残った) ため、経路を分けている。
    */
-  private ingestCodexHistoryTick(): void {
+  private async ingestCodexHistoryTick(): Promise<void> {
     if (!this.deps.config.codexHistoryEnabled) return;
     const startedAtMs = Date.now();
     const budgetMs = resolveIngestTickBudgetMs();
@@ -1853,58 +1945,64 @@ export class IngestCoordinator {
     this.codexLegacyFirst = !this.codexLegacyFirst;
     this.writeSchedulerInt("codex_legacy_first", this.codexLegacyFirst ? 1 : 0);
 
-    first(budgetMs);
+    await first(budgetMs);
     const remainingMs = Number.isFinite(budgetMs) ? budgetMs - (Date.now() - startedAtMs) : Infinity;
     // Both lanes share one deadline. Never start a second indivisible recordEvent
     // after the first lane has exhausted it; alternating first lane prevents starvation.
-    if (remainingMs > 0) second(remainingMs);
+    if (remainingMs > 0) await second(remainingMs);
   }
 
-  ingestCodexHistory(): ApiResponse {
-    const startedAt = performance.now();
-    const summary = emptyCodexIngestSummary();
+  async ingestCodexHistory(): Promise<ApiResponse> {
+    if (this.readerPool) {
+      const result = await this.readerPool.run("codex", "explicit") as ApiResponse;
+      return result.ok ? result : { ...makeErrorResponse(performance.now(), "source reference pending", {}), error_code: result.error_code ?? "record_write_failed", retryable: true };
+    }
+    return this.runIngestExclusive(async () => {
+      const startedAt = performance.now();
+      const summary = emptyCodexIngestSummary();
 
-    if (!this.deps.config.codexHistoryEnabled) {
+      if (!this.deps.config.codexHistoryEnabled) {
+        return makeResponse(
+          startedAt,
+          [
+            {
+              events_imported: 0,
+              files_scanned: 0,
+              files_skipped_backfill: 0,
+              sessions_events_imported: 0,
+              history_events_imported: 0,
+            },
+          ],
+          {},
+          { ingest_mode: "disabled" }
+        );
+      }
+
+      // 明示 API は完走させる (§159-003c/§160-005b の budget は定期実行のみに効かせる)
+      mergeCodexIngestSummary(
+        summary,
+        await this.ingestCodexSessionsRollouts({ budgetMs: Infinity, maxBytesPerFile: Infinity })
+      );
+      mergeCodexIngestSummary(
+        summary,
+        await this.ingestLegacyCodexHistoryFile({ budgetMs: Infinity, maxBytesPerFile: Infinity })
+      );
+
       return makeResponse(
         startedAt,
         [
           {
-            events_imported: 0,
-            files_scanned: 0,
-            files_skipped_backfill: 0,
-            sessions_events_imported: 0,
-            history_events_imported: 0,
+            events_imported: summary.eventsImported,
+            files_scanned: summary.filesScanned,
+            files_skipped_backfill: summary.filesSkippedBackfill,
+            sessions_events_imported: summary.sessionsEventsImported,
+            history_events_imported: summary.historyEventsImported,
           },
         ],
         {},
-        { ingest_mode: "disabled" }
+        { ingest_mode: "codex_hybrid_v1" }
       );
-    }
-
-    // 明示 API は完走させる (§159-003c/§160-005b の budget は定期実行のみに効かせる)
-    mergeCodexIngestSummary(
-      summary,
-      this.ingestCodexSessionsRollouts({ budgetMs: Infinity, maxBytesPerFile: Infinity })
-    );
-    mergeCodexIngestSummary(
-      summary,
-      this.ingestLegacyCodexHistoryFile({ budgetMs: Infinity, maxBytesPerFile: Infinity })
-    );
-
-    return makeResponse(
-      startedAt,
-      [
-        {
-          events_imported: summary.eventsImported,
-          files_scanned: summary.filesScanned,
-          files_skipped_backfill: summary.filesSkippedBackfill,
-          sessions_events_imported: summary.sessionsEventsImported,
-          history_events_imported: summary.historyEventsImported,
-        },
-      ],
-      {},
-      { ingest_mode: "codex_hybrid_v1" }
-    );
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -1920,7 +2018,7 @@ export class IngestCoordinator {
    * ファイル読みのようなスライスの概念は無く、`LIMIT` で 1 tick の読み込み行数を絞る
    * (MAX_OPENCODE_DB_ROWS_PER_INGEST のコメント参照)。
    */
-  private ingestOpencodeDbMessages(options?: { budgetMs?: number; maxRows?: number }): OpencodeIngestSummary {
+  private async ingestOpencodeDbMessages(options?: { budgetMs?: number; maxRows?: number }): Promise<OpencodeIngestSummary> {
     const summary = emptyOpencodeIngestSummary();
     const sourceDbPath = this.getOpencodeDbPath();
     if (!existsSync(sourceDbPath)) {
@@ -1935,6 +2033,7 @@ export class IngestCoordinator {
     const maxRows = Number.isFinite(rawMaxRows) && rawMaxRows > 0 ? Math.floor(rawMaxRows) : -1;
 
     summary.filesScanned += 1;
+    beginSourceFile(sourceDbPath);
     const sourceKey = `opencode_db_message:${resolve(sourceDbPath)}`;
     const cutoffMs = Date.now() - Math.max(0, this.getOpencodeBackfillHours()) * 60 * 60 * 1000;
     const offsetRow = this.deps.db
@@ -1945,7 +2044,15 @@ export class IngestCoordinator {
 
     let sourceDb: Database | null = null;
     try {
-      sourceDb = new Database(sourceDbPath, { readonly: true, create: false });
+      const opened = sourceRead(sourceDbPath, "sqlite_open", () => new Database(sourceDbPath, { readonly: true, create: false }));
+      sourceDb = new Proxy(opened, { get(target, property) {
+        if (property === "query") return (sql: string) => new Proxy(sourceRead(sourceDbPath, "sqlite_prepare", () => target.query(sql)), { get(statement, method) {
+          const value = Reflect.get(statement, method);
+          return typeof value === "function" ? (...args: unknown[]) => sourceRead(sourceDbPath, "sqlite_read", () => value.apply(statement, args)) : value;
+        } });
+        const value = Reflect.get(target, property);
+        return typeof value === "function" ? (...args: unknown[]) => sourceRead(sourceDbPath, "sqlite_close", () => value.apply(target, args)) : value;
+      } });
 
       const maxRow =
         (sourceDb.query(`SELECT COALESCE(MAX(rowid), 0) AS max_rowid FROM message`).get() as { max_rowid?: number } | null)
@@ -2047,7 +2154,7 @@ export class IngestCoordinator {
           continue;
         }
 
-        const result = this.recordIngestEvent(
+        const result = await this.recordSourceEvent(
           {
             platform: "opencode",
             project: parsed.project,
@@ -2106,7 +2213,7 @@ export class IngestCoordinator {
    * ingestLegacyCodexHistoryFile (§160-005b) と同型の「statSync 基準のスライス読み +
    * budget 付き entry ループ」を内側に組み合わせる。
    */
-  private ingestOpencodeStorageMessages(options?: { budgetMs?: number; maxBytesPerFile?: number }): OpencodeIngestSummary {
+  private async ingestOpencodeStorageMessages(options?: { budgetMs?: number; maxBytesPerFile?: number }): Promise<OpencodeIngestSummary> {
     const summary = emptyOpencodeIngestSummary();
     const storageRoot = this.getOpencodeStorageRoot();
     const messageRoot = join(storageRoot, "message");
@@ -2145,6 +2252,7 @@ export class IngestCoordinator {
       }
       filesVisited += 1;
       summary.filesScanned += 1;
+      beginSourceFile(messagePath);
       const sourceKey = `opencode_rollout:${resolve(messagePath)}`;
 
       let fileSize = 0;
@@ -2262,7 +2370,7 @@ export class IngestCoordinator {
                 break;
               }
               entryIndex += 1;
-              const result = this.recordIngestEvent(
+              const result = await this.recordSourceEvent(
                 {
                   platform: "opencode",
                   project: entry.project,
@@ -2336,58 +2444,64 @@ export class IngestCoordinator {
    * budget を効かせる。ingestCodexHistoryTick (§159-003c) と同じ理由で経路を分ける:
    * scheduler が公開 API をそのまま呼ぶと budget が無効化される。
    */
-  private ingestOpencodeHistoryTick(): void {
+  private async ingestOpencodeHistoryTick(): Promise<void> {
     if (!this.isOpencodeIngestEnabled()) return;
-    this.ingestOpencodeDbMessages();
-    this.ingestOpencodeStorageMessages();
+    await this.ingestOpencodeDbMessages();
+    await this.ingestOpencodeStorageMessages();
   }
 
-  ingestOpencodeHistory(): ApiResponse {
-    const startedAt = performance.now();
-    if (!this.isOpencodeIngestEnabled()) {
+  async ingestOpencodeHistory(): Promise<ApiResponse> {
+    if (this.readerPool) {
+      const result = await this.readerPool.run("opencode", "explicit") as ApiResponse;
+      return result.ok ? result : { ...makeErrorResponse(performance.now(), "source reference pending", {}), error_code: result.error_code ?? "record_write_failed", retryable: true };
+    }
+    return this.runIngestExclusive(async () => {
+      const startedAt = performance.now();
+      if (!this.isOpencodeIngestEnabled()) {
+        return makeResponse(
+          startedAt,
+          [
+            {
+              events_imported: 0,
+              files_scanned: 0,
+              files_skipped_backfill: 0,
+              files_skipped_too_large: 0,
+              db_events_imported: 0,
+              storage_events_imported: 0,
+            },
+          ],
+          {},
+          { ingest_mode: "disabled" }
+        );
+      }
+
+      const summary = emptyOpencodeIngestSummary();
+      // 明示 API は完走させる (§159-003c/§160-007 の budget は定期実行のみに効かせる)
+      mergeOpencodeIngestSummary(
+        summary,
+        await this.ingestOpencodeDbMessages({ budgetMs: Infinity, maxRows: Infinity })
+      );
+      mergeOpencodeIngestSummary(
+        summary,
+        await this.ingestOpencodeStorageMessages({ budgetMs: Infinity, maxBytesPerFile: Infinity })
+      );
+
       return makeResponse(
         startedAt,
         [
           {
-            events_imported: 0,
-            files_scanned: 0,
-            files_skipped_backfill: 0,
-            files_skipped_too_large: 0,
-            db_events_imported: 0,
-            storage_events_imported: 0,
+            events_imported: summary.eventsImported,
+            files_scanned: summary.filesScanned,
+            files_skipped_backfill: summary.filesSkippedBackfill,
+            files_skipped_too_large: summary.filesSkippedTooLarge,
+            db_events_imported: summary.dbEventsImported,
+            storage_events_imported: summary.storageEventsImported,
           },
         ],
         {},
-        { ingest_mode: "disabled" }
+        { ingest_mode: "opencode_hybrid_v1" }
       );
-    }
-
-    const summary = emptyOpencodeIngestSummary();
-    // 明示 API は完走させる (§159-003c/§160-007 の budget は定期実行のみに効かせる)
-    mergeOpencodeIngestSummary(
-      summary,
-      this.ingestOpencodeDbMessages({ budgetMs: Infinity, maxRows: Infinity })
-    );
-    mergeOpencodeIngestSummary(
-      summary,
-      this.ingestOpencodeStorageMessages({ budgetMs: Infinity, maxBytesPerFile: Infinity })
-    );
-
-    return makeResponse(
-      startedAt,
-      [
-        {
-          events_imported: summary.eventsImported,
-          files_scanned: summary.filesScanned,
-          files_skipped_backfill: summary.filesSkippedBackfill,
-          files_skipped_too_large: summary.filesSkippedTooLarge,
-          db_events_imported: summary.dbEventsImported,
-          storage_events_imported: summary.storageEventsImported,
-        },
-      ],
-      {},
-      { ingest_mode: "opencode_hybrid_v1" }
-    );
+    });
   }
 
   async ingestHermesState(request: HermesStateIngestRequest): Promise<ApiResponse> {
@@ -2426,11 +2540,11 @@ export class IngestCoordinator {
   // Cursor ingest メソッド（core から移動）
   // ---------------------------------------------------------------------------
 
-  private ingestCursorHooksEvents(options?: {
+  private async ingestCursorHooksEvents(options?: {
     budgetMs?: number;
     maxBytesPerFile?: number;
     maxEvents?: number;
-  }): CursorIngestSummary {
+  }): Promise<CursorIngestSummary> {
     const summary = emptyCursorIngestSummary();
     const eventsPath = this.getCursorEventsPath();
     if (!existsSync(eventsPath)) {
@@ -2438,6 +2552,7 @@ export class IngestCoordinator {
     }
 
     summary.filesScanned += 1;
+    beginSourceFile(eventsPath);
     const sourceKey = `cursor_hooks:${resolve(eventsPath)}`;
     const cutoffMs = Date.now() - Math.max(0, this.getCursorBackfillHours()) * 60 * 60 * 1000;
 
@@ -2553,7 +2668,7 @@ export class IngestCoordinator {
               sliceDeferred = true;
               break;
             }
-            const result = this.recordIngestEvent(
+            const result = await this.recordSourceEvent(
               {
                 platform: "cursor",
                 project: entry.project,
@@ -2619,60 +2734,66 @@ export class IngestCoordinator {
    * この経路は §159 で budget を入れた時点から明示 API と融合したままだった
    * (0.29.4 で出荷済み)。antigravity / gemini と同じ欠陥で、同じ形で直す。
    */
-  private ingestCursorHistoryTick(): void {
+  private async ingestCursorHistoryTick(): Promise<void> {
     if (!this.isCursorIngestEnabled()) return;
-    this.ingestCursorHooksEvents();
+    await this.ingestCursorHooksEvents();
   }
 
-  ingestCursorHistory(): ApiResponse {
-    const startedAt = performance.now();
-    if (!this.isCursorIngestEnabled()) {
+  async ingestCursorHistory(): Promise<ApiResponse> {
+    if (this.readerPool) {
+      const result = await this.readerPool.run("cursor", "explicit") as ApiResponse;
+      return result.ok ? result : { ...makeErrorResponse(performance.now(), "source reference pending", {}), error_code: result.error_code ?? "record_write_failed", retryable: true };
+    }
+    return this.runIngestExclusive(async () => {
+      const startedAt = performance.now();
+      if (!this.isCursorIngestEnabled()) {
+        return makeResponse(
+          startedAt,
+          [
+            {
+              events_imported: 0,
+              files_scanned: 0,
+              files_skipped_backfill: 0,
+              hooks_events_imported: 0,
+              hooks_events_failed: 0,
+              hooks_events_deferred: 0,
+            },
+          ],
+          {},
+          { ingest_mode: "disabled" }
+        );
+      }
+
+      const summary = emptyCursorIngestSummary();
+      // 明示 API は完走させる (Spec.md の explicit ingest exemption)。
+      mergeCursorIngestSummary(
+        summary,
+        await this.ingestCursorHooksEvents({ budgetMs: Infinity, maxBytesPerFile: Infinity, maxEvents: Infinity })
+      );
       return makeResponse(
         startedAt,
         [
           {
-            events_imported: 0,
-            files_scanned: 0,
-            files_skipped_backfill: 0,
-            hooks_events_imported: 0,
-            hooks_events_failed: 0,
-            hooks_events_deferred: 0,
+            events_imported: summary.eventsImported,
+            files_scanned: summary.filesScanned,
+            files_skipped_backfill: summary.filesSkippedBackfill,
+            hooks_events_imported: summary.hooksEventsImported,
+            hooks_events_failed: summary.eventsFailed,
+            hooks_events_deferred: summary.eventsDeferred,
+            retry_offset: summary.retryOffset,
+            last_record_error: summary.lastRecordError,
           },
         ],
         {},
-        { ingest_mode: "disabled" }
-      );
-    }
-
-    const summary = emptyCursorIngestSummary();
-    // 明示 API は完走させる (Spec.md の explicit ingest exemption)。
-    mergeCursorIngestSummary(
-      summary,
-      this.ingestCursorHooksEvents({ budgetMs: Infinity, maxBytesPerFile: Infinity, maxEvents: Infinity })
-    );
-    return makeResponse(
-      startedAt,
-      [
         {
-          events_imported: summary.eventsImported,
-          files_scanned: summary.filesScanned,
-          files_skipped_backfill: summary.filesSkippedBackfill,
-          hooks_events_imported: summary.hooksEventsImported,
+          ingest_mode: "cursor_spool_v1",
           hooks_events_failed: summary.eventsFailed,
           hooks_events_deferred: summary.eventsDeferred,
           retry_offset: summary.retryOffset,
           last_record_error: summary.lastRecordError,
-        },
-      ],
-      {},
-      {
-        ingest_mode: "cursor_spool_v1",
-        hooks_events_failed: summary.eventsFailed,
-        hooks_events_deferred: summary.eventsDeferred,
-        retry_offset: summary.retryOffset,
-        last_record_error: summary.lastRecordError,
-      }
-    );
+        }
+      );
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -2694,10 +2815,10 @@ export class IngestCoordinator {
    * readFileSync の前に maxBytesPerFile (既定 512KB, resolveIngestMaxBytesPerFile())
    * でサイズ判定し、超えるファイルは読まずにスキップする。
    */
-  private ingestAntigravityWorkspace(
+  private async ingestAntigravityWorkspace(
     rootDir: string,
     options?: { budgetMs?: number; maxBytesPerFile?: number }
-  ): AntigravityIngestSummary {
+  ): Promise<AntigravityIngestSummary> {
     const summary = emptyAntigravityIngestSummary();
     if (!existsSync(rootDir)) {
       return summary;
@@ -2745,6 +2866,7 @@ export class IngestCoordinator {
       }
       filesVisited += 1;
       summary.filesScanned += 1;
+      beginSourceFile(filePath);
       const sourceKey = `antigravity_file:${resolve(filePath)}`;
 
       let fileSize = 0;
@@ -2823,7 +2945,7 @@ export class IngestCoordinator {
             ? ["antigravity_files_ingest", "checkpoint_file"]
             : ["antigravity_files_ingest", "codex_response_file"];
 
-        const result = this.recordIngestEvent(
+        const result = await this.recordSourceEvent(
           {
             platform: "antigravity",
             project: parsed.project,
@@ -2872,10 +2994,10 @@ export class IngestCoordinator {
    * ループ。gemini/codex と異なり複数ファイルに跨る文脈 (context) は無いので、その
    * 部分だけ削って移植する。
    */
-  private ingestAntigravityLogEvents(options?: {
+  private async ingestAntigravityLogEvents(options?: {
     budgetMs?: number;
     maxBytesPerFile?: number;
-  }): AntigravityIngestSummary {
+  }): Promise<AntigravityIngestSummary> {
     const summary = emptyAntigravityIngestSummary();
     const logsRoot = this.getAntigravityLogsRoot();
     if (!existsSync(logsRoot)) {
@@ -2910,6 +3032,7 @@ export class IngestCoordinator {
       filesVisited += 1;
       summary.filesScanned += 1;
       summary.logFilesScanned += 1;
+      beginSourceFile(filePath);
       const sourceKey = `antigravity_log:${resolve(filePath)}`;
 
       let fileSize = 0;
@@ -3019,7 +3142,7 @@ export class IngestCoordinator {
                 break;
               }
               entryIndex += 1;
-              const result = this.recordIngestEvent(
+              const result = await this.recordSourceEvent(
                 {
                   platform: "antigravity",
                   project: entry.project,
@@ -3098,7 +3221,7 @@ export class IngestCoordinator {
    * 独立した budget を与えると 1 tick の最悪ブロックが root 数に比例して伸びる。
    * ここでは tick 全体で 1 つの budget を共有し、各 root には残り時間だけを渡す。
    */
-  private ingestAntigravityHistoryTick(): void {
+  private async ingestAntigravityHistoryTick(): Promise<void> {
     if (!this.isAntigravityIngestEnabled()) return;
 
     const startedAtMs = Date.now();
@@ -3118,7 +3241,7 @@ export class IngestCoordinator {
       // root が 1 つも進まない tick が続きうる。
       if (rootsVisited > 0 && remaining() <= 0) break;
       rootsVisited += 1;
-      this.ingestAntigravityWorkspace(roots[(startIndex + step) % roots.length] as string, {
+      await this.ingestAntigravityWorkspace(roots[(startIndex + step) % roots.length] as string, {
         budgetMs: remaining(),
       });
     }
@@ -3128,7 +3251,7 @@ export class IngestCoordinator {
     // log 経路は budget を使い切った状態で呼ばれうるが、内部に「1 ファイル目は
     // 必ず見る」進捗保証と round-robin cursor があるため、tick あたり最低 1 件は
     // 進む。遅くはなるが飢餓にはならない。
-    this.ingestAntigravityLogEvents({ budgetMs: remaining() });
+    await this.ingestAntigravityLogEvents({ budgetMs: remaining() });
   }
 
   /**
@@ -3136,66 +3259,72 @@ export class IngestCoordinator {
    * `ingestAntigravityHistoryTick` と同じ — `ingestGeminiHistory()` は
    * `/v1/ingest/gemini-history` の明示 API なので budget で打ち切ってはならない。
    */
-  private ingestGeminiHistoryTick(): void {
+  private async ingestGeminiHistoryTick(): Promise<void> {
     if (!this.isGeminiIngestEnabled()) return;
-    this.ingestGeminiEvents();
+    await this.ingestGeminiEvents();
   }
 
-  ingestAntigravityHistory(): ApiResponse {
-    const startedAt = performance.now();
-    if (!this.isAntigravityIngestEnabled()) {
+  async ingestAntigravityHistory(): Promise<ApiResponse> {
+    if (this.readerPool) {
+      const result = await this.readerPool.run("antigravity", "explicit") as ApiResponse;
+      return result.ok ? result : { ...makeErrorResponse(performance.now(), "source reference pending", {}), error_code: result.error_code ?? "record_write_failed", retryable: true };
+    }
+    return this.runIngestExclusive(async () => {
+      const startedAt = performance.now();
+      if (!this.isAntigravityIngestEnabled()) {
+        return makeResponse(
+          startedAt,
+          [
+            {
+              events_imported: 0,
+              files_scanned: 0,
+              files_skipped_backfill: 0,
+              files_skipped_too_large: 0,
+              roots_scanned: 0,
+              checkpoint_events_imported: 0,
+              tool_events_imported: 0,
+              log_events_imported: 0,
+              log_files_scanned: 0,
+            },
+          ],
+          {},
+          { ingest_mode: "disabled" }
+        );
+      }
+
+      // 明示 API は完走させる (Spec.md「## Periodic Ingest Budget」の explicit ingest
+      // exemption)。timer 経路は ingestAntigravityHistoryTick が担当する。
+      const unbounded = { budgetMs: Infinity, maxBytesPerFile: Infinity };
+      const roots = this.getAntigravityWorkspaceRoots();
+      const summary = emptyAntigravityIngestSummary();
+      for (const root of roots) {
+        mergeAntigravityIngestSummary(summary, await this.ingestAntigravityWorkspace(root, unbounded));
+      }
+      mergeAntigravityIngestSummary(summary, await this.ingestAntigravityLogEvents(unbounded));
+
       return makeResponse(
         startedAt,
         [
           {
-            events_imported: 0,
-            files_scanned: 0,
-            files_skipped_backfill: 0,
-            files_skipped_too_large: 0,
-            roots_scanned: 0,
-            checkpoint_events_imported: 0,
-            tool_events_imported: 0,
-            log_events_imported: 0,
-            log_files_scanned: 0,
+            events_imported: summary.eventsImported,
+            files_scanned: summary.filesScanned,
+            files_skipped_backfill: summary.filesSkippedBackfill,
+            files_skipped_too_large: summary.filesSkippedTooLarge,
+            roots_scanned: summary.rootsScanned,
+            checkpoint_events_imported: summary.checkpointEventsImported,
+            tool_events_imported: summary.toolEventsImported,
+            log_events_imported: summary.logEventsImported,
+            log_files_scanned: summary.logFilesScanned,
           },
         ],
         {},
-        { ingest_mode: "disabled" }
-      );
-    }
-
-    // 明示 API は完走させる (Spec.md「## Periodic Ingest Budget」の explicit ingest
-    // exemption)。timer 経路は ingestAntigravityHistoryTick が担当する。
-    const unbounded = { budgetMs: Infinity, maxBytesPerFile: Infinity };
-    const roots = this.getAntigravityWorkspaceRoots();
-    const summary = emptyAntigravityIngestSummary();
-    for (const root of roots) {
-      mergeAntigravityIngestSummary(summary, this.ingestAntigravityWorkspace(root, unbounded));
-    }
-    mergeAntigravityIngestSummary(summary, this.ingestAntigravityLogEvents(unbounded));
-
-    return makeResponse(
-      startedAt,
-      [
         {
-          events_imported: summary.eventsImported,
-          files_scanned: summary.filesScanned,
-          files_skipped_backfill: summary.filesSkippedBackfill,
-          files_skipped_too_large: summary.filesSkippedTooLarge,
-          roots_scanned: summary.rootsScanned,
-          checkpoint_events_imported: summary.checkpointEventsImported,
-          tool_events_imported: summary.toolEventsImported,
-          log_events_imported: summary.logEventsImported,
-          log_files_scanned: summary.logFilesScanned,
-        },
-      ],
-      {},
-      {
-        ingest_mode: "antigravity_hybrid_v1",
-        workspace_roots: roots,
-        logs_root: this.getAntigravityLogsRoot(),
-      }
-    );
+          ingest_mode: "antigravity_hybrid_v1",
+          workspace_roots: roots,
+          logs_root: this.getAntigravityLogsRoot(),
+        }
+      );
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -3212,7 +3341,7 @@ export class IngestCoordinator {
    * バイト走査 (`buffer.indexOf(0x0a, cursor)`) で `lineOffset` を `.trim()` 前に
    * 確定済みなので、パーサ側の変更は不要。
    */
-  private ingestGeminiEvents(options?: { budgetMs?: number; maxBytesPerFile?: number }): GeminiIngestSummary {
+  private async ingestGeminiEvents(options?: { budgetMs?: number; maxBytesPerFile?: number }): Promise<GeminiIngestSummary> {
     const summary = emptyGeminiIngestSummary();
     const eventsPath = this.getGeminiEventsPath();
     if (!existsSync(eventsPath)) {
@@ -3220,6 +3349,7 @@ export class IngestCoordinator {
     }
 
     summary.filesScanned += 1;
+    beginSourceFile(eventsPath);
     const sourceKey = `gemini_events:${resolve(eventsPath)}`;
     const cutoffMs = Date.now() - Math.max(0, this.getGeminiBackfillHours()) * 60 * 60 * 1000;
 
@@ -3326,7 +3456,7 @@ export class IngestCoordinator {
               break;
             }
             entryIndex += 1;
-            const result = this.recordIngestEvent(
+            const result = await this.recordSourceEvent(
               {
                 platform: "gemini",
                 project: entry.project,
@@ -3378,38 +3508,44 @@ export class IngestCoordinator {
     return summary;
   }
 
-  ingestGeminiHistory(): ApiResponse {
-    const startedAt = performance.now();
-    if (!this.isGeminiIngestEnabled()) {
+  async ingestGeminiHistory(): Promise<ApiResponse> {
+    if (this.readerPool) {
+      const result = await this.readerPool.run("gemini", "explicit") as ApiResponse;
+      return result.ok ? result : { ...makeErrorResponse(performance.now(), "source reference pending", {}), error_code: result.error_code ?? "record_write_failed", retryable: true };
+    }
+    return this.runIngestExclusive(async () => {
+      const startedAt = performance.now();
+      if (!this.isGeminiIngestEnabled()) {
+        return makeResponse(
+          startedAt,
+          [
+            {
+              events_imported: 0,
+              files_scanned: 0,
+              files_skipped_backfill: 0,
+            },
+          ],
+          {},
+          { ingest_mode: "disabled" }
+        );
+      }
+
+      // 明示 API は完走させる (Spec.md の explicit ingest exemption)。
+      // timer 経路は ingestGeminiHistoryTick が担当する。
+      const summary = await this.ingestGeminiEvents({ budgetMs: Infinity, maxBytesPerFile: Infinity });
       return makeResponse(
         startedAt,
         [
           {
-            events_imported: 0,
-            files_scanned: 0,
-            files_skipped_backfill: 0,
+            events_imported: summary.eventsImported,
+            files_scanned: summary.filesScanned,
+            files_skipped_backfill: summary.filesSkippedBackfill,
           },
         ],
         {},
-        { ingest_mode: "disabled" }
+        { ingest_mode: "gemini_spool_v1" }
       );
-    }
-
-    // 明示 API は完走させる (Spec.md の explicit ingest exemption)。
-    // timer 経路は ingestGeminiHistoryTick が担当する。
-    const summary = this.ingestGeminiEvents({ budgetMs: Infinity, maxBytesPerFile: Infinity });
-    return makeResponse(
-      startedAt,
-      [
-        {
-          events_imported: summary.eventsImported,
-          files_scanned: summary.filesScanned,
-          files_skipped_backfill: summary.filesSkippedBackfill,
-        },
-      ],
-      {},
-      { ingest_mode: "gemini_spool_v1" }
-    );
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -3538,17 +3674,17 @@ export class IngestCoordinator {
     this.claudeCodeContextCache.set(sourceKey, normalized);
   }
 
-  private ingestClaudeCodeSessions(options?: {
+  private async ingestClaudeCodeSessions(options?: {
     maxFiles?: number;
     maxBytesPerFile?: number;
     replayFromStart?: boolean;
     budgetMs?: number;
-  }): {
+  }): Promise<{
     eventsImported: number;
     filesScanned: number;
     filesSkippedBackfill: number;
     failure?: PeriodicIngestTickFailure;
-  } {
+  }> {
     const summary: {
       eventsImported: number;
       filesScanned: number;
@@ -3597,6 +3733,7 @@ export class IngestCoordinator {
       }
       filesVisited += 1;
       summary.filesScanned += 1;
+      beginSourceFile(filePath);
       const sourceKey = `claude_code:${resolve(filePath)}`;
 
       let fileSize = 0;
@@ -3726,7 +3863,7 @@ export class IngestCoordinator {
                 break;
               }
               entryIndex += 1;
-              const result = this.recordIngestEvent(
+              const result = await this.recordSourceEvent(
                 {
                   platform: "claude",
                   project: entry.project,
@@ -3817,43 +3954,49 @@ export class IngestCoordinator {
     return summary;
   }
 
-  ingestClaudeCodeHistory(): ApiResponse {
-    const startedAt = performance.now();
-    if (this.deps.config.claudeCodeIngestEnabled === false) {
+  async ingestClaudeCodeHistory(): Promise<ApiResponse> {
+    if (this.readerPool) {
+      const result = await this.readerPool.run("claude_code", "explicit") as ApiResponse;
+      return result.ok ? result : { ...makeErrorResponse(performance.now(), "source reference pending", {}), error_code: result.error_code ?? "record_write_failed", retryable: true };
+    }
+    return this.runIngestExclusive(async () => {
+      const startedAt = performance.now();
+      if (this.deps.config.claudeCodeIngestEnabled === false) {
+        return makeResponse(
+          startedAt,
+          [{ events_imported: 0, files_scanned: 0, files_skipped_backfill: 0 }],
+          {},
+          { ingest_mode: "disabled" }
+        );
+      }
+
+      const summary = await this.ingestClaudeCodeSessions({
+        maxFiles: Infinity,
+        maxBytesPerFile: Infinity,
+        replayFromStart: true,
+        // 明示 API は完走させる (§159-003b の tick budget は定期実行のみに効かせる)
+        budgetMs: Infinity,
+      });
+      if (summary.failure) {
+        return makeErrorResponse(
+          startedAt,
+          summary.failure.error_code,
+          { ingest_mode: "claude_code_v1", retryable: summary.failure.retryable }
+        );
+      }
       return makeResponse(
         startedAt,
-        [{ events_imported: 0, files_scanned: 0, files_skipped_backfill: 0 }],
+        [
+          {
+            events_imported: summary.eventsImported,
+            files_scanned: summary.filesScanned,
+            files_skipped_backfill: summary.filesSkippedBackfill,
+          },
+        ],
         {},
-        { ingest_mode: "disabled" }
+        { ingest_mode: "claude_code_v1" }
       );
-    }
-
-    const summary = this.ingestClaudeCodeSessions({
-      maxFiles: Infinity,
-      maxBytesPerFile: Infinity,
-      replayFromStart: true,
-      // 明示 API は完走させる (§159-003b の tick budget は定期実行のみに効かせる)
-      budgetMs: Infinity,
     });
-    if (summary.failure) {
-      return makeErrorResponse(
-        startedAt,
-        summary.failure.error_code,
-        { ingest_mode: "claude_code_v1", retryable: summary.failure.retryable }
-      );
-    }
-    return makeResponse(
-      startedAt,
-      [
-        {
-          events_imported: summary.eventsImported,
-          files_scanned: summary.filesScanned,
-          files_skipped_backfill: summary.filesSkippedBackfill,
-        },
-      ],
-      {},
-      { ingest_mode: "claude_code_v1" }
-    );
   }
 
   // ---------------------------------------------------------------------------

@@ -43,8 +43,8 @@ if (process.env.HARNESS_MEM_EMBEDDING_EAGER === "1") {
   const eagerStartedAt = Date.now();
   console.error(`[harness-memd] eager embedding warm-up start (HARNESS_MEM_EMBEDDING_EAGER=1)`);
   try {
-    await core.primeEmbedding("__eager_warmup__", "passage");
-    await core.primeEmbedding("__eager_warmup__", "query");
+    await core.warmEmbedding("__eager_warmup__", "passage");
+    await core.warmEmbedding("__eager_warmup__", "query");
     const elapsed = Date.now() - eagerStartedAt;
     console.error(`[harness-memd] eager embedding warm-up complete in ${elapsed}ms`);
   } catch (err) {

@@ -43,6 +43,7 @@ export interface FeedItem {
 export interface ProjectsStatsItem {
   project: string;
   canonical_project?: string;
+  display_name?: string;
   observations: number;
   sessions: number;
   updated_at: string | null;
@@ -88,7 +89,7 @@ export interface SessionThreadItem {
 export interface SearchFacetsItem {
   query: string | null;
   total_candidates: number;
-  projects: Array<{ value: string; count: number }>;
+  projects: Array<{ value: string; count: number; display_name?: string }>;
   event_types: Array<{ value: string; count: number }>;
   tags: Array<{ value: string; count: number }>;
   time_buckets: Array<{ value: string; count: number }>;

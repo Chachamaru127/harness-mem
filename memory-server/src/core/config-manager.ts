@@ -1395,17 +1395,6 @@ export class ConfigManager {
     const platformVisibility = this.deps.isAntigravityIngestEnabled()
       ? ""
       : ` AND o.platform <> 'antigravity' `;
-    const canonicalByProject = new Map<string, string>();
-    const canonicalizeProjectCached = (project: string): string => {
-      const cached = canonicalByProject.get(project);
-      if (cached !== undefined) {
-        return cached;
-      }
-      const canonical = this.deps.canonicalizeProject(project);
-      canonicalByProject.set(project, canonical);
-      return canonical;
-    };
-
     // S81-B02 (Codex round 9 P2): soft-archive visibility gated on its
     // own dedicated flag so asking for private notes does not also
     // resurrect forgotten rows. Admin tooling can still opt in.
@@ -1459,12 +1448,8 @@ export class ConfigManager {
       if (!shouldExposeProjectInStats(row.project)) {
         continue;
       }
-      const canonical = canonicalizeProjectCached(row.project);
-      if (!canonical) {
-        continue;
-      }
-      const entry = grouped.get(canonical) ?? {
-        project: canonical,
+      const entry = grouped.get(row.project) ?? {
+        project: row.project,
         observations: 0,
         updated_at: null,
         member_projects: new Set<string>(),
@@ -1475,18 +1460,14 @@ export class ConfigManager {
       if (!entry.updated_at || (row.updated_at || "") > entry.updated_at) {
         entry.updated_at = row.updated_at || entry.updated_at;
       }
-      grouped.set(canonical, entry);
+      grouped.set(row.project, entry);
     }
 
     for (const row of sessionRows) {
       if (!shouldExposeProjectInStats(row.project)) {
         continue;
       }
-      const canonical = canonicalizeProjectCached(row.project);
-      if (!canonical) {
-        continue;
-      }
-      const entry = grouped.get(canonical);
+      const entry = grouped.get(row.project);
       if (!entry) {
         continue;
       }
@@ -1499,6 +1480,7 @@ export class ConfigManager {
       .map((entry) => ({
         project: entry.project,
         canonical_project: entry.project,
+        ...(/^(?:\/|[A-Za-z]:[\\/])/.test(entry.project) ? { display_name: this.deps.canonicalizeProject(entry.project) } : {}),
         observations: entry.observations,
         sessions: entry.session_ids.size,
         updated_at: entry.updated_at,

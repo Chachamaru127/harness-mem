@@ -161,6 +161,10 @@ describe("HarnessMemCore unit", () => {
       ...options,
       env: { HARNESS_MEM_CHECKPOINT_CHILD_PROCESS: "1" },
     })).toBe(false);
+    expect(shouldRunEventOutOfProcess({
+      ...options,
+      env: { HARNESS_MEM_INGEST_WORKER_PROCESS: "1", HARNESS_MEM_EVENT_OFFLOAD: "1" },
+    })).toBe(false);
   });
 
   test("disk-backed retry queue ticks offload by default outside tests", () => {
@@ -999,7 +1003,7 @@ describe("HarnessMemCore unit", () => {
     }
   });
 
-  test("project stats group repo path and scoped projects under canonical repo name", () => {
+  test("project stats keep path and scoped identities independently selectable", () => {
     const core = new HarnessMemCore(createConfig("project-stats-canonical"));
     const repoRoot = createFakeRepo("grouped-project");
     const repoName = basename(repoRoot) || "grouped-project";
@@ -1022,24 +1026,25 @@ describe("HarnessMemCore unit", () => {
       );
 
       const stats = core.projectsStats({ include_private: true });
-      const grouped = (stats.items as Array<{
+      const items = stats.items as Array<{
         project: string;
         observations: number;
         sessions: number;
         member_projects?: string[];
-      }>).find((item) => item.project === repoName);
-
-      expect(grouped).toBeDefined();
-      expect(grouped?.observations).toBe(2);
-      expect(grouped?.sessions).toBe(2);
-      expect((grouped?.member_projects || []).some((project) => project.endsWith(`/${repoName}`))).toBe(true);
-      expect(grouped?.member_projects).toContain(`${repoName}::line`);
+      }>;
+      for (const project of [repoRoot, `${repoName}::line`]) {
+        const item = items.find((item) => item.project === project);
+        expect(item).toBeDefined();
+        expect(item?.observations).toBe(1);
+        expect(item?.sessions).toBe(1);
+        expect(item?.member_projects).toEqual([project]);
+      }
     } finally {
       core.shutdown("test");
     }
   });
 
-  test("canonical project filter fans out to repo members in feed and search", () => {
+  test("exact project filters preserve separate path and scoped identities", () => {
     const core = new HarnessMemCore(createConfig("project-filter-canonical"));
     const repoRoot = createFakeRepo("filter-project");
     const repoName = basename(repoRoot) || "filter-project";
@@ -1061,24 +1066,27 @@ describe("HarnessMemCore unit", () => {
         })
       );
 
-      const feed = core.feed({ project: repoName, limit: 10, include_private: true });
-      expect(feed.ok).toBe(true);
-      expect(feed.items.length).toBe(2);
-      for (const item of feed.items as Array<{ canonical_project?: string }>) {
-        expect(item.canonical_project).toBe(repoName);
+      // File Reference Isolation forbids basename guesses and implicit scope widening.
+      for (const project of [repoRoot, `${repoName}::line`]) {
+        const feed = core.feed({ project, limit: 10, include_private: true });
+        expect(feed.ok).toBe(true);
+        expect(feed.items).toHaveLength(1);
+        expect((feed.items[0] as { project: string }).project).toBe(project);
+        const search = core.search({ query: "shared alpha", project, strict_project: true, include_private: true });
+        expect(search.ok).toBe(true);
+        expect(search.items).toHaveLength(1);
+        const counts = search.meta.candidate_counts as Record<string, unknown>;
+        expect(Number(counts.lexical || 0)).toBe(1);
+        expect(Number(counts.vector || 0)).toBe(1);
       }
-
-      const search = core.search({ query: "shared alpha", project: repoName, strict_project: true, include_private: true });
-      expect(search.ok).toBe(true);
-      const candidateCounts = (search.meta as Record<string, unknown>).candidate_counts as Record<string, unknown>;
-      expect(Number(candidateCounts.lexical || 0)).toBe(2);
-      expect(Number(candidateCounts.vector || 0)).toBe(2);
+      expect(core.feed({ project: repoName, include_private: true }).items).toHaveLength(0);
+      expect(core.search({ query: "shared alpha", project: repoName, strict_project: true }).items).toHaveLength(0);
     } finally {
       core.shutdown("test");
     }
   });
 
-  test("non-repo absolute paths stay grouped by folder name even when an ancestor has .git", () => {
+  test("unconfirmed absolute paths retain independent full identities even when an ancestor has .git", () => {
     const core = new HarnessMemCore(createConfig("non-repo-folder-fallback"));
     const ancestorRoot = mkdtempSync(join(tmpdir(), "ancestor-git-root-"));
     cleanupPaths.push(ancestorRoot);
@@ -1107,9 +1115,9 @@ describe("HarnessMemCore unit", () => {
 
       const stats = core.projectsStats({ include_private: true });
       const items = stats.items as Array<{ project: string; member_projects?: string[] }>;
-      const workspaceOneStats = items.find((item) => item.project === "workspace-one");
-      const workspaceTwoStats = items.find((item) => item.project === "workspace-two");
-      const ancestorStats = items.find((item) => item.project === basename(ancestorRoot));
+      const workspaceOneStats = items.find((item) => item.project === workspaceOne);
+      const workspaceTwoStats = items.find((item) => item.project === workspaceTwo);
+      const ancestorStats = items.find((item) => item.project === ancestorRoot);
       const workspaceOneFeed = core.feed({ project: workspaceOne, limit: 10, include_private: true });
 
       expect(workspaceOneStats?.member_projects).toHaveLength(1);

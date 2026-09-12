@@ -58,6 +58,9 @@ function baseEvent(overrides: Partial<EventEnvelope> = {}): EventEnvelope {
   };
 }
 
+// File Reference Isolation: filesystem relationships are confirmed explicitly before
+// synchronous writes. Identity assertions stay unchanged; implicit basename/case
+// migrations are replaced by the new requirement that stored keys never auto-merge.
 describe("workspace boundary", () => {
   test("different projects do not mix in search results", () => {
     const core = new HarnessMemCore(createConfig("no-mix"));
@@ -133,7 +136,7 @@ describe("workspace boundary", () => {
     }
   });
 
-  test("symlinked directory resolves to real path as project name", () => {
+  test("symlinked directory resolves to real path as project name", async () => {
     // symlink先のディレクトリと、symlinkを作成してプロジェクト名として使う
     const realDir = mkdtempSync(join(tmpdir(), "harness-mem-wb-realdir-"));
     cleanupPaths.push(realDir);
@@ -144,6 +147,8 @@ describe("workspace boundary", () => {
 
     const core = new HarnessMemCore(createConfig("symlink"));
     try {
+      await core.prepareProject(symlinkDir);
+      await core.prepareProject(realDir);
       // symlink パスで記録
       const rViaSymlink = core.recordEvent(baseEvent({ event_id: "ev-sym", project: symlinkDir, session_id: "sess-sym" }));
       // real パスで記録（同一プロジェクトのはず）
@@ -161,10 +166,11 @@ describe("workspace boundary", () => {
     }
   });
 
-  test("nested directory inside git workspace is canonicalized to workspace root", () => {
+  test("nested directory inside git workspace is canonicalized to workspace root", async () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "harness-mem-wb-git-root-"));
     cleanupPaths.push(workspaceRoot);
     mkdirSync(join(workspaceRoot, ".git"), { recursive: true });
+    writeFileSync(join(workspaceRoot, ".git", "HEAD"), "ref: refs/heads/main\n");
 
     const nestedWorkspaceDir = join(workspaceRoot, "apps", "api");
     mkdirSync(nestedWorkspaceDir, { recursive: true });
@@ -178,6 +184,7 @@ describe("workspace boundary", () => {
       })
     );
     try {
+      await core.prepareProject(nestedWorkspaceDir);
       const result = core.recordEvent(
         baseEvent({
           event_id: "ev-git-root-subdir",
@@ -194,12 +201,14 @@ describe("workspace boundary", () => {
     }
   });
 
-  test("linked worktree path is canonicalized to common git root", () => {
+  test("linked worktree path is canonicalized to common git root", async () => {
     const fixtureRoot = mkdtempSync(join(tmpdir(), "harness-mem-wb-worktree-"));
     cleanupPaths.push(fixtureRoot);
 
     const mainRepoRoot = join(fixtureRoot, "main-repo");
     mkdirSync(join(mainRepoRoot, ".git", "worktrees", "feature"), { recursive: true });
+    writeFileSync(join(mainRepoRoot, ".git", "HEAD"), "ref: refs/heads/main\n");
+    writeFileSync(join(mainRepoRoot, ".git", "worktrees", "feature", "HEAD"), "ref: refs/heads/feature\n");
     const canonicalMainRoot = realpathSync(mainRepoRoot);
 
     const worktreeRoot = join(fixtureRoot, "feature-worktree");
@@ -218,6 +227,7 @@ describe("workspace boundary", () => {
       })
     );
     try {
+      await core.prepareProject(worktreeNested);
       const result = core.recordEvent(
         baseEvent({
           event_id: "ev-worktree-root",
@@ -234,7 +244,7 @@ describe("workspace boundary", () => {
     }
   });
 
-  test("same basename different absolute paths do not collide", () => {
+  test("same basename different absolute paths do not collide", async () => {
     const core = new HarnessMemCore(createConfig("same-basename"));
     try {
       // /tmp/a/repo と /tmp/b/repo は basename が同じ "repo" だが絶対パスが異なる
@@ -254,6 +264,8 @@ describe("workspace boundary", () => {
       const realRepoB = realpathSync(repoB);
 
       // 異なる絶対パスで記録
+      await core.prepareProject(repoA);
+      await core.prepareProject(repoB);
       core.recordEvent(baseEvent({ event_id: "ev-a", project: repoA, session_id: "sess-a", payload: { prompt: "data from repo A" } }));
       core.recordEvent(baseEvent({ event_id: "ev-b", project: repoB, session_id: "sess-b", payload: { prompt: "data from repo B" } }));
 
@@ -293,12 +305,12 @@ describe("workspace boundary", () => {
     }
   });
 
-  test("basename project that matches codexProjectRoot is canonicalized to absolute path", () => {
+  test("a logical project ID does not guess a configured root by basename", () => {
     const rootBase = mkdtempSync(join(tmpdir(), "harness-mem-wb-root-"));
     cleanupPaths.push(rootBase);
     const projectRoot = join(rootBase, "harness-mem");
     mkdirSync(projectRoot, { recursive: true });
-    const canonicalRoot = realpathSync(projectRoot);
+
 
     const core = new HarnessMemCore(
       createConfig("canonical-basename", {
@@ -317,7 +329,7 @@ describe("workspace boundary", () => {
       );
       expect(result.ok).toBe(true);
       const inserted = result.items[0] as { project: string };
-      expect(inserted.project).toBe(canonicalRoot);
+      expect(inserted.project).toBe("harness-mem");
 
       const byBasename = core.search({
         query: "canonical project test",
@@ -327,14 +339,14 @@ describe("workspace boundary", () => {
       });
       expect(byBasename.ok).toBe(true);
       for (const item of byBasename.items as Array<{ project: string }>) {
-        expect(item.project).toBe(canonicalRoot);
+        expect(item.project).toBe("harness-mem");
       }
     } finally {
       core.shutdown("test");
     }
   });
 
-  test("startup migration rewrites legacy basename project rows to canonical root", () => {
+  test("startup preserves legacy logical IDs without filesystem-dependent remapping", () => {
     const rootBase = mkdtempSync(join(tmpdir(), "harness-mem-wb-legacy-"));
     cleanupPaths.push(rootBase);
     const projectRoot = join(rootBase, "harness-mem");
@@ -381,8 +393,8 @@ describe("workspace boundary", () => {
       const canonical = items.find((item) => item.project === "harness-mem");
       expect(canonical).toBeDefined();
       expect((canonical?.observations || 0) >= 1).toBe(true);
-      expect(canonical?.member_projects).toContain(canonicalRoot);
-      expect(canonical?.member_projects).not.toContain("harness-mem");
+      expect(canonical?.member_projects).not.toContain(canonicalRoot);
+      expect(canonical?.member_projects).toContain("harness-mem");
 
       const searchByBasename = migratedCore.search({
         query: "legacy project migration test",
@@ -392,21 +404,21 @@ describe("workspace boundary", () => {
       });
       expect(searchByBasename.ok).toBe(true);
       for (const item of searchByBasename.items as Array<{ project: string }>) {
-        expect(item.project).toBe(canonicalRoot);
+        expect(item.project).toBe("harness-mem");
       }
     } finally {
       migratedCore.shutdown("test");
     }
   });
 
-  test("observed absolute project is reused to canonicalize later basename project without restart", () => {
+  test("observed absolute projects do not absorb unrelated later logical IDs", () => {
     const rootBase = mkdtempSync(join(tmpdir(), "harness-mem-wb-observed-root-"));
     cleanupPaths.push(rootBase);
     const observedProjectRoot = join(rootBase, "claude-code-harness");
     const unrelatedRoot = join(rootBase, "unrelated-workspace");
     mkdirSync(observedProjectRoot, { recursive: true });
     mkdirSync(unrelatedRoot, { recursive: true });
-    const canonicalRoot = realpathSync(observedProjectRoot);
+
 
     const core = new HarnessMemCore(
       createConfig("observed-root", {
@@ -435,20 +447,21 @@ describe("workspace boundary", () => {
       );
       expect(mapped.ok).toBe(true);
       const inserted = mapped.items[0] as { project: string };
-      expect(inserted.project).toBe(canonicalRoot);
+      expect(inserted.project).toBe("claude-code-harness");
+      expect(core.projectMatchesSelection(observedProjectRoot, inserted.project)).toBe(false);
     } finally {
       core.shutdown("test");
     }
   });
 
-  test("startup migration rewrites legacy short key to unique observed absolute basename", () => {
+  test("startup preserves separate legacy short and absolute project identities", () => {
     const rootBase = mkdtempSync(join(tmpdir(), "harness-mem-wb-legacy-short-"));
     cleanupPaths.push(rootBase);
     const observedProjectRoot = join(rootBase, "claude-code-harness");
     const unrelatedRoot = join(rootBase, "unrelated-workspace");
     mkdirSync(observedProjectRoot, { recursive: true });
     mkdirSync(unrelatedRoot, { recursive: true });
-    const canonicalRoot = realpathSync(observedProjectRoot);
+
 
     const config = createConfig("legacy-short-abs", {
       codexProjectRoot: unrelatedRoot,
@@ -499,15 +512,18 @@ describe("workspace boundary", () => {
       }>;
       const canonical = items.find((item) => item.project === "claude-code-harness");
       expect(canonical).toBeDefined();
-      expect((canonical?.observations || 0) >= 2).toBe(true);
-      expect(canonical?.member_projects).toContain(canonicalRoot);
-      expect(canonical?.member_projects).not.toContain("claude-code-harness");
+      expect(canonical?.observations).toBe(1);
+      expect(canonical?.member_projects).toEqual(["claude-code-harness"]);
+      const absolute = items.find((item) => item.project === observedProjectRoot);
+      expect(absolute?.observations).toBe(1);
+      expect(absolute?.member_projects).toEqual([observedProjectRoot]);
+      expect(migratedCore.projectMatchesSelection("claude-code-harness", observedProjectRoot)).toBe(false);
     } finally {
       migratedCore.shutdown("test");
     }
   });
 
-  test("startup migration collapses case-only short project variants", () => {
+  test("startup preserves case-distinct logical project IDs without automatic merge", () => {
     const config = createConfig("legacy-case-collapse");
 
     const seedCore = new HarnessMemCore(config);
@@ -551,9 +567,10 @@ describe("workspace boundary", () => {
       const stats = migratedCore.projectsStats({ include_private: true });
       const items = stats.items as Array<{ project: string; observations: number }>;
       const jarvis = items.filter((item) => item.project.toLowerCase() === "jarvis");
-      expect(jarvis.length).toBe(1);
-      expect(jarvis[0]?.project).toBe("Jarvis");
-      expect((jarvis[0]?.observations || 0) >= 3).toBe(true);
+      expect(jarvis.length).toBe(2);
+      expect(jarvis.find(item => item.project === "Jarvis")?.observations).toBe(2);
+      expect(jarvis.find(item => item.project === "JARVIS")?.observations).toBe(1);
+      expect(migratedCore.projectMatchesSelection("Jarvis", "JARVIS")).toBe(false);
     } finally {
       migratedCore.shutdown("test");
     }
@@ -562,7 +579,7 @@ describe("workspace boundary", () => {
   // S81-A01: Worktree / repo-root unifier.
   // DoD: 3 worktree から ingest した observation が `project` で同一 key に集約され、
   // `harness_mem_stats` で 1 プロジェクト扱いになる integration test が PASS。
-  test("three linked worktrees of the same repo collapse into one project key", () => {
+  test("three linked worktrees of the same repo collapse into one project key", async () => {
     const fixtureRoot = mkdtempSync(join(tmpdir(), "harness-mem-wb-3wt-"));
     cleanupPaths.push(fixtureRoot);
 
@@ -570,6 +587,8 @@ describe("workspace boundary", () => {
     // Create .git/worktrees/<name> pointers for the 3 linked worktrees.
     mkdirSync(join(mainRepoRoot, ".git", "worktrees", "feature-a"), { recursive: true });
     mkdirSync(join(mainRepoRoot, ".git", "worktrees", "feature-b"), { recursive: true });
+    writeFileSync(join(mainRepoRoot, ".git", "HEAD"), "ref: refs/heads/main\n");
+    for (const name of ["feature-a", "feature-b"]) writeFileSync(join(mainRepoRoot, ".git", "worktrees", name, "HEAD"), `ref: refs/heads/${name}\n`);
     const canonicalMainRoot = realpathSync(mainRepoRoot);
 
     // Also create a src/ dir in the main repo to ingest from.
@@ -603,6 +622,7 @@ describe("workspace boundary", () => {
         { cwd: join(wtB, "src"), session: "sess-b", eventId: "ev-b" },
       ];
       for (const entry of cwdsAndSessions) {
+        await core.prepareProject(entry.cwd);
         const res = core.recordEvent(
           baseEvent({
             event_id: entry.eventId,

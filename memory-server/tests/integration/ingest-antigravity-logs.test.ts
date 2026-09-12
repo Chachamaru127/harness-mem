@@ -22,7 +22,8 @@ function createRuntime(name: string): {
   const workspaceRoot = join(dir, "harness-mem");
   mkdirSync(workspaceRoot, { recursive: true });
   const project = realpathSync(workspaceRoot);
-  const normalizedProject = realpathSync(dir);
+  // File Reference Isolation preserves the actual workspace, not its configured Codex ancestor.
+  const normalizedProject = project;
 
   const logsRoot = join(dir, "Library", "Application Support", "Antigravity", "logs");
   const storageRoot = join(dir, "Library", "Application Support", "Antigravity", "User", "workspaceStorage");
@@ -130,6 +131,17 @@ describe("antigravity logs ingest integration", () => {
       expect(feed.items[0]?.platform).toBe("antigravity");
       expect(feed.items[0]?.event_type).toBe("checkpoint");
       expect(feed.items[0]?.project).toBe(normalizedProject);
+      const parentFeedRes = await fetch(`${baseUrl}/v1/feed?project=${encodeURIComponent(realpathSync(runtime.dir))}&limit=20&include_private=false`);
+      expect(parentFeedRes.ok).toBe(true);
+      const parentFeed = await parentFeedRes.json() as {
+        ok: boolean;
+        items: unknown[];
+        meta: { project_resolution?: { state: string } };
+      };
+      expect(parentFeed.ok).toBe(true);
+      expect(parentFeed.items).toHaveLength(0);
+      expect(parentFeed.meta.project_resolution?.state).toBe("unresolved");
+
       expect(feed.items[0]?.title).toBe("Antigravity planner activity");
       expect(feed.items[0]?.content.includes("prompt body unavailable")).toBe(true);
 

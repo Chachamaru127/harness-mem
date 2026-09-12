@@ -170,7 +170,8 @@ function fallbackProjectsStatsJson(upstreamStatus: number, upstreamText: string)
     items: [
       {
         project: DEFAULT_PROJECT,
-        canonical_project: basename(DEFAULT_PROJECT),
+        canonical_project: DEFAULT_PROJECT,
+        display_name: basename(DEFAULT_PROJECT),
         observations: 0,
         sessions: 0,
         updated_at: null,

@@ -53,18 +53,21 @@ const MEDIUM_CORPUS_LATENCY_BUDGET_MS = process.env.CI === "true" ? 1500 : IS_WI
 describe("search quality integration", () => {
   test("hybrid scoring formula remains consistent and recency affects rank", () => {
     const { core, dir } = createCore("scoring");
+    // Keep the recent fixture recent: fixed calendar dates eventually lose their ranking boost.
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
     try {
       core.recordEvent(
         makeEvent({
           event_id: "sq-old",
-          ts: "2025-01-01T00:00:00.000Z",
+          ts: new Date(now - 410 * dayMs).toISOString(),
           payload: { content: "release checklist automation baseline old run" },
         })
       );
       core.recordEvent(
         makeEvent({
           event_id: "sq-new",
-          ts: "2026-02-14T00:00:00.000Z",
+          ts: new Date(now - dayMs).toISOString(),
           payload: { content: "release checklist automation baseline new run" },
         })
       );

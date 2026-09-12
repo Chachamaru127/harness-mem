@@ -40,14 +40,7 @@ function projectMatchesSelection(selectedProject: string, itemProject: string | 
   if (!selected || !item) {
     return false;
   }
-  return item === selected || item.startsWith(`${selected}/`) || selected.startsWith(`${item}/`);
-}
-
-function resolvedProjectKey(item: FeedItem): string | undefined {
-  if (typeof item.canonical_project === "string" && item.canonical_project.trim()) {
-    return item.canonical_project;
-  }
-  return item.project;
+  return item === selected;
 }
 
 function normalizePlatform(value: string | undefined): string {
@@ -67,7 +60,7 @@ function buildSeedCacheEntry(project: string, includePrivate: boolean, limit: nu
   if (!source) {
     return null;
   }
-  const rawItems = source.rawItems.filter((item) => projectMatchesSelection(project, resolvedProjectKey(item)));
+  const rawItems = source.rawItems.filter((item) => projectMatchesSelection(project, item.project));
   if (rawItems.length === 0) {
     return null;
   }
@@ -268,7 +261,7 @@ export function useFeedPagination(options: FeedOptions) {
       if (!item.id) {
         return;
       }
-      if (!projectMatchesSelection(project, resolvedProjectKey(item))) {
+      if (!projectMatchesSelection(project, item.project)) {
         return;
       }
       if (!includePrivate && (item.privacy_tags || []).some((tag) => tag === "private" || tag === "sensitive")) {

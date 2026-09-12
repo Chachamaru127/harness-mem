@@ -79,7 +79,7 @@ describe("useFeedPagination", () => {
     });
   });
 
-  test("prependLiveItem keeps claude item when selected project and item project are alias-related", async () => {
+  test("prependLiveItem rejects an unconfirmed parent path", async () => {
     fetchFeedMock.mockResolvedValueOnce(makeApiResponse([]));
 
     const { result } = renderHook(() =>
@@ -87,7 +87,7 @@ describe("useFeedPagination", () => {
         project: "/Users/example/Context-Harness",
         platformFilter: "__all__",
         includePrivate: false,
-        limit: 20,
+        limit: 73,
       })
     );
 
@@ -107,7 +107,36 @@ describe("useFeedPagination", () => {
       });
     });
 
-    expect(result.current.items.map((item) => item.id)).toEqual(["live-claude"]);
+    expect(result.current.items.map((item) => item.id)).toEqual([]);
+  });
+
+  test("live items use exact raw project identity even when canonical_project is a display label", async () => {
+    fetchFeedMock.mockResolvedValueOnce(makeApiResponse([]));
+    const { result } = renderHook(() => useFeedPagination({ project: "/a/repo", platformFilter: "__all__", includePrivate: false, limit: 71 }));
+    await waitFor(() => expect(result.current.initialized).toBe(true));
+    act(() => {
+      for (const [id, project] of [["correct", "/a/repo"], ["sibling", "/b/repo"], ["child", "/a/repo/child"], ["parent", "/a"], ["label-only", undefined]] as const) {
+        result.current.prependLiveItem({ id, project, canonical_project: "repo", platform: "claude" });
+      }
+    });
+    expect(result.current.items.map((item) => item.id)).toEqual(["correct"]);
+  });
+
+  test("all-project cache seeds distinct full identities without parent, child or same-basename mixing", async () => {
+    fetchFeedMock.mockResolvedValueOnce(makeApiResponse([
+      { id: "a", project: "/a/repo", canonical_project: "repo", platform: "claude" },
+      { id: "b", project: "/b/repo", canonical_project: "repo", platform: "claude" },
+      { id: "child", project: "/a/repo/child", canonical_project: "repo", platform: "claude" },
+    ]));
+    fetchFeedMock.mockImplementation(() => new Promise(() => {}));
+    const { result, rerender } = renderHook(({ project }) => useFeedPagination({ project, platformFilter: "__all__", includePrivate: false, limit: 72 }), { initialProps: { project: "__all__" } });
+    await waitFor(() => expect(result.current.items).toHaveLength(3));
+    rerender({ project: "/a/repo" });
+    expect(result.current.items.map((item) => item.id)).toEqual(["a"]);
+    expect(fetchFeedMock.mock.calls.at(-1)?.[0].project).toBe("/a/repo");
+    rerender({ project: "/b/repo" });
+    expect(result.current.items.map((item) => item.id)).toEqual(["b"]);
+    expect(fetchFeedMock.mock.calls.at(-1)?.[0].project).toBe("/b/repo");
   });
 
   test("project switch seeds from all-project cache and avoids transient loading", async () => {

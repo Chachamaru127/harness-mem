@@ -1278,3 +1278,56 @@ describe("event-recorder: recordEventQueued", () => {
     }
   });
 });
+
+describe("event-recorder: embedding source preparation", () => {
+  test("prime and persistence share private-block, redaction, and raw-mode processing", () => {
+    const previousRawMode = process.env.HARNESS_MEM_RAW_MODE;
+    try {
+      for (const rawMode of ["0", "1"]) {
+        process.env.HARNESS_MEM_RAW_MODE = rawMode;
+        for (const privacyTag of ["redact", "mask"]) {
+          const embedded: string[] = [];
+          const recorder = makeRecorder({ vectorDimension: 4 }, {
+            getVectorEngine: () => "js-fallback",
+            embedContent: (content) => {
+              embedded.push(content);
+              return [1, 0, 0, 0];
+            },
+          });
+          const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+          try {
+            const event = makeEvent({
+              payload: { content: "visible <private>excluded-test-text</private> user@example.com" },
+              privacy_tags: [privacyTag],
+            });
+            const source = recorder.getEventEmbeddingSource(event);
+            expect(source).not.toContain("excluded-test-text");
+            expect(source).toContain(rawMode === "1" ? "user@example.com" : "[REDACTED_EMAIL]");
+            expect(db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM mem_observations").get()?.count).toBe(0);
+            expect(recorder.recordEvent(event).ok).toBe(true);
+            expect(embedded[0]).toBe(source);
+          } finally {
+            db.close();
+          }
+        }
+      }
+    } finally {
+      if (previousRawMode === undefined) delete process.env.HARNESS_MEM_RAW_MODE;
+      else process.env.HARNESS_MEM_RAW_MODE = previousRawMode;
+    }
+  });
+
+  test("blocked and disabled capture events do not request an embedding source", () => {
+    const recorder = makeRecorder();
+    const disabled = makeRecorder({ captureEnabled: false });
+    try {
+      for (const tag of ["block", "no_mem"]) {
+        expect(recorder.getEventEmbeddingSource(makeEvent({ privacy_tags: [tag] }))).toBeNull();
+      }
+      expect(disabled.getEventEmbeddingSource(makeEvent())).toBeNull();
+    } finally {
+      (recorder as unknown as { deps: EventRecorderDeps }).deps.db.close();
+      (disabled as unknown as { deps: EventRecorderDeps }).deps.db.close();
+    }
+  });
+});

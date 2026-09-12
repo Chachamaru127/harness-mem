@@ -1,7 +1,7 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { spawn as spawnChildProcess } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -73,6 +73,10 @@ import { TtlCache } from "../system-environment/cache";
 import { getTelemetryStatus, hashTelemetryValue, recordRecallTelemetry } from "../telemetry/otel";
 import { SessionManager, buildCheckpointEvent } from "./session-manager";
 import { EventRecorder } from "./event-recorder";
+import { ReferenceProcessLedger } from "./reference-process-ledger";
+import { ProjectRegistry, type ProjectResolution } from "./project-registry";
+import type { SourceReaderOptions } from "./source-reader-client";
+import { ProjectPathResolver } from "./project-path-resolver";
 import {
   contentDedupeProtectionMask,
   swapContentDedupeClaimForRestore,
@@ -167,7 +171,6 @@ import {
   readDirectSqliteChanges,
   resolveHomePath,
   resolveWorkspaceRootFromWorkspaceFile,
-  resolveWorkspaceRootFromWorkspaceJson,
 } from "./core-utils.js";
 import type {
   ApiMeta,
@@ -852,6 +855,7 @@ export function shouldRunEventOutOfProcess(options: {
 }): boolean {
   const env = options.env ?? process.env;
   if (envTruthy(env.HARNESS_MEM_EVENT_CHILD_PROCESS)) return false;
+  if (envTruthy(env.HARNESS_MEM_INGEST_WORKER_PROCESS)) return false;
   if (envTruthy(env.HARNESS_MEM_CHECKPOINT_CHILD_PROCESS)) return false;
   if (!options.dbPath || options.dbPath === ":memory:") return false;
 
@@ -1671,8 +1675,14 @@ export function parseVectorBackfillChildResponse(stdout: string, stderr = ""): A
   return parseChildApiResponse(stdout, stderr, "vector backfill child");
 }
 
-interface ProjectNormalizationOptions {
-  preferredRoots?: string[];
+export interface ProjectReferenceOptions {
+  sourceReader?: SourceReaderOptions;
+  projectResolver?: {
+    scriptPath?: string;
+    timeoutMs?: number;
+    maxChildren?: number;
+    maxQueue?: number;
+  };
 }
 
 /**
@@ -1776,202 +1786,11 @@ function isAbsoluteProjectPath(project: string): boolean {
   return normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized);
 }
 
-function projectBasenameKey(project: string): string {
-  const normalized = normalizePathLike(project.trim());
-  return (basename(normalized) || normalized).toLowerCase();
-}
-
-function realpathOrNormalized(inputPath: string): string {
-  try {
-
-    return normalizePathLike(realpathSync(inputPath));
-  } catch {
-    return normalizePathLike(inputPath);
-  }
-}
-
-function resolvePreferredWorkspaceRoot(existingPath: string, preferredRoots: string[] = []): string | null {
-  const normalizedPath = normalizePathLike(existingPath);
-  for (const root of preferredRoots) {
-    if (typeof root !== "string" || !root.trim()) {
-      continue;
-    }
-    const normalizedRoot = normalizePathLike(root.trim());
-    if (!normalizedRoot) {
-      continue;
-    }
-    if (normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`)) {
-      return normalizedRoot;
-    }
-  }
-  return null;
-}
-
-function resolveDirectGitWorkspaceRoot(existingPath: string): string | null {
-  // S81-A01: walk up from `existingPath` looking for a *real* git repo
-  // (dir containing .git/HEAD, or worktree pointer file). Nested src/ dirs
-  // inside a genuine repo collapse onto its root; sibling folders that
-  // merely share an ancestor containing an empty `.git/` (fake or dotfiles)
-  // are not collapsed — confirmed via `.git/HEAD` existence check.
-  const start = normalizePathLike(existingPath);
-  if (!start.startsWith("/")) {
-    return null;
-  }
-
-  let cursor = start;
-  const MAX_WALKS = 64;
-  for (let i = 0; i < MAX_WALKS; i += 1) {
-    const gitMarker = join(cursor, ".git");
-    if (existsSync(gitMarker)) {
-      try {
-        const markerStat = statSync(gitMarker);
-        if (markerStat.isDirectory()) {
-          if (existsSync(join(gitMarker, "HEAD"))) {
-            return realpathOrNormalized(cursor);
-          }
-        } else if (markerStat.isFile()) {
-          const markerBody = readFileSync(gitMarker, "utf8");
-          const match = markerBody.match(/^\s*gitdir:\s*(.+)\s*$/i);
-          if (!match) {
-            return realpathOrNormalized(cursor);
-          }
-          const gitDirPath = normalizePathLike(resolve(cursor, match[1].trim()));
-          const worktreeToken = "/.git/worktrees/";
-          const worktreeIndex = gitDirPath.indexOf(worktreeToken);
-          if (worktreeIndex > 0) {
-            return realpathOrNormalized(gitDirPath.slice(0, worktreeIndex));
-          }
-          return realpathOrNormalized(cursor);
-        }
-      } catch {
-        return realpathOrNormalized(cursor);
-      }
-    }
-    const parent = normalizePathLike(resolve(cursor, ".."));
-    if (!parent || parent === cursor) {
-      return null;
-    }
-    if (parent === "/" || /^[A-Za-z]:\/?$/.test(parent)) {
-      return null;
-    }
-    cursor = parent;
-  }
-  return null;
-}
-
-function normalizeExplicitProjectPath(project: string): string {
-  const normalized = normalizePathLike(project.trim());
-  if (!normalized) {
-    return "";
-  }
-  const resolved = realpathOrNormalized(normalized);
-  return resolveDirectGitWorkspaceRoot(resolved) || resolved;
-}
-
-function resolveWorkspaceRoot(existingPath: string, options: ProjectNormalizationOptions = {}): string | null {
-  const directGitRoot = resolveDirectGitWorkspaceRoot(existingPath);
-  if (directGitRoot) {
-    return normalizePathLike(directGitRoot);
-  }
-  const preferredRoot = resolvePreferredWorkspaceRoot(existingPath, options.preferredRoots || []);
-  if (preferredRoot) {
-    return normalizePathLike(resolveDirectGitWorkspaceRoot(preferredRoot) || preferredRoot);
-  }
-  return null;
-}
-
-function normalizeProjectName(name: string, options: ProjectNormalizationOptions = {}): string {
-  const trimmed = name.trim();
-  if (!trimmed) throw new Error("project name must not be empty");
-  // trailing slashを除去、normalize path
-  const normalized = normalizePathLike(trimmed);
-  // パスとして存在する場合はsymlink解決してbasename相当の正規パスを返す
-  try {
-
-    const real = normalizePathLike(realpathSync(normalized));
-    const workspaceRoot = resolveWorkspaceRoot(real, options);
-    return workspaceRoot || real;
-  } catch {
-    // basenameのみの入力は、既知のworkspace root basenameと一致する場合に
-    // そのworkspace root(絶対パス)へ寄せる。
-    if (!normalized.includes("/")) {
-      const roots = Array.isArray(options.preferredRoots) ? options.preferredRoots : [];
-      const target = normalized.toLowerCase();
-      for (const root of roots) {
-        if (typeof root !== "string" || !root.trim()) {
-          continue;
-        }
-        const rootNormalized = normalizePathLike(root.trim());
-        const rootBase = basename(rootNormalized).toLowerCase();
-        if (rootBase === target) {
-          try {
-        
-            const real = normalizePathLike(realpathSync(rootNormalized));
-            const workspaceRoot = resolveWorkspaceRoot(real, options);
-            return workspaceRoot || real;
-          } catch {
-            return rootNormalized;
-          }
-        }
-      }
-    }
-    // ディレクトリが存在しない場合はnormalized文字列をそのまま返す
-    return normalized;
-  }
-}
-
-
-/**
- * Compute Antigravity workspace roots for health diagnostics.
- * Mirrors IngestCoordinator's logic without duplicating it as class methods.
- * Priority: configured roots > storage discovery > codexProjectRoot fallback.
- */
-function computeAntigravityWorkspaceRoots(config: {
-  antigravityWorkspaceRoots?: string[];
-  antigravityWorkspaceStorageRoot?: string;
-  codexProjectRoot?: string;
-}): string[] {
-  // 1. Explicitly configured roots
-  const configuredRoots = (Array.isArray(config.antigravityWorkspaceRoots) ? config.antigravityWorkspaceRoots : [])
-    .map((root) => (typeof root === "string" ? root.trim() : ""))
-    .filter((root) => root.length > 0)
-    .map((root) => resolveHomePath(root));
-  if (configuredRoots.length > 0) {
-    return [...new Set(configuredRoots)].sort((lhs, rhs) => lhs.localeCompare(rhs));
-  }
-
-  // 2. Discover from workspace storage directory
-  const storageRoot = resolveHomePath(config.antigravityWorkspaceStorageRoot || DEFAULT_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT);
-  if (existsSync(storageRoot)) {
-    let entries: Array<{ name: string; isDirectory: () => boolean }> = [];
-    try {
-      entries = readdirSync(storageRoot, { withFileTypes: true, encoding: "utf8" }) as Array<{
-        name: string;
-        isDirectory: () => boolean;
-      }>;
-    } catch {
-      entries = [];
-    }
-    const discovered: string[] = [];
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const workspaceJsonPath = join(storageRoot, entry.name, "workspace.json");
-      if (!existsSync(workspaceJsonPath)) continue;
-      const resolvedRoot = resolveWorkspaceRootFromWorkspaceJson(workspaceJsonPath);
-      if (!resolvedRoot || !existsSync(resolvedRoot)) continue;
-      discovered.push(resolve(resolvedRoot));
-    }
-    const unique = [...new Set(discovered)].sort((lhs, rhs) => lhs.localeCompare(rhs));
-    if (unique.length > 0) return unique;
-  }
-
-  // 3. Fallback to codexProjectRoot or cwd
-  const fallbackRoot = resolve(config.codexProjectRoot || process.cwd());
-  if (fallbackRoot && existsSync(fallbackRoot)) {
-    return [fallbackRoot];
-  }
-
-  return [];
+/** Health reports configuration only; source discovery belongs to the isolated reader. */
+function configuredAntigravityWorkspaceRoots(config: Config): string[] {
+  return [...new Set((Array.isArray(config.antigravityWorkspaceRoots) ? config.antigravityWorkspaceRoots : [])
+    .filter((root) => typeof root === "string" && root.trim().length > 0)
+    .map((root) => resolveHomePath(root.trim())))].sort((left, right) => left.localeCompare(right));
 }
 
 /**
@@ -2021,7 +1840,10 @@ export class HarnessMemCore {
   private managedBackend: ManagedBackend | null = null;
   private readonly heartbeatPath: string;
   private shuttingDown = false;
-  private readonly projectNormalizationRoots: string[];
+  private projectRegistry!: ProjectRegistry;
+  private projectResolver!: ProjectPathResolver;
+  private readonly projectWaiters = new Map<string, Array<() => void>>();
+  private readonly projectResolverWaitMs: number;
   private readonly environmentSnapshotCache = new TtlCache<EnvironmentSnapshot>(DEFAULT_ENVIRONMENT_CACHE_TTL_MS);
   private readonly repeatRecallCache = new Map<string, RepeatRecallCacheEntry>();
   private readonly searchSideEffectSpool: SearchSideEffectSpool | null;
@@ -2074,13 +1896,13 @@ export class HarnessMemCore {
   private readonly recallProjectionRefreshInFlight = new Set<string>();
   private shutdownPromise: Promise<void> | null = null;
 
-  constructor(private readonly config: Config) {
+  constructor(private readonly config: Config, private readonly projectReferences: ProjectReferenceOptions = {}) {
     const dbPath = resolveHomePath(config.dbPath);
     ensureDir(resolve(join(dbPath, "..")));
 
     this.heartbeatPath = resolveHomePath(HEARTBEAT_FILE);
     ensureDir(resolve(join(this.heartbeatPath, "..")));
-    this.projectNormalizationRoots = this.buildProjectNormalizationRoots();
+    this.projectResolverWaitMs = Math.min(5000, Math.max(10, projectReferences.projectResolver?.timeoutMs ?? 1000));
 
     // Create storage adapter based on backend mode.
     const { adapter, managedRequired } = createStorageAdapter({
@@ -2108,6 +1930,18 @@ export class HarnessMemCore {
     this.configureDatabase();
     const hadHarnessSchemaBeforeInit = this.hasHarnessSchema();
     this.initSchema();
+    this.projectRegistry = new ProjectRegistry(this.db);
+    this.projectResolver = new ProjectPathResolver({
+      ...projectReferences.projectResolver,
+      timeoutMs: this.projectResolverWaitMs,
+      reservations: new ReferenceProcessLedger(this.db, "project-resolver"),
+      onResult: (_input, result) => {
+        if (!this.shuttingDown) this.projectRegistry.accept(result);
+        const waiters = this.projectWaiters.get(result.input) || [];
+        this.projectWaiters.delete(result.input);
+        for (const done of waiters) done();
+      },
+    });
     this.seedFreshInstallEmbeddingDefault(hadHarnessSchemaBeforeInit);
     this.initVectorEngine();
     this.initEmbeddingProvider();
@@ -2206,7 +2040,7 @@ export class HarnessMemCore {
       db: this.db,
       config: this.config,
       recordEvent: (event, options) => this.recordEvent(event, options),
-      recordEventQueued: (event, options) => this.recordEventQueued(event, options),
+      recordEventQueued: (event, options) => this.recordIngestEventQueued(event, options),
       upsertSessionSummary: (sessionId, platform, project, summary, endedAt, summaryMode) =>
         this.upsertSessionSummary(sessionId, platform, project, summary, endedAt, summaryMode),
       heartbeatPath: this.heartbeatPath,
@@ -2214,6 +2048,9 @@ export class HarnessMemCore {
       processRetryQueue: (force) => this.processRetryQueue(force),
       schedulePeriodicIngest: (source) => this.schedulePeriodicIngest(source),
       scheduleMaintenance: (task) => this.scheduleMaintenance(task),
+    }, {
+      ...this.projectReferences.sourceReader,
+      ledger: this.projectReferences.sourceReader?.ledger ?? new ReferenceProcessLedger(this.db, "source-reader"),
     });
 
     this.cfgMgr = new ConfigManager({
@@ -2969,7 +2806,6 @@ export class HarnessMemCore {
       authoritativeContentDedupeMigration: !isLightweightChildProcess(),
     });
     this.ftsEnabled = initFtsFromDb(this.db);
-    this.migrateLegacyProjectAliases();
     this.reconcileAbandonedConsolidationJobs();
   }
 
@@ -3051,384 +2887,80 @@ export class HarnessMemCore {
       .run(INSTALLATION_MARKER_META_KEY, now, now);
   }
 
-  private buildProjectNormalizationRoots(): string[] {
-    const candidates = [this.config.codexProjectRoot, this.config.codexSessionsRoot, process.cwd()];
-    const roots: string[] = [];
-    for (const candidate of candidates) {
-      if (typeof candidate !== "string" || !candidate.trim()) {
-        continue;
-      }
-      const resolved = resolveHomePath(candidate);
-      try {
-        const absoluteRoot = normalizePathLike(realpathSync(resolve(resolved)));
-        roots.push(absoluteRoot);
-        roots.push(normalizeProjectName(absoluteRoot));
-      } catch {
-        try {
-          roots.push(normalizeProjectName(resolve(resolved)));
-        } catch {
-          // ignore invalid candidate
-        }
-      }
-    }
-    return [...new Set(roots)];
-  }
-
   private normalizeProjectInput(project: string): string {
-    return normalizeProjectName(project, {
-      preferredRoots: this.projectNormalizationRoots,
-    });
+    return this.projectRegistry.lookup(project).project;
   }
 
-  private extendProjectNormalizationRoots(candidates: string[]): void {
-    if (!Array.isArray(candidates) || candidates.length === 0) {
-      return;
-    }
+  private extendProjectNormalizationRoots(_candidates: string[]): void {
+    // Stored keys remain identities. Filesystem discovery cannot run inside a write.
+  }
 
-    const merged = new Set(this.projectNormalizationRoots);
-    for (const candidate of candidates) {
-      if (typeof candidate !== "string" || !candidate.trim()) {
-        continue;
-      }
-      const absoluteCandidate = normalizePathLike(resolveHomePath(candidate.trim()));
-      if (isAbsoluteProjectPath(absoluteCandidate)) {
-        merged.add(absoluteCandidate);
-      }
-      let normalized = absoluteCandidate;
-      try {
-        normalized = normalizeProjectName(normalized, {
-          preferredRoots: [...merged],
-        });
-      } catch {
-        // keep normalized fallback
-      }
-      if (!isAbsoluteProjectPath(normalized)) {
-        continue;
-      }
-      merged.add(normalized);
-    }
+  public getProjectResolution(project: string): ProjectResolution {
+    const result = this.projectRegistry.lookup(project);
+    return result.state === "existing" || result.state === "explicit"
+      ? { ...result, state: "confirmed" }
+      : result;
+  }
 
-    if (merged.size === this.projectNormalizationRoots.length) {
-      return;
+  public getProjectResolverStatus() {
+    return this.projectResolver.status();
+  }
+
+  /** Wait only for a newly admitted reference probe; failed/saturated paths return immediately. */
+  public async prepareProject(project: string, options: { force?: boolean } = {}): Promise<ProjectResolution> {
+    const current = this.projectRegistry.lookup(project);
+    if (this.shuttingDown || !isAbsoluteProjectPath(current.input) || current.input.includes("::")) {
+      return this.getProjectResolution(project);
     }
-    this.projectNormalizationRoots.splice(0, this.projectNormalizationRoots.length, ...merged);
+    if (!options.force && current.state !== "unresolved") return this.getProjectResolution(project);
+    if (!options.force && current.reason && current.checked_at && Date.now() - Date.parse(current.checked_at) < 30_000) {
+      return this.getProjectResolution(project);
+    }
+    if (!this.projectWaiters.has(current.input) && !this.projectResolver.schedule(current.input)) {
+      return this.getProjectResolution(project);
+    }
+    await new Promise<void>((resolveWait) => {
+      const finish = () => {
+        clearTimeout(timer);
+        const remaining = (this.projectWaiters.get(current.input) || []).filter((item) => item !== finish);
+        if (remaining.length) this.projectWaiters.set(current.input, remaining);
+        else this.projectWaiters.delete(current.input);
+        resolveWait();
+      };
+      const timer = setTimeout(finish, this.projectResolverWaitMs + 25);
+      this.projectWaiters.set(current.input, [...(this.projectWaiters.get(current.input) || []), finish]);
+    });
+    return this.getProjectResolution(project);
+  }
+
+  private withProjectResolution(response: ApiResponse, project?: string): ApiResponse {
+    if (!project?.trim()) return response;
+    const resolution = this.getProjectResolution(project);
+    if (resolution.state === "unresolved" || resolution.state === "conflict") {
+      response.meta = { ...response.meta, project_resolution: resolution };
+    }
+    return response;
   }
 
   private canonicalizeProjectName(project: string): string {
-    const trimmed = project.trim();
-    if (!trimmed) {
-      return "";
-    }
-
-    const scopeIndex = trimmed.indexOf("::");
-    if (scopeIndex > 0) {
-      return this.canonicalizeProjectName(trimmed.slice(0, scopeIndex));
-    }
-
-    const normalized = normalizePathLike(trimmed);
-    if (normalized.includes("/") || /^[A-Za-z]:\//.test(normalized)) {
-      const resolved = realpathOrNormalized(normalized);
-      const directGitRoot = resolveDirectGitWorkspaceRoot(resolved);
-      if (directGitRoot) {
-        return basename(normalizePathLike(directGitRoot)) || directGitRoot;
-      }
-      return basename(resolved) || resolved;
-    }
-
-    return normalized;
-  }
-
-  private isExplicitRawProjectSelection(project: string): boolean {
-    const normalized = normalizePathLike(project.trim());
-    if (!normalized) {
-      return false;
-    }
-    return normalized.includes("/") || normalized.includes("::") || /^[A-Za-z]:\//.test(normalized);
-  }
-
-  private loadDistinctProjects(scope: "observations" | "sessions" = "observations"): string[] {
-    const rows = scope === "sessions"
-      ? this.db
-          .query(`
-            SELECT DISTINCT project
-            FROM (
-              SELECT project FROM mem_sessions
-              UNION
-              SELECT project FROM mem_observations
-            )
-            WHERE project IS NOT NULL AND TRIM(project) <> ''
-          `)
-          .all() as Array<{ project: string }>
-      : this.db
-          .query(`
-            SELECT DISTINCT project
-            FROM mem_observations
-            WHERE project IS NOT NULL AND TRIM(project) <> ''
-          `)
-          .all() as Array<{ project: string }>;
-
-    return rows
-      .map((row) => (typeof row.project === "string" ? row.project.trim() : ""))
-      .filter(Boolean);
+    if (!project.trim()) return "";
+    const normalized = this.normalizeProjectInput(project);
+    const scopeIndex = normalized.indexOf("::");
+    const root = scopeIndex > 0 ? normalized.slice(0, scopeIndex) : normalized;
+    return root.includes("/") ? basename(root) || root : root;
   }
 
   public getCanonicalProjectName(project: string): string {
     return this.canonicalizeProjectName(project);
   }
 
-  public expandProjectSelection(
-    project: string,
-    scope: "observations" | "sessions" = "observations"
-  ): string[] {
-    const trimmed = project.trim();
-    if (!trimmed) {
-      return [];
-    }
-
-    if (this.isExplicitRawProjectSelection(trimmed)) {
-      if (trimmed.includes("::")) {
-        return [normalizePathLike(trimmed)];
-      }
-      try {
-        return [this.normalizeProjectInput(trimmed)];
-      } catch {
-        return [normalizeExplicitProjectPath(trimmed)];
-      }
-    }
-
-    const canonical = this.canonicalizeProjectName(trimmed);
-    const members = this.loadDistinctProjects(scope)
-      .filter((candidate) => this.canonicalizeProjectName(candidate) === canonical)
-      .sort((lhs, rhs) => lhs.localeCompare(rhs));
-
-    if (members.length > 0) {
-      return members;
-    }
-
-    try {
-      return [this.normalizeProjectInput(trimmed)];
-    } catch {
-      return [normalizePathLike(trimmed)];
-    }
+  public expandProjectSelection(project: string, _scope: "observations" | "sessions" = "observations"): string[] {
+    return project.trim() ? [this.normalizeProjectInput(project)] : [];
   }
 
   public projectMatchesSelection(selection: string, project: string): boolean {
-    const selected = selection.trim();
-    const candidate = project.trim();
-    if (!selected || !candidate) {
-      return false;
-    }
-
-    if (this.isExplicitRawProjectSelection(selected)) {
-      if (selected.includes("::")) {
-        return normalizePathLike(selected) === normalizePathLike(candidate);
-      }
-      return normalizeExplicitProjectPath(selected) === normalizeExplicitProjectPath(candidate);
-    }
-
-    return this.canonicalizeProjectName(selected) === this.canonicalizeProjectName(candidate);
-  }
-
-  private migrateLegacyProjectAliases(): void {
-    const projectTables = [
-      "mem_sessions",
-      "mem_events",
-      "mem_observations",
-      "mem_facts",
-      "mem_consolidation_queue",
-    ] as const;
-
-    const distinctProjects = this.db
-      .query(`
-        SELECT DISTINCT project
-        FROM (
-          SELECT project FROM mem_sessions
-          UNION
-          SELECT project FROM mem_events
-          UNION
-          SELECT project FROM mem_observations
-          UNION
-          SELECT project FROM mem_facts
-          UNION
-          SELECT project FROM mem_consolidation_queue
-        )
-        WHERE project IS NOT NULL AND TRIM(project) <> ''
-      `)
-      .all() as Array<{ project: string }>;
-
-    const projectWeightsRows = this.db
-      .query(`
-        SELECT project, COUNT(*) AS weight
-        FROM mem_observations
-        GROUP BY project
-      `)
-      .all() as Array<{ project: string; weight: number }>;
-    const projectWeights = new Map<string, number>();
-    for (const row of projectWeightsRows) {
-      const key = typeof row.project === "string" ? row.project.trim() : "";
-      if (!key) {
-        continue;
-      }
-      projectWeights.set(key, Number(row.weight || 0));
-    }
-
-    const aliasMap = new Map<string, string>();
-    const absoluteProjectsByBasename = new Map<string, Set<string>>();
-    const variantsByLower = new Map<string, Set<string>>();
-    const observedAbsoluteProjects = new Set<string>();
-
-    const registerAbsoluteCandidate = (project: string): void => {
-      if (!isAbsoluteProjectPath(project)) {
-        return;
-      }
-      observedAbsoluteProjects.add(project);
-      const baseKey = projectBasenameKey(project);
-      if (!absoluteProjectsByBasename.has(baseKey)) {
-        absoluteProjectsByBasename.set(baseKey, new Set());
-      }
-      absoluteProjectsByBasename.get(baseKey)!.add(project);
-    };
-
-    for (const row of distinctProjects) {
-      const original = typeof row.project === "string" ? row.project.trim() : "";
-      if (!original) {
-        continue;
-      }
-      const lowerKey = normalizePathLike(original).toLowerCase();
-      if (!variantsByLower.has(lowerKey)) {
-        variantsByLower.set(lowerKey, new Set());
-      }
-      variantsByLower.get(lowerKey)!.add(original);
-      try {
-        const normalized = this.normalizeProjectInput(original);
-        registerAbsoluteCandidate(normalized);
-        if (normalized && normalized !== original) {
-          aliasMap.set(original, normalized);
-        }
-      } catch {
-        // ignore invalid project keys
-      }
-      registerAbsoluteCandidate(original);
-    }
-
-    this.extendProjectNormalizationRoots([...observedAbsoluteProjects]);
-
-    for (const row of distinctProjects) {
-      const original = typeof row.project === "string" ? row.project.trim() : "";
-      if (!original || isAbsoluteProjectPath(original)) {
-        continue;
-      }
-      const normalized = normalizePathLike(original);
-      if (normalized.includes("/")) {
-        continue;
-      }
-      const candidates = absoluteProjectsByBasename.get(normalized.toLowerCase());
-      if (!candidates || candidates.size !== 1) {
-        continue;
-      }
-      const [target] = [...candidates];
-      if (target && target !== original) {
-        aliasMap.set(original, target);
-      }
-    }
-
-    const chooseCanonicalVariant = (variants: string[]): string => {
-      return [...variants].sort((lhs, rhs) => {
-        const lhsWeight = projectWeights.get(lhs) || 0;
-        const rhsWeight = projectWeights.get(rhs) || 0;
-        if (rhsWeight !== lhsWeight) {
-          return rhsWeight - lhsWeight;
-        }
-        const lhsAbs = isAbsoluteProjectPath(lhs) ? 1 : 0;
-        const rhsAbs = isAbsoluteProjectPath(rhs) ? 1 : 0;
-        if (rhsAbs !== lhsAbs) {
-          return rhsAbs - lhsAbs;
-        }
-        return lhs.localeCompare(rhs);
-      })[0] || variants[0] || "";
-    };
-
-    for (const variantsSet of variantsByLower.values()) {
-      const variants = [...variantsSet];
-      if (variants.length <= 1) {
-        continue;
-      }
-      const canonical = chooseCanonicalVariant(variants);
-      for (const variant of variants) {
-        if (variant !== canonical) {
-          aliasMap.set(variant, canonical);
-        }
-      }
-    }
-
-    if (aliasMap.size === 0) {
-      return;
-    }
-
-    const resolvedAliasMap = new Map<string, string>();
-    for (const [source] of aliasMap) {
-      let target = aliasMap.get(source) || source;
-      const seen = new Set<string>([source]);
-      while (aliasMap.has(target) && !seen.has(target)) {
-        seen.add(target);
-        target = aliasMap.get(target) || target;
-      }
-      if (target !== source) {
-        resolvedAliasMap.set(source, target);
-      }
-    }
-
-    if (resolvedAliasMap.size === 0) {
-      return;
-    }
-
-    let changed = 0;
-    try {
-      const apply = this.db.transaction(() => {
-        for (const [fromProject, toProject] of resolvedAliasMap) {
-          for (const table of projectTables) {
-            this.db.query(`UPDATE ${table} SET project = ? WHERE project = ?`).run(toProject, fromProject);
-            changed += readDirectSqliteChanges(this.db);
-          }
-        }
-
-        const metaRows = this.db
-          .query(`SELECT key, value FROM mem_meta WHERE key LIKE 'codex_rollout_context:%'`)
-          .all() as Array<{ key: string; value: string }>;
-        for (const row of metaRows) {
-          if (typeof row.value !== "string" || !row.value.trim()) {
-            continue;
-          }
-          let parsed: Record<string, unknown>;
-          try {
-            const value = JSON.parse(row.value) as unknown;
-            if (typeof value !== "object" || value === null || Array.isArray(value)) {
-              continue;
-            }
-            parsed = value as Record<string, unknown>;
-          } catch {
-            continue;
-          }
-          const currentProject = typeof parsed.project === "string" ? parsed.project.trim() : "";
-          const mappedProject = currentProject ? resolvedAliasMap.get(currentProject) : undefined;
-          if (!mappedProject || mappedProject === currentProject) {
-            continue;
-          }
-          parsed.project = mappedProject;
-          this.db
-            .query(`UPDATE mem_meta SET value = ?, updated_at = ? WHERE key = ?`)
-            .run(JSON.stringify(parsed), nowIso(), row.key);
-          changed += 1;
-        }
-      });
-      apply();
-    } catch {
-      return;
-    }
-
-    if (changed > 0) {
-      console.log(`[harness-mem] normalized legacy project aliases (aliases=${resolvedAliasMap.size}, rows=${changed})`);
-    }
+    if (!selection.trim() || !project.trim()) return false;
+    return this.normalizeProjectInput(selection) === this.normalizeProjectInput(project);
   }
 
   private initVectorEngine(): void {
@@ -3725,33 +3257,6 @@ export class HarnessMemCore {
     }
   }
 
-  private extractEventEmbeddingSeed(event: EventEnvelope): string {
-    const payload =
-      typeof event.payload === "string"
-        ? (() => {
-            try {
-              const parsed = JSON.parse(event.payload);
-              return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : { content: event.payload };
-            } catch {
-              return { content: event.payload };
-            }
-          })()
-        : event.payload && typeof event.payload === "object"
-          ? (event.payload as Record<string, unknown>)
-          : {};
-
-    const promptRaw = payload.prompt;
-    const contentRaw = payload.content;
-    const commandRaw = payload.command;
-
-    return (
-      (typeof contentRaw === "string" && contentRaw.trim()) ||
-      (typeof promptRaw === "string" && promptRaw.trim()) ||
-      (typeof commandRaw === "string" && commandRaw.trim()) ||
-      JSON.stringify(payload).slice(0, 4000)
-    );
-  }
-
   private initReranker(): void {
     const rerankerSetting =
       typeof this.config.rerankerEnabled === "boolean"
@@ -3805,7 +3310,8 @@ export class HarnessMemCore {
   }
 
   async prepareRecordEventEmbedding(event: EventEnvelope): Promise<void> {
-    await this.prepareEmbeddingForSync(this.extractEventEmbeddingSeed(event), "passage");
+    const source = this.eventRec.getEventEmbeddingSource(event);
+    if (source !== null) await this.prepareEmbeddingForSync(source, "passage");
   }
 
   async prepareSearchEmbedding(query: string): Promise<void> {
@@ -3842,6 +3348,15 @@ export class HarnessMemCore {
     }
 
     return Promise.resolve(this.embeddingProvider.embed(normalized));
+  }
+
+  async warmEmbedding(text: string, mode: EmbeddingPrimeMode): Promise<void> {
+    await this.primeEmbedding(text, mode);
+    if (this.embeddingProvider.name === "adaptive") {
+      // Readiness covers both routes even when the caller's seed selects only one.
+      await this.primeEmbedding("const warmup = true;", mode);
+      await this.primeEmbedding("記憶を検索する準備", mode);
+    }
   }
 
   async primeEmbeddingsBatch(texts: string[], mode: EmbeddingPrimeMode = "passage"): Promise<number[][]> {
@@ -5050,12 +4565,48 @@ export class HarnessMemCore {
   }
 
   recordEvent(event: EventEnvelope, options: { allowQueue: boolean } = { allowQueue: true }): ApiResponse {
-    return this.eventRec.recordEvent(event, options);
+    if (event.project?.trim()) this.projectRegistry.retain(event.project);
+    return this.withProjectResolution(this.eventRec.recordEvent(event, options), event.project);
+  }
+
+  private async recordIngestEventQueued(
+    event: EventEnvelope,
+    options: { allowQueue: boolean } = { allowQueue: false }
+  ): Promise<ApiResponse | "queue_full"> {
+    if (event.project?.trim()) {
+      await this.prepareProject(event.project);
+      this.projectRegistry.retain(event.project);
+    }
+    const source = this.eventRec.getEventEmbeddingSource(event);
+    if (source !== null) {
+      try {
+        if (!this.getEmbeddingReadiness().ready) {
+          await this.warmEmbedding("harness mem ingest warmup", "passage");
+        }
+        await this.prepareEmbeddingForSync(source, "passage");
+      } catch (error) {
+        throw this.createEmbeddingReadinessError("ingest embedding preparation failed", error);
+      }
+    }
+    const response = await this.eventRec.recordEventQueued(event, options);
+    return response === "queue_full" ? response : this.withProjectResolution(response, event.project);
   }
 
   async recordEventQueued(
     event: EventEnvelope,
     options: { allowQueue: boolean; deferEmbedding?: boolean } = { allowQueue: true }
+  ): Promise<ApiResponse | "queue_full"> {
+    if (event.project?.trim()) {
+      await this.prepareProject(event.project);
+      this.projectRegistry.retain(event.project);
+    }
+    const response = await this.recordEventQueuedInternal(event, options);
+    return response === "queue_full" ? response : this.withProjectResolution(response, event.project);
+  }
+
+  private async recordEventQueuedInternal(
+    event: EventEnvelope,
+    options: { allowQueue: boolean; deferEmbedding?: boolean }
   ): Promise<ApiResponse | "queue_full"> {
     if (options.deferEmbedding !== true && shouldRunEventOutOfProcess({ dbPath: this.config.dbPath })) {
       if (this.eventChildPending >= this.getEventChildMaxPending()) {
@@ -5789,6 +5340,11 @@ export class HarnessMemCore {
   }
 
   async recallPrepared(request: RecallRuntimeRequest): Promise<ApiResponse> {
+    if (request.project?.trim()) await this.prepareProject(request.project);
+    return this.withProjectResolution(await this.recallPreparedInternal(request), request.project);
+  }
+
+  private async recallPreparedInternal(request: RecallRuntimeRequest): Promise<ApiResponse> {
     const startedAt = performance.now();
     const query = request.query.trim();
     const rawProject = request.project?.trim() || undefined;
@@ -6328,7 +5884,7 @@ export class HarnessMemCore {
   search(request: SearchRequest): ApiResponse {
     const startedAt = performance.now();
     try {
-      return this.obsStore.search(request);
+      return this.withProjectResolution(this.obsStore.search(request), request.scope?.project || request.project);
     } catch (error) {
       if (error instanceof SearchAuditBackpressureError) {
         const response = makeErrorResponse(startedAt, "search audit temporarily unavailable", {});
@@ -6346,6 +5902,12 @@ export class HarnessMemCore {
   }
 
   async searchPrepared(request: SearchRequest): Promise<ApiResponse> {
+    const project = request.scope?.project || request.project;
+    if (project?.trim()) await this.prepareProject(project);
+    return this.withProjectResolution(await this.searchPreparedInternal(request), project);
+  }
+
+  private async searchPreparedInternal(request: SearchRequest): Promise<ApiResponse> {
     const startedAt = performance.now();
     const startedAtWallMs = Date.now();
     const auditFlushRunAtSearchStart = this.backgroundMaintenanceWorker?.activeSearchAuditFlushRun() ?? null;
@@ -6604,11 +6166,11 @@ export class HarnessMemCore {
   }
 
   feed(request: FeedRequest): ApiResponse {
-    return this.obsStore.feed(request);
+    return this.withProjectResolution(this.obsStore.feed(request), request.project);
   }
 
   searchFacets(request: SearchFacetsRequest): ApiResponse {
-    return this.obsStore.searchFacets(request);
+    return this.withProjectResolution(this.obsStore.searchFacets(request), request.project);
   }
 
   async timeline(request: TimelineRequest): Promise<ApiResponse> {
@@ -9347,6 +8909,10 @@ export class HarnessMemCore {
     process.stderr.write(`[harness-mem][notice] Migration: ${notice.fix_command}\n`);
   }
 
+  getSourceReaderStatus() {
+    return this.ingestCoord.readerStatus();
+  }
+
   health(options: { includeCounts?: boolean } = {}): ApiResponse {
     const startedAt = performance.now();
     this.refreshEmbeddingHealth();
@@ -9396,6 +8962,7 @@ export class HarnessMemCore {
           embedding_readiness_state: embeddingReadiness.state,
           embedding_readiness_retryable: embeddingReadiness.retryable,
           dedupe_claims_readiness: dedupeClaimsReadiness,
+          reference_io: { project_resolver: this.getProjectResolverStatus(), source_reader: this.getSourceReaderStatus() },
           telemetry: getTelemetryStatus(),
           embedding_migration_notice: embeddingMigrationNotice,
           features: {
@@ -9422,7 +8989,8 @@ export class HarnessMemCore {
             cursor_ingest_interval_ms: clampLimit(Number(this.config.cursorIngestIntervalMs || DEFAULT_CURSOR_INGEST_INTERVAL_MS), DEFAULT_CURSOR_INGEST_INTERVAL_MS, 1000, 300000),
             cursor_backfill_hours: clampLimit(Number(this.config.cursorBackfillHours || DEFAULT_CURSOR_BACKFILL_HOURS), DEFAULT_CURSOR_BACKFILL_HOURS, 1, 24 * 365),
             antigravity_history_ingest: this.config.antigravityIngestEnabled !== false,
-            antigravity_workspace_roots: computeAntigravityWorkspaceRoots(this.config),
+            antigravity_workspace_roots: configuredAntigravityWorkspaceRoots(this.config),
+            antigravity_workspace_roots_status: configuredAntigravityWorkspaceRoots(this.config).length ? "configured" : "not_observed",
             antigravity_logs_root: resolveHomePath(this.config.antigravityLogsRoot || DEFAULT_ANTIGRAVITY_LOGS_ROOT),
             antigravity_workspace_storage_root: resolveHomePath(this.config.antigravityWorkspaceStorageRoot || DEFAULT_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT),
             antigravity_ingest_interval_ms: clampLimit(Number(this.config.antigravityIngestIntervalMs || DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS), DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS, 1000, 300000),
@@ -10366,32 +9934,32 @@ export class HarnessMemCore {
     return this.analyticsSvc.getOverview(params);
   }
 
-  ingestCodexHistory(): ApiResponse {
+  ingestCodexHistory(): Promise<ApiResponse> {
     return this.ingestCoord.ingestCodexHistory();
   }
 
-  ingestOpencodeHistory(): ApiResponse {
+  ingestOpencodeHistory(): Promise<ApiResponse> {
     return this.ingestCoord.ingestOpencodeHistory();
   }
 
-  ingestCursorHistory(): ApiResponse {
+  ingestCursorHistory(): Promise<ApiResponse> {
     return this.ingestCoord.ingestCursorHistory();
   }
 
-  ingestAntigravityHistory(): ApiResponse {
+  ingestAntigravityHistory(): Promise<ApiResponse> {
     return this.ingestCoord.ingestAntigravityHistory();
   }
 
-  ingestGeminiHistory(): ApiResponse {
+  ingestGeminiHistory(): Promise<ApiResponse> {
     return this.ingestCoord.ingestGeminiHistory();
   }
 
-  ingestClaudeCodeHistory(): ApiResponse {
+  ingestClaudeCodeHistory(): Promise<ApiResponse> {
     return this.ingestCoord.ingestClaudeCodeHistory();
   }
 
   /** Local worker entrypoint. Timer callbacks use the persistent child instead. */
-  runPeriodicIngestTickLocal(source: PeriodicIngestSource): PeriodicIngestTickResult {
+  runPeriodicIngestTickLocal(source: PeriodicIngestSource): Promise<PeriodicIngestTickResult> {
     return this.ingestCoord.runPeriodicIngestTickLocal(source);
   }
 
@@ -10461,6 +10029,9 @@ export class HarnessMemCore {
       return this.shutdownPromise ?? Promise.resolve();
     }
     this.shuttingDown = true;
+    this.projectResolver.stop();
+    for (const waiters of this.projectWaiters.values()) for (const done of [...waiters]) done();
+    this.projectWaiters.clear();
     const lightweightChild = isLightweightChildProcess();
     let searchWorkerStop: Promise<void> = Promise.resolve();
     let hadSearchWorker = false;

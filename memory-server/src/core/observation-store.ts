@@ -1281,7 +1281,7 @@ export class ObservationStore {
       if (sessionLatestCompleted) {
         contexts.push({
           scope,
-          project: this.deps.canonicalizeProject(sessionLatestCompleted.response.project),
+          project: sessionLatestCompleted.response.project,
           session_id: sessionLatestCompleted.response.session_id,
           platform: sessionLatestCompleted.response.platform,
           latest_turn_at: sessionLatestCompleted.response.created_at,
@@ -1295,7 +1295,7 @@ export class ObservationStore {
       if (currentPrompt) {
         contexts.push({
           scope,
-          project: this.deps.canonicalizeProject(currentPrompt.project),
+          project: currentPrompt.project,
           session_id: currentPrompt.session_id,
           platform: currentPrompt.platform,
           latest_turn_at: currentPrompt.created_at,
@@ -1412,6 +1412,7 @@ export class ObservationStore {
     return {
       scope: context.scope,
       project: context.project,
+      ...(/^(?:\/|[A-Za-z]:[\\/])/.test(context.project) ? { display_name: this.deps.canonicalizeProject(context.project) } : {}),
       session_id: context.session_id,
       platform: context.platform,
       latest_turn_at: context.latest_turn_at,
@@ -5740,14 +5741,18 @@ export class ObservationStore {
 
     const groupedProjectCounts = new Map<string, number>();
     for (const row of projectRows) {
-      const canonical = this.deps.canonicalizeProject(String(row.value || ""));
-      if (!canonical) {
+      const project = String(row.value || "");
+      if (!project) {
         continue;
       }
-      groupedProjectCounts.set(canonical, (groupedProjectCounts.get(canonical) || 0) + Number(row.cnt || 0));
+      groupedProjectCounts.set(project, (groupedProjectCounts.get(project) || 0) + Number(row.cnt || 0));
     }
     const groupedProjects = [...groupedProjectCounts.entries()]
-      .map(([value, count]) => ({ value, count }))
+      .map(([value, count]) => ({
+        value,
+        count,
+        ...(/^(?:\/|[A-Za-z]:[\\/])/.test(value) ? { display_name: this.deps.canonicalizeProject(value) } : {}),
+      }))
       .sort((lhs, rhs) => rhs.count - lhs.count || lhs.value.localeCompare(rhs.value));
 
     // 時間バケットは固定順で返す

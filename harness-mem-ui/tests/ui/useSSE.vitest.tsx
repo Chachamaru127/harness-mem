@@ -34,11 +34,11 @@ class MockEventSource {
   }
 }
 
-function Probe(props: { enabled?: boolean; onEvent: (event: SseUiEvent) => void }) {
+function Probe(props: { enabled?: boolean; project?: string; onEvent: (event: SseUiEvent) => void }) {
   const { connected, lastError } = useSSE({
     enabled: props.enabled,
     includePrivate: false,
-    project: "project-a",
+    project: props.project ?? "project-a",
     onEvent: props.onEvent,
   });
 
@@ -62,6 +62,23 @@ afterEach(() => {
 });
 
 describe("useSSE", () => {
+  test("project switches retain full identities and discard events from the previous stream", () => {
+    const onEvent = vi.fn();
+    const { rerender } = render(<Probe project="/a/repo" onEvent={onEvent} />);
+    const first = MockEventSource.instances[0];
+    expect(new URL(first.url, "http://localhost").searchParams.get("project")).toBe("/a/repo");
+    rerender(<Probe project="/b/repo" onEvent={onEvent} />);
+    expect(first.closed).toBe(true);
+    const second = MockEventSource.instances[1];
+    expect(new URL(second.url, "http://localhost").searchParams.get("project")).toBe("/b/repo");
+    act(() => {
+      first.emit("observation.created", { id: "old", project: "/a/repo" });
+      second.emit("observation.created", { id: "current", project: "/b/repo" });
+    });
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(onEvent.mock.calls[0][0].data.id).toBe("current");
+  });
+
   test("does not connect until enabled", () => {
     const onEvent = vi.fn();
     render(<Probe enabled={false} onEvent={onEvent} />);
