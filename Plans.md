@@ -2,7 +2,7 @@
 
 ## 2026-09-13 ファイル参照停止時の検索と記録の継続
 
-- 状態: cc:WIP。立花の「検証こみで対策完了させて」に基づく。owner は harness-mem、Local。前回の未コミット修正を保持する。
+- 状態: cc:完了 [6434771]。立花の「検証こみで対策完了させて」に基づく。owner は harness-mem、Local。前回の関連復旧修正と併せてローカルcommit 6434771へ確定。
 - 100% の定義: workspace と取り込み元の参照が永久停止した状態でも起動、scoped search、直接記録と読み戻しが成功する。未知パスの混入0、有限worker/queue、保存確認前のoffset不変、再送の欠落/重複なしを故障注入で証明し、対象回帰と型検査、独立レビュー、稼働確認を完了する。DB自体のI/O停止は継続保証の対象外。
 - Spec delta: Spec.md の File Reference Isolation に、保存済みproject対応表、DB非接続の参照子、未知/競合対応の保留、reader枠と保存ACKの境界を追加する。
 - team_validation_mode: subagent。前回の独立設計調査を継承し、実装をproject解決とsource読取に分離する。作者と別のreviewerが要求と実物を照合する。
@@ -10,15 +10,20 @@
 
 | Task | 内容 | DoD | Depends | Status |
 |---|---|---|---|---|
-| INC-0913-project | [lane:gate] 起動、検索、記録、結果整形のprojectファイル参照をDB非接続子へ分離し対応を永続保存 | cold startと永久参照停止下の既存/未知project、symlink/worktree同一性、厳密なscope、有限子と遅延応答の検証 | - | cc:WIP |
-| INC-0913-reader | [lane:gate] 全sourceのファイル列挙/読取を有限readerへ分離し保存担当からDBを隔離 | 1枠/全枠停止で検索と直接記録継続、健全source進捗、ACK前offset不変、再送重複なし、privacy維持 | - | cc:WIP |
-| INC-0913-verify | [lane:gate] 統合故障注入、既存回帰、独立レビュー、運用反映検証 | 上記全要求の証拠、1000要求で上限維持/混入0、型検査、review APPROVE、実検索と記録readback | INC-0913-project, INC-0913-reader | cc:WIP |
+| INC-0913-project | [lane:gate] 起動、検索、記録、結果整形のprojectファイル参照をDB非接続子へ分離し対応を永続保存 | cold startと永久参照停止下の既存/未知project、symlink/worktree同一性、厳密なscope、有限子と遅延応答の検証 | - | cc:完了 [6434771] |
+| INC-0913-reader | [lane:gate] 全sourceのファイル列挙/読取を有限readerへ分離し保存担当からDBを隔離 | 1枠/全枠停止で検索と直接記録継続、健全source進捗、ACK前offset不変、再送重複なし、privacy維持 | - | cc:完了 [6434771] |
+| INC-0913-verify | [lane:gate] 統合故障注入、既存回帰、独立レビュー、運用反映検証 | 上記全要求の証拠、1000要求で上限維持/混入0、型検査、review APPROVE、実検索と記録readback | INC-0913-project, INC-0913-reader | cc:完了 [6434771] |
 
-- 途中検証: HTTP故障注入と実FIFOの6 tests /160 assertions PASS。healthがsourceファイルを同期参照して停止する経路はFIFOでREDを確認して修正。API契約12 tests PASS。独立reviewのhealthとproject選択値のMajor2件は修正後再検証中。sourceの保存ACK、privacy、DB非接続、残留子の上限も統合review対象。
+- 最終検証: 中核、project、HTTP故障注入、API契約の統合408 tests /5158 assertions PASS。境界、起動、privacy、budget回帰106 tests /726 assertions PASS。UI54 tests PASS、server/UI型検査とUI build PASS。通常source integration、実ONNX周期取り込み2 tests、実DB ACK喪失1 test /10 assertionsもPASS。件数は各実行単位であり、重複を含む他の検証と加算しない。
+- 故障の証拠: 同期参照永久停止、実FIFO、cold restart、1000要求、全reader枠の終了未確認と再起動、別project混入0、保存ACK喪失後の実DB1件維持とoffset末尾到達を確認。health停止は実FIFOでREDを確認して修正。
+- 独立review: APPROVE。health同期参照とproject選択値のMajor2件、識別子redactとDB参照除外の補強、表示ラベルの説明を解消。未解消Critical/Major 0。reviewerの中断tool実行は成功件数に含めず、親の完了済み同範囲回帰を採用。
+- 稼働反映: 2026-09-13 01:55 JST頃、launchctl経由restart成功。daemon PID24141、status=ok、embedding_ready=true、warnings=[]、reference_ioで両poolのreserved=0。UIは新bundle index-BLOeNTFj.jsの配信確認済み。
+- 実readback: 同repoの既存日本語検索3件/167ms、vector_executed=true。verificationと明記したcheckpoint1件の保存434ms、固有語検索で同projectの1件を6msで読み戻し。event_id=verification-file-isolation-20260913-6434771。
+- 限界: DBと必要runtime資産が利用可能であることが前提。参照不能ログの全回収、OS内部のTCC原因確定、外部公開は含めない。全reader枠が終了未確認ならログ取り込みを保留し、検索と直接記録を継続する。次の必須タスク、立花の判断待ち、外部条件待ちは今回の完了範囲に残らない。
 
 ## 2026-09-11 ローカルdaemon応答停止の原因調査と復旧
 
-- 状態: 動作復旧確認済み（コードは未コミット）。立花の「原因を確定しつつ復旧して」に基づく。
+- 状態: cc:完了 [6434771]。9月13日の対策と併せてコード確定。立花の「原因を確定しつつ復旧して」に基づく。
 - 範囲: Local。harness-memの稼働プロセス、起動管理、復旧検証。既存のPlans.md変更を保持する。
 - 完了条件: 停止原因を採取した証拠で説明でき、復旧後のhealthと同repo対象の実検索が成功する。原因の確定範囲と残る未確認を分ける。
 - 操作: 再起動前にログとプロセスの待機状態を採取し、必要な復旧後に接続と検索を検証する。
@@ -33,7 +38,7 @@
 
 | Task | 内容 | DoD | Depends | Status |
 |---|---|---|---|---|
-| INC-0911-ingest | [lane:gate] [tdd:required] 周期取り込みで本文primeを待って保存する | ローカルONNXで新規fixture保存とoffset前進、失敗時offset不変、対象回帰テスト、独立レビューAPPROVE、稼働取り込み再検証 | - | 動作復旧確認済み（未コミット） |
+| INC-0911-ingest | [lane:gate] [tdd:required] 周期取り込みで本文primeを待って保存する | ローカルONNXで新規fixture保存とoffset前進、失敗時offset不変、対象回帰テスト、独立レビューAPPROVE、稼働取り込み再検証 | - | cc:完了 [6434771] |
 
 - 17:18 JSTの最終稼働確認: daemon PID74987、health status=ok、ready=true、警告0。同repoの日本語検索3件/42.31ms、vector_executed=true、safe_mode=false。Codex/Cursorの実tickでevent_insert/observation_insert/vector_upsertを確認し、初期化エラーの反復は解消。独立レビューAPPROVE、重大指摘0。実装担当169tests、独立担当175tests、実モデル周期2tests、API契約12testsがそれぞれ成功（重複を含むので合計件数とは扱わない）。型検査と対象LSP診断も成功。
 - 残件を復旧とは分離: 停止中の全ログの回収完了と、この会話の古い履歴の追いつきは未確認。実環境で1件のCodex処理7470ms、Cursor処理11467msを観測。consolidationは120秒timeout後の再実行でpending_jobs=0へ戻った。これらの性能改善、nuggetベクトル品質、公開/commitは今回の動作復旧完了に含めない。
