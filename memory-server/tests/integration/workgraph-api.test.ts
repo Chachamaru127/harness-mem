@@ -145,14 +145,25 @@ describe("WorkGraph HTTP query API", () => {
     }
   });
 
-  test("GET /v1/work/query accepts canonical project labels from the UI", async () => {
+  test("GET /v1/work/query accepts full project IDs returned for UI selection without guessing labels", async () => {
     const runtime = createRuntime("canonical-label");
     const project = "/repo/harness-mem";
     try {
       seedWorkGraph(runtime.core, project);
+      expect(runtime.core.recordEvent({
+        event_id: "workgraph-ui-project", session_id: "workgraph-ui-project",
+        platform: "codex", project, event_type: "user_prompt",
+        payload: { content: "workgraph project selection fixture" },
+      }).ok).toBe(true);
+      const stats = await getJson(runtime.baseUrl, "/v1/projects/stats");
+      expect(stats.status).toBe(200);
+      const option = (stats.body.items as Array<{ project: string; display_name?: string }>)
+        .find((item) => item.project === project);
+      expect(option?.project).toBe(project);
+      expect(option?.display_name).toBe("harness-mem");
       const { status, body } = await getJson(
         runtime.baseUrl,
-        `/v1/work/query?project=harness-mem&mode=next&now=${encodeURIComponent("2026-05-17T10:00:00.000Z")}`
+        `/v1/work/query?project=${encodeURIComponent(option!.project)}&mode=next&now=${encodeURIComponent("2026-05-17T10:00:00.000Z")}`
       );
 
       expect(status).toBe(200);
@@ -160,6 +171,9 @@ describe("WorkGraph HTTP query API", () => {
       expect((body.meta as Record<string, unknown>).next_work_id).toBe("S125-009");
       const items = body.items as Array<Record<string, unknown>>;
       expect(items.map((item) => item.work_id)).toContain("S125-009");
+      const labelOnly = await getJson(runtime.baseUrl, "/v1/work/query?project=harness-mem&mode=next");
+      expect(labelOnly.status).toBe(200);
+      expect(labelOnly.body.items).toEqual([]);
     } finally {
       runtime.stop();
     }

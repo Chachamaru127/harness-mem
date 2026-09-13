@@ -225,7 +225,7 @@ Scheduled consolidation processes one durable queue job per tick by default to
 bound same-database contention with search. Set
 `HARNESS_MEM_CONSOLIDATION_SCHEDULER_BATCH_SIZE` to 1–10 only after measuring
 the production search latency impact; manual consolidation limits are unchanged.
-Empty queues stay idle, a SQLite partial-unique invariant coalesces duplicate
+Empty queues stay idle, a SQLite constraint coalesces duplicate
 pending work across processes, unchanged observations do not repeat relation or
 LLM existing-fact scans, and the scheduler is phase-offset from minute-based
 ingest ticks.
@@ -730,7 +730,12 @@ The Mem UI includes an `Environment` tab that explains internal servers, install
 | **Dogfood** | Codex App | Maintainer local setup | Uses the same local Codex config path in this setup. Kept as dogfood until an App-specific reproducible smoke exists |
 | **Tier 2** | Cursor | Latest | User-scoped `~/.cursor/hooks.json` + `~/.cursor/mcp.json` (`mcpServers.harness-mem`), hook spool ingest, MCP search, and setup/doctor support. May require Cursor MCP reload/new session after setup |
 | **Tier 3** | Hermes Agent | Docs-backed integration | MCP tools + optional MemoryProvider plugin. Experimental command-tower bridge; not a replacement for Hermes built-in memory |
+| **Tier 3** | Grok Bot | MCP contract / experimental | Optional Layer 1 search / timeline / get / resume / record; no lifecycle hooks or Tier 1 continuity. [Integration](integrations/grok-bot/) |
 | **Tier 3** | OpenCode | Latest | Experimental. Community-contributed |
+
+### Grok Bot (Tier 3 / experimental)
+
+`harness-mem setup --platform grok-bot` generates an optional Layer 1 MCP export; `harness-mem doctor --platform grok-bot` checks its structure only. Import the JSON into the client explicitly. No lifecycle hooks or automatic first-turn continuity are claimed. See [local / Tailscale setup and tool contract](integrations/grok-bot/).
 
 ---
 

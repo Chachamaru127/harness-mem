@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { HarnessMemCore, type Config } from "../../src/core/harness-mem-core";
 import { startHarnessMemServer } from "../../src/server";
+import { ProjectRegistry } from "../../src/core/project-registry";
 
 function createRuntime(name: string): {
+  core: HarnessMemCore;
   baseUrl: string;
   stop: () => void;
 } {
@@ -30,6 +32,7 @@ function createRuntime(name: string): {
   const core = new HarnessMemCore(config);
   const server = startHarnessMemServer(core, config);
   return {
+    core,
     baseUrl: `http://127.0.0.1:${server.port}`,
     stop: () => {
       core.shutdown("test");
@@ -292,7 +295,7 @@ describe("Recall Runtime API", () => {
     }
   });
 
-  test("normalizes short project keys before reading recall projection", async () => {
+  test("uses a persisted confirmed short alias before reading recall projection", async () => {
     const runtime = createRuntime("short-project-projection");
     const project = process.cwd();
     try {
@@ -308,6 +311,17 @@ describe("Recall Runtime API", () => {
       const expectedProject = String(refreshPayload.items[0]?.project ?? "");
       expect(expectedProject).toBeTruthy();
       expect(expectedProject).not.toBe(basename(project));
+
+      const unconfirmedRecall = await postJson(runtime.baseUrl, "/v1/recall", {
+        query: "short project projection sentinel", project: basename(project), limit: 5,
+      });
+      expect(unconfirmedRecall.status).toBe(200);
+      expect((await unconfirmedRecall.json() as { items: unknown[] }).items).toHaveLength(0);
+      // The fixture supplies a previously confirmed mapping; the basename itself is not evidence.
+      const confirmed = new ProjectRegistry(runtime.core.getRawDb()).accept({
+        input: basename(project), canonical: expectedProject, kind: "confirmed",
+      });
+      expect(confirmed.state).toBe("confirmed");
 
       const recall = await postJson(runtime.baseUrl, "/v1/recall", {
         query: "short project projection sentinel",

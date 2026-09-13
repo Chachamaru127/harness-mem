@@ -7,7 +7,19 @@
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-09-13
+
+### 追加
+
+- **任意の Grok Bot Tier 3 統合**: `setup` / `doctor` / `uninstall --platform grok-bot` と `mcp-config --client grok-bot` で、明示 client import 用 Layer 1 MCP JSON を管理する。local / remote 設定例、Tailscale Serve 用 loopback Host-rewrite proxy、5 tool 契約を同梱。lifecycle hooks / Tier 1 continuity は対象外。doctor は設定確認のみで client / remote live E2E は未検証。default local HTTP では共有 gateway の token 作成と起動を行い、明示 remote URL では local gateway を起動しない。HTTP bearer URL は loopback 以外で `https:` を必須にする。
+
+### 変更
+
+- **projectの選択には保存済みの完全な識別子を使う**。一覧やfacetsが返す`project`を指定する。同名フォルダという理由での自動統合を止め、既存記録は元の識別子で参照できる。未解決パスと別名の競合は明示する。[移行と参照停止時の挙動](docs/file-reference-isolation.md)を参照。
+
 ### 修正
+
+- **埋め込みモデルの初期化と定期取り込みを修正**。言語ごとの両モデルを初期化し、取り込みでは本文の埋め込み準備と保存成功を待ってから読み取り位置を進める。
 
 - **プロジェクトや会話ログの参照停止を検索と直接記録から分離した**。保存済み識別子、DB非接続の参照子、上限付き待ち行列、保存確認後のoffset更新、再起動を跨ぐ実行枠予約を導入。未確認や競合を明示し、UI選択では完全な識別子を保持する。healthも会話ログを探索しない。
 
@@ -18,6 +30,7 @@
 - **残るstrict-project cache-miss timeoutをprivacy-safeにphase帰属し、watermarkをO(1)化した**。応答とrecall telemetryでwatermark/cache lookup、retrieval、durable spool append/commit、worker、total、同一runのaudit-flush overlapを固定scalarだけに分離する。retrieval応答はscope解決、latest interaction、lexicalのstrategy/tokenize/SQL/fallback/score/走査行数、vector、load/hydrate、facts/tags、route、ranking/rerank、privacy/boundary、audit-intent build、未帰属時間へさらに分解する。readyなrepeat-recall watermarkはtransactionで維持するproject/session/global auxiliary generationを主キー検索し、readinessやtrigger欠損時は原子的修復まで従来scanへfallbackする。本番root causeはこの計測による確定待ち。
 - **strict-project searchのcache missが18GB main DBの監査commit競合を待たないようにした**。search workerは成功応答前にtyped audit/access-count intentをmode 0600・`synchronous=FULL`・boundedなSQLite sidecarへ耐久保存する。main DBへのFIFO反映は既存maintenance workerが応答後に行い、`intent_id` claimでcommit後/delete前crashを冪等回収する。startup、成功したoffloaded search、graceful shutdownで回収する。flush失敗は有限のcoalesced指数backoffでretryし、未反映intentはspoolに残す。full/write failureはquery/project/pathを含まない固定`audit_backpressure`でfail closedする。本番latencyは再検証待ち。
 - **consolidation と明示 PASSIVE WAL checkpoint を daemon event loop から隔離した**。1つの daemon-owned persistent maintenance child で両処理を直列化する。scheduler の重複は coalesceし、searchとの同一DB競合時間を区切るため既定でdurable queueを位相調整済みtickごとに1件進める。queueが空ならrecent sessionを再処理せず、変化のないobservationではproject relation maintenanceを繰り返さない。手動 consolidation は FIFO のまま完了responseを返し、consolidation中に待つcheckpointは次の手動要求より先に実行する。停止は TERM → 最大1秒 → KILL → 消滅確認、次回起動は同一DBの孤児だけを回収する。commit時のautocheckpoint 1000ページを主責任、PASSIVEを二次保険とし、busy/result/WALサイズだけをprivacy-safeに記録する。busy/error/active frameだけを有限の指数backoffでretryし、既定WAL上限512 MiBはsoft telemetryとして永久retryを起こさない。worker起動の連続失敗はbackoff後に停止し、daemon環境と異なるmaintenance/provider設定を明示したcoreはlocal single-flight経路を維持する。先の83.8秒は非同期consolidation全体の所要であり、event-loop停止83.8秒の証明ではない。本番latencyは再測定待ち。
+- **search worker の SIGTERM を SQLite 初期化前に武装した**。`ps` に見える時点ではまだ `HarnessMemCore` 読み込み中で、その窓の daemon `SIGTERM` が default 終了になり shutdown が worker drain を待たなかった。最初の import で handler を付け、init 中の signal は core 構築後に適用する。
 - **daemon 停止が persistent search worker の消滅まで責任を持つようにした**。`SIGTERM` 後は最大1秒だけ待ち、残っていれば `SIGKILL`、消滅確認後にだけ SQLite close と daemon exit へ進む。POSIX の次回起動では、marked orphan の command、親、process start、canonical DB、worker token を signal 直前に再検証する。旧 unmarked orphan は同一 DB handle の `lsof` 証明も必須。Windows の孤児探索は推測で kill せず fail-open にする。
 - **6種類の定期 ingest を daemon event loop から単一 persistent child へ隔離した**。SQLite / storage が長時間停止しても親は readiness と search を返し、子は処理完了後に offset を進める。content dedupe の冗長 pre-read、同一 tick 内の重複 `ensure_session` も削減し、content / project / session / correlation ID / path を出さない SQLite・WAL・transaction・I/O 集計を追加した。
 - **期限切れ content dedupe の置き換えを復元可能にした**。旧 observation は標準 full archive へ退避する。復元時は active successor を別世代の復元可能 archive へ入れ替えてから対象を有効化する。`private` / `secret` / `sensitive` / `legal_hold` は自動退避せず、swap 全体を rollback する。
@@ -1163,7 +1176,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.3...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.5...v0.30.0
 [0.29.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.2...v0.29.3
 [0.29.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.0...v0.29.1

@@ -9,6 +9,7 @@ import {
   type EventEnvelope,
 } from "../../src/core/harness-mem-core";
 import { removeDirWithRetry } from "../fs-cleanup";
+import { ProjectRegistry } from "../../src/core/project-registry";
 
 const cleanupPaths: string[] = [];
 
@@ -217,8 +218,14 @@ describe("S129-002 archive-first restore-capable flow", () => {
     }
   });
 
-  test("restore normalizes a pre-alias-migration archived project but rejects a different project", () => {
+  test("restore uses a persisted confirmed alias for an archived project but rejects a different project", () => {
     const core = new HarnessMemCore(createConfig("restore-legacy-project-alias"));
+    // Model a confirmed historical mapping; a matching basename alone cannot establish identity.
+    const confirmed = new ProjectRegistry(core.getRawDb()).accept({
+      input: basename(process.cwd()), canonical: process.cwd(), kind: "confirmed",
+    });
+    expect(confirmed.state).toBe("confirmed");
+    expect(core.getProjectResolution(basename(process.cwd())).project).toBe(process.cwd());
     const archiveWithPayloadProject = (
       suffix: string,
       archivedProject: string,

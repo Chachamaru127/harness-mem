@@ -703,3 +703,33 @@ func (e *mockError) Error() string { return e.msg }
 
 // Ensure time package is used (imported for potential future use).
 var _ = time.Second
+
+// Grok Bot Layer 1 uses the existing explicit checkpoint provenance contract.
+func TestGrokBotCheckpointProvenance(t *testing.T) {
+	var received map[string]any
+	setupSharedMemServer(t, defaultMemHandler(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/checkpoints/record" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Error(err)
+		}
+		writeJSON(w, map[string]any{"ok": true, "id": "grok-checkpoint"})
+	}))
+	result := handleMemoryToolInner(context.Background(), "harness_mem_record_checkpoint", map[string]any{
+		"platform": "grok-bot", "project": "grok-contract-test", "session_id": "grok-bot-test-session",
+		"title": "Handoff", "content": "Next step", "privacy_tags": []any{"private"},
+	})
+	if result.IsError {
+		t.Fatalf("checkpoint failed: %+v", result)
+	}
+	for key, want := range map[string]string{"platform": "grok-bot", "project": "grok-contract-test", "session_id": "grok-bot-test-session"} {
+		if received[key] != want {
+			t.Errorf("%s = %v, want %s", key, received[key], want)
+		}
+	}
+	tags, ok := received["privacy_tags"].([]any)
+	if !ok || len(tags) != 1 || tags[0] != "private" {
+		t.Errorf("privacy tags lost: %v", received["privacy_tags"])
+	}
+}

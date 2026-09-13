@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "harness-mem": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "<absolute-harness-mem-root>/mcp-server/dist/index.js"
+      ],
+      "env": {
+        "HARNESS_MEM_HOST": "127.0.0.1",
+        "HARNESS_MEM_PORT": "37888",
+        "HARNESS_MEM_PROJECT_KEY": "<project-key>",
+        "HARNESS_MEM_MCP_PLATFORM": "grok-bot"
+      }
+    }
+  }
+}

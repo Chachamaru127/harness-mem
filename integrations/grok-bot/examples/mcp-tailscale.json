@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "harness-mem": {
+      "type": "http",
+      "url": "https://<mac-node>.<tailnet>.ts.net/mcp",
+      "headers": {
+        "Authorization": "Bearer ${HARNESS_MEM_MCP_TOKEN}",
+        "X-Harness-Project-Key": "<project-key>"
+      }
+    }
+  }
+}

@@ -1,5 +1,14 @@
 # Harness-mem 実装マスタープラン
 
+## 2026-09-13 再発防止策の公開リリース
+
+- 状態: cc:WIP。立花の「必要であればプッシュしてリリースして」に基づく公開承認済み。npm/GitHub公開版は0.29.5で、参照停止対策は未配布のためリリースする。
+- 対象: 承認済みローカル16 commitsと公開mainの9 commitsを統合。Grok Botの追加機能とproject識別子の厳密化を含むため0.30.0。稼働checkoutと無関係なPlans変更は保持し、専用worktreeで作業。
+- 完了条件: 統合競合解消、npm test、型検査、UI試験、npm pack、独立レビュー、version同期、mainへの反映、tag到達可能性、GitHub Releaseとnpmの0.30.0公開readback。CI失敗は成功扱いにしない。
+- 公開経路: repo既存のtag-triggered release.ymlを使用。versionと変更履歴を同期し、GitHub Actionsの品質ゲートとnpm公開を確認する。
+- 公開前検証: npm test全体exit0、3590 pass /0 fail /14既存条件skip。server/UI型検査、UI54 tests、Claude plugin validate、npm pack dry-run（670 files、新reader/resolverとGrok連携、説明文書を包含）PASS。独立release review APPROVE。3つの旧project推測fixtureは確定mappingと未確認scope拒否の検証へ更新。
+
+
 ## 2026-09-13 ファイル参照停止時の検索と記録の継続
 
 - 状態: cc:完了 [6434771]。立花の「検証こみで対策完了させて」に基づく。owner は harness-mem、Local。前回の関連復旧修正と併せてローカルcommit 6434771へ確定。
@@ -1548,3 +1557,16 @@ Plans.md は working plan（§78 + §89 + §90 + §97 + §110 + §112 + §115 + 
 - [§79〜§88 の完了セクション](docs/archive/Plans-s79-s88-2026-04-19.md)（2026-04-19 切り出し）
 - [§51〜§76 の完了セクション](docs/archive/Plans-s51-s76-2026-04-13.md)
 - [それ以前のアーカイブ](docs/archive/)
+
+## Grok Bot Tier 3 MCP integration (2026-09-05)
+
+| Task | 内容 / DoD | Status |
+|---|---|---|
+| GROK-001 | VPS の現 main ベースで Hermes / Cursor 配線を確認し、optional Grok Bot Layer 1 MCP の setup / doctor / uninstall / mcp-config、provenance、placeholder examples、日英 docs / claim maps / Unreleased を実装。focused Bun / Go tests を通して commit / push / 新規 main 向け PR を作成する。Tier 1 hooks / automatic continuity は対象外 | cc:完了 [c64cb67] |
+| GROK-002 | PR #175 merge blockers: (1) CWE-319 — `http:` + Bearer は loopback のみ、非 loopback は `https:` 必須、(2) `removeGrokBotConfig` の null/non-object 安全化、(3) Grok Bot の default local HTTP では token / gateway start / doctor probe を実行し、明示 remote URL では local gateway を起動しない、(4) `periodic-ingest-worker` stall テストの 5000ms flake を安定化 | cc:完了 [local] |
+| GROK-003 | PR #175 `search-quality` recency rank が `obs_sq-old` を返す。Grok 差分ではなく、固定 ts `2026-02-14` が 90 日 half-life を超えて recency が減衰し hash-vector ノイズに負ける。相対時刻で recency を再固定する | cc:完了 [local] |
+| GROK-004 | PR #175 `search-worker-daemon-lifecycle` が SIGTERM 後 ~10ms で終わる。`ps` に worker が見えた時点では SIGTERM handler 未登録のため default 終了し、daemon shutdown が worker drain を待たない。handler を HarnessMemCore 初期化前に武装し、テストは latch 武装後に SIGTERM する | cc:完了 [local] |
+
+検証: Bun focused 51 pass / 0 fail（7 files）、Go tools / server / proxy PASS、bash / Node syntax、diff check、npm pack dry-run（integration 全6ファイル同梱）。既存 version / VERSION は変更せず Unreleased を追加。provenance は既存 checkpoint の `platform` 引数を再利用し gateway header は追加しない。native client 設定 discovery / interpolation と VPS-to-Mac live E2E は未検証。managed export の明示 import が必要で doctor は config-only。
+
+新規 PR: https://github.com/Chachamaru127/harness-mem/pull/175 （main 向け、#174 の branch/code は再利用なし）。

@@ -225,7 +225,7 @@ event typeはcovering index、active factsはproject全体ではなくobservatio
 定期consolidationは、searchとの同一DB競合時間を区切るため、既定で1 tickにつき
 durable queue 1件だけ進めます。`HARNESS_MEM_CONSOLIDATION_SCHEDULER_BATCH_SIZE`
 は1〜10で変更できますが、本番search latencyを実測した場合だけ引き上げます。
-queueが空ならrecent sessionを再処理せず、SQLite partial UNIQUE制約でprocessを
+queueが空ならrecent sessionを再処理せず、SQLiteの重複防止制約でprocessを
 跨いだ同じpending workをcoalesceします。変化のないobservationではrelation
 maintenanceとLLM既存facts scanを繰り返さず、minute周期のingestとは開始位相を
 ずらします。手動consolidationのlimitと明示maintenanceは変えません。
@@ -703,7 +703,12 @@ Mem UI の `Environment` タブでは、動いている内部サーバー、イ�
 | **Dogfood** | Codex App | メンテナ local setup | この setup では同じ local Codex config path を使用。App 固有の再現可能 smoke が入るまでは dogfood 扱い |
 | **Tier 2** | Cursor | 最新 | user-scope `~/.cursor/hooks.json` + `~/.cursor/mcp.json`（`mcpServers.harness-mem`）、hook spool ingest、MCP 検索、setup/doctor 対応。設定後に Cursor MCP reload / 新セッションが必要な場合あり |
 | **Tier 3** | Hermes Agent | docs準拠のintegration | MCP tools + 任意の MemoryProvider plugin。Hermes built-in memory を置き換えない experimental command-tower bridge |
+| **Tier 3** | Grok Bot | MCP 契約 / experimental | 任意の Layer 1 search / timeline / get / resume / record。lifecycle hooks / Tier 1 continuity なし。[統合手順](integrations/grok-bot/) |
 | **Tier 3** | OpenCode | 最新 | 実験的。コミュニティ貢献 |
+
+### Grok Bot (Tier 3 / experimental)
+
+`harness-mem setup --platform grok-bot` で任意の Layer 1 MCP JSON を生成し、`harness-mem doctor --platform grok-bot` で設定構造のみを確認します。Grok Bot 側への明示 import が必要です。lifecycle hooks や自動 first-turn continuity は対象外です。[local / Tailscale 接続と tool 契約](integrations/grok-bot/) を参照してください。
 
 ---
 

@@ -1,6 +1,6 @@
 {
   "name": "@chachamaru127/harness-mem",
-  "version": "0.29.6",
+  "version": "0.30.0",
   "description": "Memory bridge for Claude Code and Codex — local-first, zero-cost coding memory runtime",
   "homepage": "https://github.com/Chachamaru127/harness-mem",
   "repository": {
@@ -38,6 +38,7 @@
     "mcp-server/src/",
     "mcp-server/tsconfig.json",
     "mcp-server/package.json",
+    "integrations/grok-bot/",
     "hooks/",
     "codex/",
     "skills/",

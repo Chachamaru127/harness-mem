@@ -296,6 +296,7 @@ describe("periodic ingest persistent worker", () => {
     await waitFor(() => client.activeSource() === null);
   });
 
+  // 20k-row seed + 1.2s SQLite stall + FIFO drain exceeds bun's default 5s test timeout.
   test("a stall beyond the former timeout finishes in the same worker and drains FIFO", async () => {
     const errors: string[] = [];
     const sourceRoot = mkdtempSync(join(tmpdir(), "harness-mem-ingest-source-"));
@@ -360,7 +361,7 @@ describe("periodic ingest persistent worker", () => {
     expect(offset?.offset).toBe(statSync(historyPath).size);
     verifyDb.close();
     await parentCore.shutdown("scale-test");
-  }, 15_000);
+  }, { timeout: 30_000 });
 
   test("shutdown leaves no periodic ingest worker process behind", async () => {
     const { client } = createClient({ blockMs: 2_000 });

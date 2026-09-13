@@ -26,7 +26,9 @@ and Git worktrees using a database-free resolver process. Confirmed mappings per
 in the memory database. Synchronous core calls use the information already known;
 callers requiring fresh filesystem identity can await `prepareProject()` before the
 operation. The wait has a deadline and an unresolved result remains usable as its
-own identity.
+own identity. Windows drive-letter paths currently remain unresolved; new symlink or
+Git-worktree identity confirmation for those paths is not supported by the resolver.
+Their full stored identities remain usable for scoped search and direct recording.
 
 Responses include `meta.project_resolution` when an input is unresolved or conflicts
 with its saved identity. `unresolved` means historical aliases have not been verified;
