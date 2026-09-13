@@ -25,8 +25,10 @@ afterEach(async () => {
 
 function makeClient(options: {
   blockMs?: number;
+  blockTask?: "consolidation" | "wal_checkpoint" | "search_audit_flush";
   timeoutMs?: number;
   ignoreTerm?: boolean;
+  signalBlockReady?: boolean;
   walMaxBytes?: number;
   busyTimeoutMs?: number;
   restartBackoffMs?: number;
@@ -38,6 +40,7 @@ function makeClient(options: {
   const dir = mkdtempSync(join(tmpdir(), "harness-mem-maintenance-worker-"));
   dirs.push(dir);
   const dbPath = join(dir, "worker.db");
+  const blockReadyPath = join(dir, "block-ready");
   const db = new Database(dbPath);
   configureDatabase(db);
   initSchema(db);
@@ -52,7 +55,9 @@ function makeClient(options: {
       NODE_ENV: "test",
       HARNESS_MEM_DB_PATH: dbPath,
       HARNESS_MEM_TEST_MAINTENANCE_WORKER_BLOCK_MS: String(options.blockMs ?? 0),
+      HARNESS_MEM_TEST_MAINTENANCE_BLOCK_TASK: options.blockTask,
       HARNESS_MEM_TEST_MAINTENANCE_IGNORE_TERM: options.ignoreTerm ? "1" : "0",
+      HARNESS_MEM_TEST_MAINTENANCE_BLOCK_READY: options.signalBlockReady ? blockReadyPath : undefined,
       HARNESS_MEM_WAL_MAX_BYTES: String(options.walMaxBytes ?? 536_870_912),
       HARNESS_MEM_SQLITE_BUSY_TIMEOUT: String(options.busyTimeoutMs ?? 30_000),
       HARNESS_MEM_SEARCH_AUDIT_FLUSH_BATCH_LIMIT: String(options.searchAuditFlushBatchLimit ?? 100),
@@ -67,7 +72,7 @@ function makeClient(options: {
     onProgress: (event) => events.push(event),
   });
   clients.push(client);
-  return { client, dbPath, events };
+  return { client, dbPath, events, blockReadyPath };
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<void> {
@@ -193,7 +198,11 @@ describe("background maintenance persistent workers", () => {
         const verify = new Database(dbPath, { readonly: true });
         const count = (verify.query("SELECT COUNT(*) AS count FROM mem_audit_log WHERE action = 'read.search'").get() as { count: number }).count;
         verify.close();
-        return count === 2;
+        if (count !== 2) return false;
+        // Main DB commit precedes spool cleanup in a separate transaction.
+        const spool = new SearchSideEffectSpool(dbPath);
+        try { return spool.count() === 0; }
+        finally { spool.close(); }
       });
       const remaining = new SearchSideEffectSpool(dbPath);
       expect(remaining.count()).toBe(0);
@@ -1339,11 +1348,14 @@ describe("background maintenance persistent workers", () => {
   });
 
   test("shutdown waits for TERM then KILL disappearance of a stalled child", async () => {
-    const { client } = makeClient({ blockMs: 2_000, ignoreTerm: true });
+    const { client, blockReadyPath } = makeClient({ blockMs: 2_000, ignoreTerm: true, signalBlockReady: true });
     client.schedule("consolidation");
-    await waitFor(() => client.workerPid() !== null);
+    // A PID only proves spawn; wait until the TERM handler is armed and SQLite blocking begins.
+    await waitFor(() => {
+      try { return readFileSync(blockReadyPath, "utf8") === "blocking\n"; }
+      catch { return false; }
+    });
     const pid = client.workerPid()!;
-    await Bun.sleep(100);
     const startedAt = performance.now();
     await client.stop();
     expect(performance.now() - startedAt).toBeGreaterThanOrEqual(900);
@@ -1351,7 +1363,8 @@ describe("background maintenance persistent workers", () => {
   });
 
   test("timed-out consolidation is killed and a queued checkpoint progresses after respawn", async () => {
-    const { client, events } = makeClient({ blockMs: 2_000, timeoutMs: 100 });
+    // Only consolidation is faulty; the queued checkpoint must be healthy after respawn.
+    const { client, events } = makeClient({ blockMs: 2_000, blockTask: "consolidation", timeoutMs: 100 });
     client.schedule("consolidation");
     await waitFor(() => client.activeTask() === "consolidation");
     const firstPid = client.workerPid();

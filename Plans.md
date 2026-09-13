@@ -2,6 +2,10 @@
 
 ## 2026-09-13 再発防止策の公開リリース
 
+- 0.30.1の追加検証: 監査commitとspool削除の両完了を確認。終了試験はtest-onlyの準備通知を待ち、再起動後の正常checkpointを人工停止の対象から外した。900ms/8秒等の期限と消滅/PID変更の判定は維持。関連46 tests /227 assertions PASS、決定的な旧挙動REDと修正GREEN、独立review APPROVE。
+
+- 公開版更新: 0.30.0のLinux CIが、監査commitと後続spool削除の間の正常状態をテスト失敗にした。npm公開は未実行。通常動作を変えず両段階の完了を待つ検証へ直し、既存tagを動かさず0.30.1として再リリースする。GitHubページ作成もGitHub側500/502で失敗したため新runで再確認する。
+
 - 状態: cc:WIP。立花の「必要であればプッシュしてリリースして」に基づく公開承認済み。npm/GitHub公開版は0.29.5で、参照停止対策は未配布のためリリースする。
 - 対象: 承認済みローカル16 commitsと公開mainの9 commitsを統合。Grok Botの追加機能とproject識別子の厳密化を含むため0.30.0。稼働checkoutと無関係なPlans変更は保持し、専用worktreeで作業。
 - 完了条件: 統合競合解消、npm test、型検査、UI試験、npm pack、独立レビュー、version同期、mainへの反映、tag到達可能性、GitHub Releaseとnpmの0.30.0公開readback。CI失敗は成功扱いにしない。

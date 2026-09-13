@@ -7,7 +7,19 @@
 
 ## [Unreleased]
 
+## [0.30.1] - 2026-09-13
+
+### 修正
+
+- HTTP監査batchの回帰テストで、監査行の保存と後続キュー削除の両方の完了を待つようにした。別transaction間の正常な中間状態でLinux CIが失敗していた。製品の保存契約は変えていない。
+
+- TERMからKILLへの終了試験は、テスト専用の停止準備完了を確認してから実行する。固定100ms待ちでは初期化前にsignalを送る場合があった。900msの期待値とtimeoutは維持する。
+
+下記0.30.0の変更を含む最初のnpm公開版。
+
 ## [0.30.0] - 2026-09-13
+
+0.30.0はtag作成後に上記CIテストで公開が停止し、npmには公開されていない。
 
 ### 追加
 
@@ -1176,7 +1188,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.1...HEAD
+[0.30.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.5...v0.30.1
 [0.30.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.5...v0.30.0
 [0.29.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.2...v0.29.3
 [0.29.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.1...v0.29.2

@@ -7,7 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.30.1] - 2026-09-13
+
+### Fixed
+
+- Wait for both the committed audit rows and the drained side-effect spool in the HTTP audit-batch regression test. These are intentionally separate transactions; the previous test could observe successful persistence before cleanup and fail on a healthy Linux runner. The production transaction contract is unchanged.
+
+- Wait for an explicit test-only blocked-worker marker before testing TERM-to-KILL shutdown. A fixed startup delay could signal the child before its test handler was armed; the 900 ms escalation assertion and timeout remain unchanged.
+
+This is the first npm publication of the changes listed under 0.30.0 below.
+
 ## [0.30.0] - 2026-09-13
+
+The 0.30.0 tag was created, but npm publication stopped at the CI test described above; no npm 0.30.0 package was published.
 
 ### Added
 
@@ -3219,7 +3231,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.1...HEAD
+[0.30.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.5...v0.30.1
 [0.30.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.5...v0.30.0
 [0.29.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.3...v0.29.4
 [0.29.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.2...v0.29.3

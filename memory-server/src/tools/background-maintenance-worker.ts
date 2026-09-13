@@ -1,4 +1,5 @@
 import { createInterface } from "node:readline";
+import { writeFileSync } from "node:fs";
 import { Database } from "bun:sqlite";
 import { HarnessMemCore, getConfig } from "../core/harness-mem-core";
 import type { ConsolidationRunRequest } from "../core/types";
@@ -32,12 +33,16 @@ function writeReply(value: Record<string, unknown>): void {
   process.stdout.write(`${JSON.stringify(value)}\n`);
 }
 
-async function testBlockIfConfigured(): Promise<void> {
+async function testBlockIfConfigured(task: WorkerTask): Promise<void> {
   if (process.env.NODE_ENV !== "test") return;
+  const blockTask = process.env.HARNESS_MEM_TEST_MAINTENANCE_BLOCK_TASK;
+  if (blockTask && blockTask !== task) return;
   const blockMs = Number(process.env.HARNESS_MEM_TEST_MAINTENANCE_WORKER_BLOCK_MS || 0);
   if (!Number.isFinite(blockMs) || blockMs <= 0) return;
   const testDb = new Database(":memory:");
   const iterations = Math.min(30_000_000, Math.max(1, Math.floor(blockMs * 15_000)));
+  const blockReadyPath = process.env.HARNESS_MEM_TEST_MAINTENANCE_BLOCK_READY;
+  if (blockReadyPath) writeFileSync(blockReadyPath, "blocking\n");
   testDb.query(`
     WITH RECURSIVE counter(value) AS (
       VALUES(0) UNION ALL SELECT value + 1 FROM counter WHERE value < ?
@@ -77,7 +82,7 @@ async function main(): Promise<void> {
           writeReply({ id, ok: true, result: { recovered: true } });
           continue;
         }
-        await testBlockIfConfigured();
+        await testBlockIfConfigured(request.task);
         if (request.task === "wal_checkpoint") {
           const result = core.runMaintenanceWalCheckpoint();
           writeReply({ id, ok: true, result, progress: { ...result, elapsed_ms: Date.now() - startedAt } });
