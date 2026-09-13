@@ -2,16 +2,16 @@
 
 ## 2026-09-13 再発防止策の公開リリース
 
-- 0.30.1の追加検証: 監査commitとspool削除の両完了を確認。終了試験はtest-onlyの準備通知を待ち、再起動後の正常checkpointを人工停止の対象から外した。900ms/8秒等の期限と消滅/PID変更の判定は維持。関連46 tests /227 assertions PASS、決定的な旧挙動REDと修正GREEN、独立review APPROVE。
-
-- 公開版更新: 0.30.0のLinux CIが、監査commitと後続spool削除の間の正常状態をテスト失敗にした。npm公開は未実行。通常動作を変えず両段階の完了を待つ検証へ直し、既存tagを動かさず0.30.1として再リリースする。GitHubページ作成もGitHub側500/502で失敗したため新runで再確認する。
-
-- 状態: cc:WIP。立花の「必要であればプッシュしてリリースして」に基づく公開承認済み。npm/GitHub公開版は0.29.5で、参照停止対策は未配布のためリリースする。
-- 対象: 承認済みローカル16 commitsと公開mainの9 commitsを統合。Grok Botの追加機能とproject識別子の厳密化を含むため0.30.0。稼働checkoutと無関係なPlans変更は保持し、専用worktreeで作業。
-- 完了条件: 統合競合解消、npm test、型検査、UI試験、npm pack、独立レビュー、version同期、mainへの反映、tag到達可能性、GitHub Releaseとnpmの0.30.0公開readback。CI失敗は成功扱いにしない。
-- 公開経路: repo既存のtag-triggered release.ymlを使用。versionと変更履歴を同期し、GitHub Actionsの品質ゲートとnpm公開を確認する。
-- 公開前検証: npm test全体exit0、3590 pass /0 fail /14既存条件skip。server/UI型検査、UI54 tests、Claude plugin validate、npm pack dry-run（670 files、新reader/resolverとGrok連携、説明文書を包含）PASS。独立release review APPROVE。3つの旧project推測fixtureは確定mappingと未確認scope拒否の検証へ更新。
-
+- 状態: cc:完了 [92473d6]。立花の「必要であればプッシュしてリリースして」に基づき、main反映、v0.30.1タグ、GitHub Release、npm latest=0.30.1まで完了した。
+- 目的と対象: ファイル参照停止対策を配布可能にする。承認済みローカル16 commitsと公開mainの9 commitsを統合し、Grok Botの追加機能とproject識別子の厳密化を含めた。稼働checkoutと無関係なPlans.mdの9行変更は保持し、専用worktreeで公開した。
+- 完了条件と証拠: バージョン4面一致、tag 92473d6580529797da750925563071fa4fa4f1b2がmainに包含、GitHub安定版公開と4 OS/archバイナリ、npmレジストリの0.30.1配布情報とlatest指定を2026-09-13に読み戻した。公開経路は既存release.ymlのOIDC trusted publishing。
+- 公開前検証: npm test全体exit0、3590 pass /0 fail /14既存条件skip。server/UI型検査、UI54 tests、Claude plugin validate、npm pack dry-run（670 files、参照停止対策とGrok連携、説明文書を包含）PASS。独立release review APPROVE。旧project推測fixture3本は確定mappingと未確認scope拒否の検証へ更新した。
+- CI: [main Test Suite](https://github.com/Chachamaru127/harness-mem/actions/runs/34749888998)成功。[Release](https://github.com/Chachamaru127/harness-mem/actions/runs/34750130657)はattempt 2で全10 jobs成功。4種Goビルド、Windows/macOS native試験とpackage install試験、全体テスト、型検査、Developer-domain/Inject/WorkGraph/Recall Runtime gate、npm公開を確認した。
+- 0.30.0の停止と修正: 監査commit後spool削除前の正常状態をテストが失敗と誤判定し、npmは未公開。GitHubページ作成も500/502で失敗した。タグは移動せず、両段階の完了待ちを0.30.1に収録した。終了試験もtest-onlyの準備通知を待ち、正常checkpointを人工停止対象から外した。900ms/8秒等の期限と消滅/PID変更判定は維持。関連46 tests /227 assertions、決定的な旧挙動REDと修正GREEN、独立review APPROVE。
+- 0.30.1の再実行: 初回は既存dreaming試験の503件fixture込み処理が5683msとなり5秒を超過。同commitのmain CIでは3832ms、ローカルでは1111msで成功していた。独立調査でassert不一致や製品不具合の証拠はなく、失敗jobだけを同commit/同期限で再実行して全gate成功。実行環境の速度差が主仮説で、処理別内訳は未計測。初回失敗を成功件数には含めない。
+- 公開先: [GitHub v0.30.1](https://github.com/Chachamaru127/harness-mem/releases/tag/v0.30.1)、[npm 0.30.1](https://www.npmjs.com/package/@chachamaru127/harness-mem/v/0.30.1)。npm integrity: sha512-w0YjdO93ubFaHCYmFaXZ5nxB3Sxu6lOk4rJ56+WbpuEvr643nzVzpzR91iZzYbVgglKv4eBvWwyAP1HxN9g5TA==。
+- 限界: DBと必要runtime資産が利用可能であることが前提。全reader枠の終了未確認時は取り込みを保留し検索と直接記録を継続する。新しいWindows drive-letter pathのsymlink/worktree対応確認、大規模DBの遅延上限、Grok実クライアントE2Eは保証しない。元の稼働checkoutをこの統合公開版に更新する操作は行っていない。
+- 次の必須タスク、立花の判断待ち、外部条件待ちは今回の公開範囲に残らない。
 
 ## 2026-09-13 ファイル参照停止時の検索と記録の継続
 
