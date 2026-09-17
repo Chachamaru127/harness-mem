@@ -215,6 +215,68 @@ describe("vector-backfill-worker", () => {
     }
   });
 
+  test("stops with a visible error when every reindex row is skipped for retryable embedding errors", async () => {
+    let calls = 0;
+    const harness = makeHarness({ vectorCount: 0, totalObservations: 25,
+      runExternalOperation: async () => {
+        calls += 1;
+        return makeOk([{ reindexed: 0, adopted_legacy_vectors: 0, skipped_retryable: 25 }]);
+      },
+    });
+    harnesses.push(harness);
+    harness.worker.start({ reset: true });
+    await harness.worker.tick();
+    const status = item(harness.worker.status());
+    expect(status).toMatchObject({ status: "failed", running: false, reindex_processed: 0 });
+    expect(status.last_error).toContain("25");
+    expect(status.last_error).toContain("retryable embedding");
+    await harness.worker.tick();
+    expect(calls).toBe(1);
+  });
+
+  test("explicit resume after retryable failure preserves the job and completed work", async () => {
+    let fail = false;
+    const harness = makeHarness({ vectorCount: 0, totalObservations: 3,
+      runExternalOperation: async () => makeOk([fail
+        ? { reindexed: 0, skipped_retryable: 2 }
+        : { reindexed: 1, skipped_retryable: 0, total_observations: 3, vector_coverage: 0.5 }]),
+    });
+    harnesses.push(harness);
+    const jobId = item(harness.worker.start({ reset: true })).job_id;
+    await harness.worker.tick();
+    fail = true;
+    await harness.worker.tick();
+    expect(item(harness.worker.status())).toMatchObject({ status: "failed", reindex_processed: 1, job_id: jobId });
+    fail = false;
+    expect(item(harness.worker.start({ reset: false }))).toMatchObject({
+      status: "running", reindex_processed: 1, job_id: jobId, last_error: null,
+    });
+    await harness.worker.tick();
+    expect(item(harness.worker.status())).toMatchObject({ running: true, reindex_processed: 2, job_id: jobId, last_error: null });
+  });
+
+  test("partial retryable skips do not stop successful progress", async () => {
+    const harness = makeHarness({ vectorCount: 0, totalObservations: 2,
+      runExternalOperation: async () => makeOk([{ reindexed: 1, skipped_retryable: 1,
+        total_observations: 2, current_model_vectors: 1, vector_coverage: 0.5 }]),
+    });
+    harnesses.push(harness);
+    harness.worker.start({ reset: true });
+    await harness.worker.tick();
+    expect(item(harness.worker.status())).toMatchObject({ running: true, reindex_processed: 1, last_error: null });
+  });
+
+  test("an empty reindex batch completes without a stall error", async () => {
+    const harness = makeHarness({ vectorCount: 0, totalObservations: 0,
+      runExternalOperation: async () => makeOk([{ reindexed: 0, skipped_retryable: 0,
+        total_observations: 0, current_model_vectors: 0, missing_vectors_remaining: 0, vector_coverage: 1 }]),
+    });
+    harnesses.push(harness);
+    harness.worker.start({ reset: true });
+    await harness.worker.tick();
+    expect(item(harness.worker.status())).toMatchObject({ status: "completed", running: false, last_error: null });
+  });
+
   test("start returns immediately and schedules work outside start()", async () => {
     const harness = makeHarness({
       vectorCount: 1,

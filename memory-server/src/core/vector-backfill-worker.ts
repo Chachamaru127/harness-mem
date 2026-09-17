@@ -401,6 +401,10 @@ export class VectorBackfillWorker {
         const item = responseItem(reindexResponse);
         const processed =
           numberFrom(item.reindexed) + numberFrom(item.adopted_legacy_vectors);
+        const skippedRetryable = numberFrom(item.skipped_retryable);
+        if (processed === 0 && skippedRetryable > 0) {
+          throw new Error(`vector reindex made no progress: ${skippedRetryable} rows skipped due to retryable embedding errors; check embedding readiness`);
+        }
         status.reindex_processed += processed;
         status.reindex_total = numberFrom(item.total_observations, status.reindex_total);
         status.reindex_current_model_vectors = numberFrom(

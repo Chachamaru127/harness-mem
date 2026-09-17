@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.30.3] - 2026-09-17
+
+### Fixed
+
+- Warm both adaptive embedding routes before reindexing in a fresh backfill child, so English-only and Japanese-only batches persist vectors. Stop backfill with an explicit error when every selected row is skipped for retryable embedding errors instead of repeatedly reporting ticks without progress. Existing progress is retained for an explicit resume.
+
 ## [0.30.2] - 2026-09-17
 
 ### Fixed
@@ -3245,7 +3251,9 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.1...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.3...HEAD
+[0.30.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.2...v0.30.3
+[0.30.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.1...v0.30.2
 [0.30.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.5...v0.30.1
 [0.30.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.5...v0.30.0
 [0.29.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.3...v0.29.4

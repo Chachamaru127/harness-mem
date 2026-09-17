@@ -143,6 +143,9 @@ async function main(): Promise<void> {
   };
   const core = new HarnessMemCore(config);
   try {
+    if (operation.type === "reindex") {
+      await core.warmEmbedding("memory reindex", "passage");
+    }
     const response =
       operation.type === "compact"
         ? runCompactOperation(core, operation)
