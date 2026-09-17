@@ -7,6 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.30.2] - 2026-09-17
+
+### Fixed
+
+- Use confirmed project roots for new lifecycle-hook records, matching history ingest while retaining separate display names. Preserve POSIX and Windows drive roots and return structured errors for invalid project inputs. Existing short-name history is not automatically merged.
+- Emit supported Codex hook context JSON and replace only obsolete or duplicate managed hooks while preserving other user hooks (#173).
+- Preserve top-level bulk observation titles and content in both MCP implementations; existing payload values take precedence and malformed batches are rejected before submission (#146).
+- Keep parent-owned vector backfill running when lightweight child processes exit (#176).
+- Make read-only doctor avoid configuration writes, runtime synchronization and repair. Limit version checks to selected platforms and inspect GUI metadata without launching apps; recognize quoted Codex configuration, valid alternate installations and shared skills (#177).
+
+### Dependencies
+
+- Update MCP esbuild to 0.28.1, tsx to 4.22.4 and transitive hono to 4.12.26, with synchronized npm and Bun lockfiles (#130).
+
 ## [0.30.1] - 2026-09-13
 
 ### Fixed

@@ -21,6 +21,20 @@ confirmed mapping exists. Restart does not merge historical records. This preven
 two unrelated folders with the same name from becoming one searchable project.
 Existing records remain accessible under their original identifiers.
 
+New lifecycle hooks submit the confirmed physical project root, matching history
+ingest, and retain the basename only as a display name. A legacy bare-name scope
+and the corresponding absolute-path scope can both contain history. Inspect both
+explicit scopes when diagnosing a transition; a miss in one is not proof of lost
+records. Do not merge them solely because their basenames match. A migration must
+first establish the source session's actual workspace and preserve privacy and
+dedupe identity. No automatic historical migration is included in this change.
+
+Apply the hook change between sessions, then verify a fresh conversation. Existing
+session metadata retains its original project identifier; switching hooks during
+an open session can leave old and new observations in different scopes. Preserve
+the original session identity when inspecting that history rather than relabeling
+it automatically.
+
 Healthy asynchronous project preparation can confirm symlinks, nested repositories,
 and Git worktrees using a database-free resolver process. Confirmed mappings persist
 in the memory database. Synchronous core calls use the information already known;

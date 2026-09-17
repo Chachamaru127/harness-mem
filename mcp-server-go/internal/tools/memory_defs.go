@@ -177,7 +177,24 @@ var memToolAddRelation = mcp.NewTool("harness_mem_add_relation",
 
 var memToolBulkAdd = mcp.NewTool("harness_mem_bulk_add",
 	mcp.WithDescription("Record multiple observations in a single batch operation."),
-	mcp.WithArray("events", mcp.Required(), mcp.Description("Array of events to record")),
+	mcp.WithArray("events", mcp.Required(), mcp.Description("Array of events to record"), mcp.Items(map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"platform":   map[string]any{"type": "string"},
+			"project":    map[string]any{"type": "string"},
+			"session_id": map[string]any{"type": "string"},
+			"event_type": map[string]any{"type": "string"},
+			"title":      map[string]any{"type": "string"},
+			"content":    map[string]any{"type": "string"},
+			"tags":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"payload": map[string]any{
+				"type":                 "object",
+				"description":          "Event payload; existing title/content take precedence over top-level fields.",
+				"additionalProperties": true,
+			},
+		},
+		"required": []string{"platform", "project", "session_id", "event_type"},
+	})),
 )
 
 var memToolBulkDelete = mcp.NewTool("harness_mem_bulk_delete",

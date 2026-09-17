@@ -555,7 +555,47 @@
       "properties": {
         "events": {
           "description": "Array of events to record",
-          "type": "array"
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "platform": {
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "event_type": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "content": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "payload": {
+                "type": "object",
+                "description": "Event payload; existing title/content take precedence over top-level fields.",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "platform",
+              "project",
+              "session_id",
+              "event_type"
+            ]
+          }
         }
       },
       "required": [

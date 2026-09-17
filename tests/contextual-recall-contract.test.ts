@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -156,7 +157,7 @@ describe("contextual recall contract", () => {
       writeFileSync(
         join(stateDir, "memory-resume-pack.json"),
         resumePackWithIdentity({
-          project_key: "project",
+          project_key: realpathSync(sandbox.projectDir),
           session_id: "claude-session",
           correlation_id: "corr-current",
         })
@@ -255,7 +256,7 @@ describe("contextual recall contract", () => {
       expect(context).not.toContain("Memory Resume Context");
       expect(context).not.toContain("This stale resume must not be injected.");
       expect(context).toContain("Contextual Recall");
-      expect(context).toContain("source: harness_mem_search (project=project, strict_project=true)");
+      expect(context).toContain(`source: harness_mem_search (project=${realpathSync(sandbox.projectDir)}, strict_project=true)`);
       expect(context).toContain("fresh fallback");
       expect(existsSync(join(stateDir, "memory-resume-context.md"))).toBe(false);
       expect(existsSync(join(stateDir, "memory-resume-pack.json"))).toBe(false);
@@ -290,7 +291,7 @@ describe("contextual recall contract", () => {
       writeFileSync(
         join(stateDir, "memory-resume-pack.json"),
         resumePackWithIdentity({
-          project_key: "project",
+          project_key: realpathSync(sandbox.projectDir),
           session_id: "claude-session",
           correlation_id: "corr-current",
           generated_at: "2000-01-01T00:00:00Z",
@@ -350,7 +351,7 @@ describe("contextual recall contract", () => {
       writeFileSync(
         join(stateDir, "memory-resume-pack.json"),
         resumePackWithIdentity({
-          project_key: "project",
+          project_key: realpathSync(sandbox.projectDir),
           session_id: "claude-session",
           correlation_id: "corr-current",
           generated_at: isoOffsetSeconds(360),
@@ -606,7 +607,7 @@ describe("contextual recall contract", () => {
         JSON.stringify(
           {
             version: 1,
-            project: "project",
+            project: realpathSync(sandbox.projectDir),
             sessions: {
               "codex-session": {
                 seen_ids: [],
@@ -780,7 +781,7 @@ describe("contextual recall contract", () => {
         JSON.stringify(
           {
             version: 1,
-            project: "project",
+            project: realpathSync(sandbox.projectDir),
             sessions: {
               "claude-session": {
                 seen_ids: [],

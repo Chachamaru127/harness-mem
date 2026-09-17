@@ -28,8 +28,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.37",
-    "esbuild": "^0.28.0",
-    "tsx": "^4.21.0",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.22.4",
     "typescript": "^5.9.3",
     "yaml": "^2.8.2"
   },

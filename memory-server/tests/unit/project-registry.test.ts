@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { ProjectRegistry } from "../../src/core/project-registry";
+import { ProjectRegistry, projectKey } from "../../src/core/project-registry";
 
 function fixture() {
   const db = new Database(":memory:");
@@ -54,4 +54,19 @@ describe("project identity registry", () => {
       expect(registry.lookup("/unknown")).toMatchObject({ state: "unresolved", reason: "timeout" });
     } finally { db.close(); }
   });
+});
+
+
+test("root identities preserve POSIX and Windows drive semantics", () => {
+  expect(projectKey(" / ")).toBe("/");
+  expect(projectKey("///")).toBe("/");
+  expect(projectKey("C:\\")).toBe("C:/");
+  expect(projectKey("C:///")).toBe("C:/");
+  expect(projectKey("C:")).toBe("C:");
+  expect(projectKey("C:\\work\\repo\\")).toBe("C:/work/repo");
+  expect(projectKey("\\\\server\\share\\")).toBe("//server/share");
+  expect(projectKey("/a/repo::team-a/")).toBe("/a/repo::team-a");
+  for (const invalid of [null, undefined, 1, {}, [], "", "   ", "repo\0other"]) {
+    expect(() => projectKey(invalid as string)).toThrow();
+  }
 });

@@ -384,7 +384,9 @@ describe("session-start parity contract", () => {
     expect(normalize(strippedClaude)).toBe(normalize(strippedCodex));
     for (const run of [claude, codex]) {
       expect(run.content).toContain("source: harness_mem_resume_pack");
-      expect(run.content).toContain("project_key: session-start-parity-project");
+      const project = run.payloads.find((entry) => entry.command === "resume-pack")?.payload.project;
+      expect(project).toMatch(/^\/.*\/session-start-parity-project$/);
+      expect(run.content).toContain(`project_key: ${project}`);
       expect(run.content).toContain("session_id:");
       expect(run.content).toContain("generated_at:");
       expect(run.content).toContain("correlation_id:");

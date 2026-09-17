@@ -74,7 +74,7 @@ import { getTelemetryStatus, hashTelemetryValue, recordRecallTelemetry } from ".
 import { SessionManager, buildCheckpointEvent } from "./session-manager";
 import { EventRecorder } from "./event-recorder";
 import { ReferenceProcessLedger } from "./reference-process-ledger";
-import { ProjectRegistry, type ProjectResolution } from "./project-registry";
+import { ProjectRegistry, projectKey, validateProjectInput, type ProjectResolution } from "./project-registry";
 import type { SourceReaderOptions } from "./source-reader-client";
 import { ProjectPathResolver } from "./project-path-resolver";
 import {
@@ -1782,7 +1782,8 @@ function normalizePathLike(inputPath: string): string {
 }
 
 function isAbsoluteProjectPath(project: string): boolean {
-  const normalized = normalizePathLike(project.trim());
+  if (!project.trim()) return false;
+  const normalized = projectKey(project);
   return normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized);
 }
 
@@ -2885,6 +2886,18 @@ export class HarnessMemCore {
     this.db
       .query("INSERT OR IGNORE INTO mem_meta(key, value, updated_at) VALUES (?, ?, ?)")
       .run(INSTALLATION_MARKER_META_KEY, now, now);
+  }
+
+  private invalidProjectResponse(...projects: unknown[]): ApiResponse | undefined {
+    try {
+      for (const project of projects) validateProjectInput(project);
+    } catch (error) {
+      const response = makeErrorResponse(performance.now(), (error as Error).message, {});
+      response.meta.error_code = "invalid_project";
+      response.meta.http_status = 400;
+      response.meta.retryable = false;
+      return response;
+    }
   }
 
   private normalizeProjectInput(project: string): string {
@@ -4565,6 +4578,8 @@ export class HarnessMemCore {
   }
 
   recordEvent(event: EventEnvelope, options: { allowQueue: boolean } = { allowQueue: true }): ApiResponse {
+    const invalid = this.invalidProjectResponse(event.project);
+    if (invalid) return invalid;
     if (event.project?.trim()) this.projectRegistry.retain(event.project);
     return this.withProjectResolution(this.eventRec.recordEvent(event, options), event.project);
   }
@@ -4573,6 +4588,8 @@ export class HarnessMemCore {
     event: EventEnvelope,
     options: { allowQueue: boolean } = { allowQueue: false }
   ): Promise<ApiResponse | "queue_full"> {
+    const invalid = this.invalidProjectResponse(event.project);
+    if (invalid) return invalid;
     if (event.project?.trim()) {
       await this.prepareProject(event.project);
       this.projectRegistry.retain(event.project);
@@ -4596,6 +4613,8 @@ export class HarnessMemCore {
     event: EventEnvelope,
     options: { allowQueue: boolean; deferEmbedding?: boolean } = { allowQueue: true }
   ): Promise<ApiResponse | "queue_full"> {
+    const invalid = this.invalidProjectResponse(event.project);
+    if (invalid) return invalid;
     if (event.project?.trim()) {
       await this.prepareProject(event.project);
       this.projectRegistry.retain(event.project);
@@ -5340,6 +5359,8 @@ export class HarnessMemCore {
   }
 
   async recallPrepared(request: RecallRuntimeRequest): Promise<ApiResponse> {
+    const invalid = this.invalidProjectResponse(request.project);
+    if (invalid) return invalid;
     if (request.project?.trim()) await this.prepareProject(request.project);
     return this.withProjectResolution(await this.recallPreparedInternal(request), request.project);
   }
@@ -5882,6 +5903,8 @@ export class HarnessMemCore {
   }
 
   search(request: SearchRequest): ApiResponse {
+    const invalid = this.invalidProjectResponse(request.project, request.scope?.project);
+    if (invalid) return invalid;
     const startedAt = performance.now();
     try {
       return this.withProjectResolution(this.obsStore.search(request), request.scope?.project || request.project);
@@ -5902,6 +5925,8 @@ export class HarnessMemCore {
   }
 
   async searchPrepared(request: SearchRequest): Promise<ApiResponse> {
+    const invalid = this.invalidProjectResponse(request.project, request.scope?.project);
+    if (invalid) return invalid;
     const project = request.scope?.project || request.project;
     if (project?.trim()) await this.prepareProject(project);
     return this.withProjectResolution(await this.searchPreparedInternal(request), project);
@@ -6166,10 +6191,14 @@ export class HarnessMemCore {
   }
 
   feed(request: FeedRequest): ApiResponse {
+    const invalid = this.invalidProjectResponse(request.project);
+    if (invalid) return invalid;
     return this.withProjectResolution(this.obsStore.feed(request), request.project);
   }
 
   searchFacets(request: SearchFacetsRequest): ApiResponse {
+    const invalid = this.invalidProjectResponse(request.project);
+    if (invalid) return invalid;
     return this.withProjectResolution(this.obsStore.searchFacets(request), request.project);
   }
 
@@ -6218,10 +6247,14 @@ export class HarnessMemCore {
   }
 
   sessionsList(request: SessionsListRequest): ApiResponse {
+    const invalid = this.invalidProjectResponse(request.project);
+    if (invalid) return invalid;
     return this.sessionMgr.sessionsList(request);
   }
 
   sessionThread(request: SessionThreadRequest): ApiResponse {
+    const invalid = this.invalidProjectResponse(request.project);
+    if (invalid) return invalid;
     return this.sessionMgr.sessionThread(request);
   }
 
@@ -8592,10 +8625,14 @@ export class HarnessMemCore {
   }
 
   recordCheckpoint(request: RecordCheckpointRequest): ApiResponse {
+    const invalid = this.invalidProjectResponse(request.project);
+    if (invalid) return invalid;
     return this.sessionMgr.recordCheckpoint(request);
   }
 
   async recordCheckpointQueued(request: RecordCheckpointRequest): Promise<ApiResponse | "queue_full"> {
+    const invalid = this.invalidProjectResponse(request.project);
+    if (invalid) return invalid;
     if (shouldRunCheckpointOutOfProcess({ dbPath: this.config.dbPath })) {
       if (this.checkpointChildPending >= this.getCheckpointChildMaxPending()) {
         return "queue_full";
@@ -8776,15 +8813,22 @@ export class HarnessMemCore {
   }
 
   finalizeSession(request: FinalizeSessionRequest): ApiResponse {
+    const invalid = this.invalidProjectResponse(request.project);
+    if (invalid) return invalid;
     return this.sessionMgr.finalizeSession(request);
   }
 
   resolveSessionChain(correlationId: string, project: string): ApiResponse {
+    const invalid = this.invalidProjectResponse(project);
+    if (invalid) return invalid;
     return this.sessionMgr.resolveSessionChain(correlationId, project);
   }
 
 
   resumePack(request: ResumePackRequest): ApiResponse {
+    const invalid = this.invalidProjectResponse(request.project);
+    if (invalid) return invalid;
+    if (!request.project?.trim()) return makeErrorResponse(performance.now(), "project is required", {});
     return this.obsStore.resumePack(request);
   }
 
@@ -9567,10 +9611,14 @@ export class HarnessMemCore {
   }
 
   projectsStats(request: ProjectsStatsRequest = {}): ApiResponse {
+    const invalid = this.invalidProjectResponse(request.project);
+    if (invalid) return invalid;
     return this.cfgMgr.projectsStats(request);
   }
 
   async projectsStatsQueued(request: ProjectsStatsRequest = {}): Promise<ApiResponse> {
+    const invalid = this.invalidProjectResponse(request.project);
+    if (invalid) return invalid;
     const startedAt = performance.now();
     if (!shouldRunProjectsStatsOutOfProcess({ dbPath: this.config.dbPath })) {
       return this.projectsStats(request);
@@ -10075,7 +10123,7 @@ export class HarnessMemCore {
       clearInterval(this.forgetMaintenanceTimer);
       this.forgetMaintenanceTimer = null;
     }
-    if (process.env.HARNESS_MEM_VECTOR_BACKFILL_CHILD !== "1") {
+    if (!lightweightChild) {
       this.vectorBackfillWorker.stop();
     }
     this.ingestCoord.stopTimers();

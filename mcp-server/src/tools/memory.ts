@@ -742,6 +742,11 @@ export const memoryTools: Tool[] = [
               event_type: { type: "string" },
               title: { type: "string" },
               content: { type: "string" },
+              payload: {
+                type: "object",
+                description: "Event payload; existing title/content take precedence over top-level fields.",
+                additionalProperties: true,
+              },
               tags: { type: "array", items: { type: "string" } },
             },
             required: ["platform", "project", "session_id", "event_type"],
@@ -1468,8 +1473,30 @@ async function handleMemoryToolInner(
         if (events.length === 0) {
           return errorResult("events is required and must not be empty");
         }
+        const invalidEvent = events.some((event) => {
+          if (!event || typeof event !== "object" || Array.isArray(event)) return true;
+          if (["platform", "project", "session_id", "event_type"].some((key) =>
+            typeof event[key] !== "string" || !(event[key] as string).trim())) return true;
+          if ((event.project as string).includes("\0")) return true;
+          if (["title", "content"].some((key) => event[key] !== undefined && typeof event[key] !== "string")) return true;
+          if (["tags", "privacy_tags"].some((key) => event[key] !== undefined &&
+            (!Array.isArray(event[key]) || (event[key] as unknown[]).some((tag) => typeof tag !== "string")))) return true;
+          return event.payload !== undefined && (!event.payload || typeof event.payload !== "object" || Array.isArray(event.payload));
+        });
+        if (invalidEvent) {
+          return errorResult("each event requires nonempty platform/project/session_id/event_type strings, valid text/tags, and an object payload when supplied");
+        }
         const results = await Promise.all(
-          events.map((event) => callMemoryApi("/v1/events/record", { event }))
+          events.map((event) => callMemoryApi("/v1/events/record", {
+            event: {
+              ...event,
+              payload: {
+                ...(typeof event.title === "string" ? { title: event.title } : {}),
+                ...(typeof event.content === "string" ? { content: event.content } : {}),
+                ...(event.payload as Record<string, unknown> | undefined),
+              },
+            },
+          }))
         );
         const combinedResponse = {
           ok: true,

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -439,7 +439,7 @@ function createProjectDir(project: string, suffix: string): string {
   const root = mkdtempSync(join(tmpdir(), `harness-mem-project-${suffix}-`));
   const projectDir = join(root, project);
   mkdirSync(projectDir, { recursive: true });
-  return projectDir;
+  return realpathSync(projectDir);
 }
 
 function writeContinuityState(projectDir: string): void {
@@ -450,7 +450,7 @@ function writeContinuityState(projectDir: string): void {
     JSON.stringify(
       {
         version: 1,
-        project: CONTINUITY_SCENARIO.project,
+        project: projectDir,
         sessions: {
           [CONTINUITY_SCENARIO.previousSessionId]: {
             correlation_id: CONTINUITY_SCENARIO.targetCorrelationId,
@@ -479,7 +479,7 @@ async function runHook(client: "claude" | "codex"): Promise<HarnessClientScore> 
   const projectDir = createProjectDir(CONTINUITY_SCENARIO.project, client);
 
   try {
-    seedHarnessContinuity(runtime.core, CONTINUITY_SCENARIO.project);
+    seedHarnessContinuity(runtime.core, projectDir);
     writeContinuityState(projectDir);
 
     const env: Record<string, string | undefined> = {

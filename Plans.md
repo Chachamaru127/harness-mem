@@ -1,5 +1,44 @@
 # Harness-mem 実装マスタープラン
 
+## 2026-09-17 稼働反映、実DB補完、公開
+
+- 状態: cc:WIP。本人の「123やって」で、検証済み版の実環境反映、検索用データ補完、GitHub反映と公開を承認。
+- 順序: 最新差分とhealth確認 → release検証/版確定 → 稼働反映と新規session保存/検索/再開 → 小分けbackfillの容量と2周期以上の進捗/応答確認 → 共有main/公開と配布readback。
+- 100%の定義: 上記すべての観測証拠が揃う。backfill実行中を完了扱いしない。旧短名projectの自動統合、秘密/権限/transport変更、無関係な既存作業の変更は含めない。
+- 作業境界: 元checkoutのPlans.md変更を保持。共有設定の正本配線を確認し、重複するCodex管理hookだけ修復。更新前の版と設定へ戻せる手順を記録。
+- 公開前検証: npm testは3603 pass /0 fail /15 skip、385 suites、21945 assertions。hookの実パス化に合わせたcontinuity fixture修正は独立review APPROVE、既存の再現率/混入防止条件は維持。server/MCP/UI型検査、UI54 tests、Go全tests、WorkGraph enforce3回、Recall enforce、npm pack成功。
+- 稼働反映: 元checkoutをレビュー済みdcdd98aへ更新し既存Plans9行保持。npm接続先へ0.30.2を配置。Codex管理hookは各1本、2回適用でhash一致。接続設定とLaunchAgentのhashは不変。health/ready正常、確認用新規sessionのhook保存→同project検索→別sessionからresume→thread readback成功。全3platformのread-only doctor正常。
+- 公開経路: PR #178。全体CI確認後にmainへ取り込み、tag/release/npm配布を検証する。実DBbackfillは小分けで観測中。
+
+
+## 2026-09-17 ローカル記録と検索の整合、および公開 Issue 対応
+
+- 状態: cc:完了（ローカル実装と検証。未commit）。本人承認の稼働診断計画を実装した。基点 ff7f119、隔離 worktree / branch codex/mem-runtime-fixes-20260917。
+- 目的: 同じ会話を同じ project から記録、検索、再開できるようにし、新規記録の重複と本文欠落を止める。
+- 完了条件: 下記ローカル修正、対象回帰、型検査、独立レビュー APPROVE。稼働環境反映、実DB補完、既存project移行、push/merge/releaseは別判断。既存稼働checkoutと未commit Plans.mdを保持する。
+- 仕様: 確認済みproject rootを識別子に使い表示名と分離。同名repoを自動統合しない。bulk payload既存値優先。子の終了は共有backfillを停止しない。read-only doctorは設定を書き換えずGUIを起動しない。
+
+| Task | 内容 | 状態 |
+|---|---|---|
+| MEM-0917-identity | root path保持、hook/ingest identity整合、入力検証とscope回帰 | cc:完了 |
+| MEM-0917-hooks-doctor | #173 hook出力/限定重複除去、#177 platform/GUI診断、read-onlyと設定認識 | cc:完了 |
+| MEM-0917-bulk | #146 bulk title/content/tags保存readback | cc:完了 |
+| MEM-0917-backfill | #176 全lightweight child終了と親/明示停止の回帰 | cc:完了 |
+| MEM-0917-deps | #130 更新を最新mainへ適用、npm/Bun lock同期、固定依存検証 | cc:完了 |
+| MEM-0917-verify | 統合回帰、独立レビュー、運用反映手順と未確認の記録 | cc:完了 |
+
+- 実装: hookと履歴取り込みのprojectを確認済みrootへ統一し、旧短名記録は保持。`/`とWindows drive rootを区別して保持する。不正なprojectは構造化エラー。Codex managed hookは所有情報を確認して限定整理し、Windows MSYS/native表記も識別時のみ正規化。TS/Go bulkは全件検査後にpayloadを補完し、既存値とprivacyを保持。11種類の補助process終了は親backfillの停止状態を変更しない。
+- 配布資産: MCPのesbuild 0.28.1 / tsx 4.22.4 / hono 4.12.26、npm/Bun lock全124 packagesの版を同期。MCP dist/index.jsとmapを再生成し、source mapに作業機固有パスがないことを確認。Go native binaryの稼働差し替えは未実施。
+- 中核回帰: `bun test memory-server/tests/core-split/ memory-server/tests/integration/api-contract.test.ts memory-server/tests/integration/file-reference-isolation.test.ts memory-server/tests/integration/backfill-child-shutdown.test.ts memory-server/tests/unit/workspace-boundary.test.ts memory-server/tests/unit/project-registry.test.ts` は405 pass /0 fail /2063 assertions、snapshot1件成功。
+- 個別回帰: identity対象12 filesは84 pass /0 fail /791 assertions。CLI最終2実行は39 passと9 pass、失敗0。MCP unitとlock driftは44 pass /0 fail /655 assertions。各実行は範囲に重複があるため合算しない。Go `go test ./...`成功。
+- 型/配布検証: server tsc、MCP typecheck/build、shell構文、git diff --check成功。`npm ci`と空の隔離先でのBun1.3.6 `install --frozen-lockfile`成功、lock内容不変。
+- 独立review: APPROVE。20 tests /311 assertions成功、Go bulk試験成功。発見されたbulk必須項目の事前検査不足、read-only Go起動、Windows ownership比較を修正済み。未解消の阻害指摘0。
+- 実環境の読み取り確認: 修正版`doctor --read-only --json --platform codex,claude,cursor --skip-version-check`はexit0。設定6 filesのhash/mtime一致。daemon/embedding/Claude/Cursor/shared skillはok、Codex wiringのみmissing（実設定の二重登録を調査で確認済み）。診断が正常を装うための実設定変更は行っていない。元checkoutは開始時と同じPlans.mdの9追加行だけ。
+- 次に本人の判断が必要: (1) 検証済み版の稼働反映とCodex配線整理、(2) 実DBの小分けbackfill開始、(3) 公開。実装元はharness-mem。共有CLI設定の正本経由で配線し、既存transportを無断変更しない。旧短名記録の移行は出典確認済み候補だけを別途判断する。
+- 反映時の完了条件: 使用する版/起動先を揃えて新しい会話で保存、同project検索、再開を確認。既存sessionの途中で識別子を切り替えない。backfillは容量を再測定し、少量batchで2周期以上の進捗と検索応答を確認してから継続する。失敗時は明示stopし、入力ログ/旧記録を削除しない。
+- 未確認: 実DBの74,036件のvector不足内訳、全履歴回収、120秒consolidation timeout主因、Windows実機動作。今回の変更でそれらまで復旧済みとはしない。範囲内の次の必須作業なし。
+
+
 ## 2026-09-13 再発防止策の公開リリース
 
 - 状態: cc:完了 [92473d6]。立花の「必要であればプッシュしてリリースして」に基づき、main反映、v0.30.1タグ、GitHub Release、npm latest=0.30.1まで完了した。

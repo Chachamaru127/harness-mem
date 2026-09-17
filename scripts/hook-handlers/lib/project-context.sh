@@ -19,7 +19,7 @@ to_abs_dir() {
   local input="$1"
   [ -n "$input" ] || return 1
   if [ -d "$input" ]; then
-    (cd "$input" 2>/dev/null && pwd) || return 1
+    (cd "$input" 2>/dev/null && pwd -P) || return 1
     return 0
   fi
   return 1
@@ -48,7 +48,7 @@ project_root_from_path() {
   abs_candidate="$(to_abs_dir "$candidate" 2>/dev/null)" || return 1
   git_root="$(git -C "$abs_candidate" rev-parse --show-toplevel 2>/dev/null || true)"
   if [ -n "$git_root" ] && [ -d "$git_root" ]; then
-    printf '%s\n' "$git_root"
+    to_abs_dir "$git_root"
     return 0
   fi
 
@@ -144,7 +144,7 @@ extract_env_context_path() {
 resolve_project_context() {
   local input_json="${1:-}"
   local default_root default_name
-  default_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  default_root="$(project_root_from_path "$(pwd -P)")"
   default_name="$(basename "$default_root")"
 
   local path_candidate
