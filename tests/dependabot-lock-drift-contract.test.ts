@@ -9,6 +9,9 @@ type PackageLock = {
 const ROOT = process.cwd();
 
 const ROOT_LOCK_PACKAGES = [
+  "@huggingface/transformers",
+  "sharp",
+  "adm-zip",
   "protobufjs",
   "@protobufjs/codegen",
   "@protobufjs/eventemitter",
@@ -20,6 +23,7 @@ const MCP_LOCK_PACKAGES = [
   "esbuild",
   "tsx",
   "@hono/node-server",
+  "body-parser",
   "express-rate-limit",
   "fast-uri",
   "hono",
@@ -55,7 +59,7 @@ function expectLocksAligned(rootDir: string, packages: readonly string[]) {
 }
 
 describe("Dependabot lock drift contract", () => {
-  test("root Bun lock stays aligned with npm lock for protobufjs transitive updates", () => {
+  test("root Bun lock stays aligned with npm lock for embedding runtime updates", () => {
     expectLocksAligned(ROOT, ROOT_LOCK_PACKAGES);
   });
 

@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Dependencies
+
+- Update protobufjs, compatible adm-zip 0.5.x, and MCP transitive dependencies with synchronized npm/Bun locks. Keep sharp 0.34.5 and pin transformers 4.2.0 to avoid introducing a Node 20.9 requirement; sharp 0.35.x and adm-zip 0.6.x remain deferred.
+
 ## [0.30.4] - 2026-09-17
 
 ### Fixed

@@ -49,7 +49,7 @@
     ".cursor/hooks/"
   ],
   "dependencies": {
-    "@huggingface/transformers": "^4.0.0",
+    "@huggingface/transformers": "4.2.0",
     "sharp": "0.34.5"
   },
   "optionalDependencies": {
