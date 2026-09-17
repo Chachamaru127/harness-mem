@@ -6,6 +6,9 @@
 - 順序: 最新差分とhealth確認 → release検証/版確定 → 稼働反映と新規session保存/検索/再開 → 小分けbackfillの容量と2周期以上の進捗/応答確認 → 共有main/公開と配布readback。
 - 100%の定義: 上記すべての観測証拠が揃う。backfill実行中を完了扱いしない。旧短名projectの自動統合、秘密/権限/transport変更、無関係な既存作業の変更は含めない。
 - 作業境界: 元checkoutのPlans.md変更を保持。共有設定の正本配線を確認し、重複するCodex管理hookだけ修復。更新前の版と設定へ戻せる手順を記録。
+- 公開前検証: npm testは3603 pass /0 fail /15 skip、385 suites、21945 assertions。hookの実パス化に合わせたcontinuity fixture修正は独立review APPROVE、既存の再現率/混入防止条件は維持。server/MCP/UI型検査、UI54 tests、Go全tests、WorkGraph enforce3回、Recall enforce、npm pack成功。
+- 稼働反映: 元checkoutをレビュー済みdcdd98aへ更新し既存Plans9行保持。npm接続先へ0.30.2を配置。Codex管理hookは各1本、2回適用でhash一致。接続設定とLaunchAgentのhashは不変。health/ready正常、確認用新規sessionのhook保存→同project検索→別sessionからresume→thread readback成功。全3platformのread-only doctor正常。
+- 公開経路: PR #178。全体CI確認後にmainへ取り込み、tag/release/npm配布を検証する。実DBbackfillは小分けで観測中。
 
 
 ## 2026-09-17 ローカル記録と検索の整合、および公開 Issue 対応
