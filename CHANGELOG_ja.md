@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### 依存更新
+
+- protobufjs、互換性のあるadm-zip 0.5系、MCPの間接依存を更新し、npmとBunの固定情報を揃える。Node 20.9以降を新たに必須としないよう、sharp 0.34.5を維持してtransformersを4.2.0に固定する。sharp 0.35系とadm-zip 0.6系は保留する。
+
 ## [0.30.4] - 2026-09-17
 
 ### 修正

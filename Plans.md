@@ -1627,3 +1627,10 @@ Plans.md は working plan（§78 + §89 + §90 + §97 + §110 + §112 + §115 + 
 検証: Bun focused 51 pass / 0 fail（7 files）、Go tools / server / proxy PASS、bash / Node syntax、diff check、npm pack dry-run（integration 全6ファイル同梱）。既存 version / VERSION は変更せず Unreleased を追加。provenance は既存 checkpoint の `platform` 引数を再利用し gateway header は追加しない。native client 設定 discovery / interpolation と VPS-to-Mac live E2E は未検証。managed export の明示 import が必要で doctor は config-only。
 
 新規 PR: https://github.com/Chachamaru127/harness-mem/pull/175 （main 向け、#174 の branch/code は再利用なし）。
+
+## PR #180 dependency validation (2026-09-18)
+
+- cc:完了 Align npm/Bun dependency locks and verify supported runtime compatibility: 44 MCP/lock tests, 6 pgvector unit tests, Node 18 clean installs and runtime smoke passed. Independent review: APPROVE. PR merge remains conditional on GitHub CI for the final revision.
+- Scope: repository dependency update only; no live installation, daemon restart, or data migration.
+- Compatibility: retain sharp 0.34.5 and pin transformers 4.2.0; transformers 4.3.0 would pull sharp 0.35.4 and require Node >=20.9. Keep the supported runtime contract unchanged.
+- adm-zip uses the compatible 0.5.18 patch; 0.6.x is deferred because onnxruntime-node 1.24.3 requires ^0.5.16. No Node support-policy change or new runtime release.
