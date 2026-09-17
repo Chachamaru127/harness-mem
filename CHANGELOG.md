@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.30.4] - 2026-09-17
+
+### Fixed
+
+- Seed the unrelated rows in the dreaming session-recency regression directly in one fixture transaction. Keep the two target records on the real capture path, retain the 501-row scenario and five-second timeout, and explicitly verify that the newest 500 project rows exclude the target session. This avoids timing out while preparing unrelated recording side effects on release runners.
+
+This is the first npm publication of the backfill fixes listed under 0.30.3. The 0.30.3 GitHub release was created, but npm publication stopped at the fixture timeout above.
+
 ## [0.30.3] - 2026-09-17
 
 ### Fixed
@@ -3251,7 +3259,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.3...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.4...HEAD
+[0.30.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.3...v0.30.4
 [0.30.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.2...v0.30.3
 [0.30.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.1...v0.30.2
 [0.30.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.5...v0.30.1

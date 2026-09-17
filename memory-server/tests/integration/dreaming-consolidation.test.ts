@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { HarnessMemCore, type Config, type EventEnvelope } from "../../src/core/harness-mem-core";
 import { Database } from "bun:sqlite";
 import { configureDatabase, initSchema } from "../../src/db/schema";
+import { insertTestObservation } from "../core-split/test-helpers";
 
 const ENV_KEYS = [
   "HARNESS_MEM_DREAMING_LLM_PROVIDER",
@@ -507,18 +508,30 @@ describe("S154-201 dreaming consolidation job", () => {
         privacy_tags: [],
       });
 
-      for (let i = 0; i < 501; i += 1) {
-        core.recordEvent({
-          platform: "claude",
-          project: "dream-session-cap",
-          session_id: `s-noise-${i}`,
-          event_type: "checkpoint",
-          ts: `2026-06-10T10:${String(i % 60).padStart(2, "0")}:00.000Z`,
-          payload: { prompt: `Unrelated project note ${i}.` },
-          tags: [],
-          privacy_tags: [],
-        });
-      }
+      // Noise only fills the query's recency cap; recording side effects are not under test.
+      const db = core.getRawDb();
+      db.transaction(() => {
+        for (let i = 0; i < 501; i += 1) {
+          const timestamp = `2026-06-10T10:${String(i % 60).padStart(2, "0")}:00.000Z`;
+          insertTestObservation(db, {
+            id: `noise-${i}`,
+            event_id: `noise-event-${i}`,
+            platform: "claude",
+            project: "dream-session-cap",
+            session_id: `s-noise-${i}`,
+            title: `Unrelated project note ${i}.`,
+            content: `Unrelated project note ${i}.`,
+            created_at: timestamp,
+            event_time: timestamp,
+            observed_at: timestamp,
+          });
+        }
+      })();
+      const noiseCount = db.query("SELECT COUNT(*) AS n FROM mem_observations WHERE project = 'dream-session-cap' AND session_id LIKE 's-noise-%'").get() as { n: number };
+      expect(noiseCount.n).toBe(501);
+      const recentRows = db.query("SELECT session_id FROM mem_observations WHERE project = 'dream-session-cap' ORDER BY created_at DESC LIMIT 500").all() as { session_id: string }[];
+      expect(recentRows).toHaveLength(500);
+      expect(recentRows.every(row => row.session_id !== "s-target")).toBe(true);
 
       const stats = await core.runConsolidation({ project: "dream-session-cap", session_id: "s-target", reason: "dreaming" });
       expect(stats.ok).toBe(true);
