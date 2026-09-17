@@ -637,6 +637,12 @@ main の release gate、現行の日本語 companion、歴史 baseline を明確
 
 `doctor --json` は `doctor.v2` schema を返します。既存の top-level field は残したまま、`overall_status`、各 check の `result`（`pass`, `warn`, `fail`, `skip`）、repair plan を追加しています。
 
+`--read-only` は設定と実行ファイルを変更せず、サービス起動と修復を行いません。
+`--fix` と併用しても読み取り専用です。版情報の確認は `--platform` の対象だけに限定し、
+Cursor や Antigravity は起動せずアプリの情報ファイルを読みます。
+新しいフック記録は確認済みのプロジェクトルートを使います。既存の短名記録は元の範囲に残ります。
+[プロジェクト識別と移行](docs/file-reference-isolation.md)を参照してください。
+
 ```bash
 harness-mem doctor --json --read-only
 harness-mem doctor --json --strict-exit

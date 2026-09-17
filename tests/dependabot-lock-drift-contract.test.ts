@@ -17,6 +17,8 @@ const ROOT_LOCK_PACKAGES = [
 ] as const;
 
 const MCP_LOCK_PACKAGES = [
+  "esbuild",
+  "tsx",
   "@hono/node-server",
   "express-rate-limit",
   "fast-uri",

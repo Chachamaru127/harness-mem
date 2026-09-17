@@ -97,15 +97,19 @@ extract_latest_codex_assistant_response() {
 }
 
 PROJECT_ROOT=""
-PROJECT_NAME=""
+PROJECT_DISPLAY_NAME=""
 if command -v resolve_project_context >/dev/null 2>&1; then
   CONTEXT="$(resolve_project_context "$INPUT_JSON")"
   PROJECT_ROOT="$(printf '%s\n' "$CONTEXT" | sed -n '1p')"
-  PROJECT_NAME="$(printf '%s\n' "$CONTEXT" | sed -n '2p')"
+  PROJECT_DISPLAY_NAME="$(printf '%s\n' "$CONTEXT" | sed -n '2p')"
 fi
 
 [ -n "$PROJECT_ROOT" ] || PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-[ -n "$PROJECT_NAME" ] || PROJECT_NAME="$(basename "$PROJECT_ROOT")"
+if CANONICAL_ROOT="$(cd "$PROJECT_ROOT" 2>/dev/null && pwd -P)"; then
+  PROJECT_ROOT="$CANONICAL_ROOT"
+fi
+PROJECT_NAME="$PROJECT_ROOT"
+[ -n "$PROJECT_DISPLAY_NAME" ] || PROJECT_DISPLAY_NAME="$(basename "$PROJECT_ROOT")"
 hook_init_continuity_state
 
 NOTIFY_TYPE="$(printf '%s' "$INPUT_JSON" | jq -r '.type // empty' 2>/dev/null)"

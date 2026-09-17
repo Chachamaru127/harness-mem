@@ -664,6 +664,12 @@ What this does **not** claim:
 
 `doctor --json` emits the `doctor.v2` schema. It keeps the old top-level fields while adding `overall_status`, per-check `result` (`pass`, `warn`, `fail`, `skip`), and a repair plan. Useful modes:
 
+`--read-only` leaves configuration and runtime files unchanged and never starts
+services or performs repairs, even with `--fix`. Version checks honor `--platform`
+and inspect GUI application metadata without launching Cursor or Antigravity.
+New lifecycle-hook records use the confirmed project root; older short-name
+records remain in their original scope. See [project identity and migration](docs/file-reference-isolation.md).
+
 ```bash
 harness-mem doctor --json --read-only
 harness-mem doctor --json --strict-exit

@@ -357,6 +357,7 @@ is_uint() {
 CONFIG_PATH="${STATE_DIR}/config.json"
 
 ensure_config() {
+  [ "${READ_ONLY_MODE:-0}" -eq 1 ] && return 0
   mkdir -p "$STATE_DIR"
   if [ ! -f "$CONFIG_PATH" ]; then
     cat > "$CONFIG_PATH" <<'CONF'
@@ -1232,9 +1233,7 @@ should_prompt_codex_skill_install() {
   if [ "${HARNESS_MEM_NON_INTERACTIVE:-0}" = "1" ]; then
     return 1
   fi
-  local skill_mem_dst="${HOME}/.codex/skills/harness-mem/SKILL.md"
-  local skill_recall_dst="${HOME}/.codex/skills/harness-recall/SKILL.md"
-  if [ -f "$skill_mem_dst" ] && [ -f "$skill_recall_dst" ] && check_codex_skill_bundle >/dev/null 2>&1; then
+  if check_codex_skill_bundle >/dev/null 2>&1; then
     return 1
   fi
   if [ -t 0 ] || [ "${HARNESS_MEM_FORCE_SKILL_PROMPT:-0}" = "1" ]; then
@@ -1337,6 +1336,7 @@ require_cmd() {
 }
 
 should_use_stable_runtime_root() {
+  [ "${READ_ONLY_MODE:-0}" -eq 1 ] && return 1
   case "$SOURCE_ROOT" in
     */.npm/_npx/*)
       return 0
@@ -1559,6 +1559,7 @@ write_auto_update_state() {
 }
 
 should_attempt_auto_update() {
+  [ "${READ_ONLY_MODE:-0}" -eq 1 ] && return 1
   local command="$1"
 
   case "$command" in
@@ -1653,12 +1654,6 @@ detect_cli_version() {
 
 detect_cursor_local_version() {
   local value
-  value="$(detect_cli_version cursor --version)"
-  if [ -n "$value" ]; then
-    printf '%s' "$value"
-    return
-  fi
-
   local plist
   for plist in \
     "/Applications/Cursor.app/Contents/Info.plist" \
@@ -1676,12 +1671,6 @@ detect_cursor_local_version() {
 
 detect_antigravity_local_version() {
   local value
-  value="$(detect_cli_version antigravity --version)"
-  if [ -n "$value" ]; then
-    printf '%s' "$value"
-    return
-  fi
-
   local plist
   for plist in \
     "/Applications/Antigravity.app/Contents/Info.plist" \
@@ -1828,16 +1817,26 @@ versions_impl() {
   tmp_dir="$(mktemp -d)"
   trap 'rm -rf "${tmp_dir:-}"' RETURN
 
-  fetch "https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md" \
-    "$tmp_dir/claude-code-CHANGELOG.md" &
-  fetch "https://api.github.com/repos/openai/codex/releases?per_page=50" \
-    "$tmp_dir/codex-releases.json" &
-  fetch "https://api.github.com/repos/anomalyco/opencode/releases?per_page=50" \
-    "$tmp_dir/opencode-releases.json" &
-  fetch "https://cursor.com/changelog" \
-    "$tmp_dir/cursor-changelog.html" &
-  fetch "https://antigravity-auto-updater-974169037036.us-central1.run.app/releases" \
-    "$tmp_dir/antigravity-releases-api.json" &
+  printf '' >"$tmp_dir/claude-code-CHANGELOG.md"
+  printf '[]' >"$tmp_dir/codex-releases.json"
+  printf '[]' >"$tmp_dir/opencode-releases.json"
+  printf '' >"$tmp_dir/cursor-changelog.html"
+  printf '[]' >"$tmp_dir/antigravity-releases-api.json"
+  if is_platform_enabled claude; then
+    fetch "https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md" "$tmp_dir/claude-code-CHANGELOG.md" &
+  fi
+  if is_platform_enabled codex; then
+    fetch "https://api.github.com/repos/openai/codex/releases?per_page=50" "$tmp_dir/codex-releases.json" &
+  fi
+  if is_platform_enabled opencode; then
+    fetch "https://api.github.com/repos/anomalyco/opencode/releases?per_page=50" "$tmp_dir/opencode-releases.json" &
+  fi
+  if is_platform_enabled cursor; then
+    fetch "https://cursor.com/changelog" "$tmp_dir/cursor-changelog.html" &
+  fi
+  if is_platform_enabled antigravity; then
+    fetch "https://antigravity-auto-updater-974169037036.us-central1.run.app/releases" "$tmp_dir/antigravity-releases-api.json" &
+  fi
   wait
 
   local prev_antigravity_hooks
@@ -1882,11 +1881,26 @@ PY
   fi
 
   local codex_local claude_local opencode_local cursor_local antigravity_local
-  codex_local="$(detect_cli_version codex --version)"
-  claude_local="$(detect_cli_version claude --version)"
-  opencode_local="$(detect_cli_version opencode --version)"
-  cursor_local="$(detect_cursor_local_version)"
-  antigravity_local="$(detect_antigravity_local_version)"
+  codex_local=""
+  if is_platform_enabled codex; then
+    codex_local="$(detect_cli_version codex --version)"
+  fi
+  claude_local=""
+  if is_platform_enabled claude; then
+    claude_local="$(detect_cli_version claude --version)"
+  fi
+  opencode_local=""
+  if is_platform_enabled opencode; then
+    opencode_local="$(detect_cli_version opencode --version)"
+  fi
+  cursor_local=""
+  if is_platform_enabled cursor; then
+    cursor_local="$(detect_cursor_local_version)"
+  fi
+  antigravity_local=""
+  if is_platform_enabled antigravity; then
+    antigravity_local="$(detect_antigravity_local_version)"
+  fi
 
   local codex_status claude_status opencode_status antigravity_status cursor_status
   codex_status="$(version_status_hint "$codex_local" "$codex_latest_stable")"
@@ -1894,6 +1908,11 @@ PY
   opencode_status="$(version_status_hint "$opencode_local" "$opencode_latest")"
   antigravity_status="$(version_status_hint "$antigravity_local" "$antigravity_latest")"
   cursor_status="unknown"
+  is_platform_enabled codex || codex_status="not_checked"
+  is_platform_enabled claude || claude_status="not_checked"
+  is_platform_enabled opencode || opencode_status="not_checked"
+  is_platform_enabled cursor || cursor_status="not_checked"
+  is_platform_enabled antigravity || antigravity_status="not_checked"
 
   local snapshot
   snapshot="$(jq -nc \
@@ -1967,7 +1986,9 @@ PY
       alerts: {
         antigravity_hooks_introduced: $antigravity_hooks_introduced
       }
-    }')"
+    } | if .status.antigravity == "not_checked" then
+      .upstream.antigravity.hooks_detected = null | .alerts.antigravity_hooks_introduced = null
+    else . end')"
 
   printf '%s\n' "$snapshot" >"$VERSIONS_SNAPSHOT_PATH"
   printf '%s\n' "$snapshot" | jq -c . >>"$VERSIONS_HISTORY_PATH"
@@ -1986,7 +2007,8 @@ PY
       "  opencode     local=\(.local.opencode.installed // "n/a") upstream=\(.upstream.opencode.latest_stable // "n/a") status=\(.status.opencode)",
       "  cursor       local=\(.local.cursor.installed // "n/a") upstream_date=\(.upstream.cursor.latest_entry_date // "n/a") status=\(.status.cursor)",
       "  antigravity  local=\(.local.antigravity.installed // "n/a") upstream=\(.upstream.antigravity.latest_stable // "n/a") status=\(.status.antigravity)",
-      "  antigravity_hooks detected=\(.upstream.antigravity.hooks_detected) introduced=\(.alerts.antigravity_hooks_introduced) version=\(.upstream.antigravity.hooks_signal_version // "n/a")"
+      (if .status.antigravity == "not_checked" then "  antigravity_hooks not_checked" else
+       "  antigravity_hooks detected=\(.upstream.antigravity.hooks_detected) introduced=\(.alerts.antigravity_hooks_introduced) version=\(.upstream.antigravity.hooks_signal_version // "n/a")" end)
     '
 
   trap - RETURN
@@ -2179,26 +2201,22 @@ merge_codex_hooks_json() {
   local tmp
   tmp="$(mktemp)"
 
-  if jq --slurpfile tpl "$rendered_template" '
-    def entry_commands($entry):
-      [($entry.hooks // [])[]? | .command? // empty];
-    def existing_commands($entries):
-      [($entries // [])[]? | (.hooks // [])[]? | .command? // empty];
+  local managed
+  managed="$(bun "${HARNESS_ROOT}/scripts/lib/codex-managed-hooks.js" "$hooks_dst" "$HARNESS_ROOT")" || return 1
+  if jq --slurpfile tpl "$rendered_template" --argjson managed "$managed" '
+    def managed($event):
+      .command as $command | any($managed[$event][]; .command == $command);
     .description = ($tpl[0].description // .description)
     | .hooks = (.hooks // {})
     | reduce ["SessionStart", "UserPromptSubmit", "Stop"][] as $event (
         .;
         .hooks[$event] = (
-          (.hooks[$event] // []) as $existing
-          | existing_commands($existing) as $existing_cmds
-          | $existing + [
-              ($tpl[0].hooks[$event] // [])[]
-              | select(
-                  entry_commands(.) as $required_cmds
-                  | ($required_cmds | length) > 0
-                  and ((($required_cmds - $existing_cmds) | length) == ($required_cmds | length))
-                )
-            ]
+          [(.hooks[$event] // [])[]
+           | if ((.hooks // []) | any(managed($event))) then
+               .hooks |= map(select(managed($event) | not))
+               | select((.hooks | length) > 0)
+             else . end]
+          + ($tpl[0].hooks[$event] // [])
         )
       )
   ' "$hooks_dst" >"$tmp" 2>/dev/null; then
@@ -2225,19 +2243,24 @@ check_codex_hooks_wiring() {
     return 1
   fi
 
+  local commands count hook_path
   while IFS='|' read -r event command; do
-    if jq -e --arg event "$event" --arg command "$command" \
-      'any((.hooks[$event] // [])[]?.hooks[]?; .command == $command)' \
-      "$hooks_dst" >/dev/null 2>&1; then
+    commands="$(bun "${HARNESS_ROOT}/scripts/lib/codex-managed-hooks.js" "$hooks_dst" "$HARNESS_ROOT" \
+      | jq -r --arg event "$event" '.[$event][].command')"
+    count="$(printf '%s\n' "$commands" | awk 'NF {n++} END {print n+0}')"
+    hook_path="${commands#bash }"
+    hook_path="${hook_path#\"}"; hook_path="${hook_path%\"}"
+    hook_path="${hook_path#\'}"; hook_path="${hook_path%\'}"
+    if [ "$count" -eq 1 ] && [ -f "$hook_path" ]; then
       log "Codex ${event} hook: OK"
     else
-      warn "Codex ${event} hook is missing in: $hooks_dst"
+      warn "Codex ${event} hook is missing, duplicated, or points to a missing file in: $hooks_dst"
       failed=1
     fi
   done <<EOF
-SessionStart|bash ${HARNESS_ROOT}/scripts/hook-handlers/codex-session-start.sh
-UserPromptSubmit|bash ${HARNESS_ROOT}/scripts/hook-handlers/codex-user-prompt.sh
-Stop|bash ${HARNESS_ROOT}/scripts/hook-handlers/codex-session-stop.sh
+SessionStart|codex-session-start
+UserPromptSubmit|codex-user-prompt
+Stop|codex-session-stop
 EOF
 
   return "$failed"
@@ -2296,23 +2319,27 @@ check_codex_config_wiring() {
     failed=1
   fi
 
-  if grep -qE '^\[mcp_servers\.harness\]' "$cfg"; then
-    log "Codex MCP wiring section: OK"
-  else
+  local parsed_config harness_json
+  if ! parsed_config="$(bun "${HARNESS_ROOT}/scripts/lib/read-codex-config.ts" "$cfg" 2>/dev/null)"; then
+    warn "Codex config is not valid TOML: $cfg"
+    return 1
+  fi
+  harness_json="$(printf '%s' "$parsed_config" | jq -c '.harness // null')"
+  if [ "$harness_json" = "null" ]; then
     warn "Codex MCP wiring is missing in: $cfg"
+    return 1
+  fi
+  log "Codex MCP wiring section: OK"
+  if [ "$(printf '%s' "$harness_json" | jq -r '.enabled != false')" = "false" ]; then
+    warn "Codex MCP wiring is disabled in: $cfg"
     failed=1
   fi
-
-  # Section-scoped extraction: awk Pass 1 — [mcp_servers.harness] parent keys only
-  # Stops at [mcp_servers.harness.env] or any other [section] — intentional
-  # Pattern allows trailing whitespace/comments per TOML spec
-  harness_section="$(awk '/^\[mcp_servers\.harness\][[:space:]]*(#.*)?$/{found=1;next} /^\[/{found=0} found' "$cfg")"
   local mcp_command_value
-  mcp_command_value="$(echo "$harness_section" | sed -nE 's/^[[:space:]]*command[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
-  mcp_args_value="$(echo "$harness_section" | sed -nE 's/^[[:space:]]*args[[:space:]]*=[[:space:]]*\[[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
-  mcp_cwd_value="$(echo "$harness_section" | sed -nE 's/^[[:space:]]*cwd[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
-  mcp_url_value="$(echo "$harness_section" | sed -nE 's/^[[:space:]]*url[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
-  mcp_bearer_token_env_var="$(echo "$harness_section" | sed -nE 's/^[[:space:]]*bearer_token_env_var[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
+  mcp_command_value="$(printf '%s' "$harness_json" | jq -r '.command // empty')"
+  mcp_args_value="$(printf '%s' "$harness_json" | jq -r '.args[0] // empty')"
+  mcp_cwd_value="$(printf '%s' "$harness_json" | jq -r '.cwd // empty')"
+  mcp_url_value="$(printf '%s' "$harness_json" | jq -r '.url // empty')"
+  mcp_bearer_token_env_var="$(printf '%s' "$harness_json" | jq -r '.bearer_token_env_var // empty')"
 
   if [ -n "$mcp_url_value" ]; then
     local expected_mcp_url expected_token_env_var
@@ -2338,6 +2365,8 @@ check_codex_config_wiring() {
     mcp_entry_path="$mcp_command_value"
   elif [ -n "$mcp_command_value" ] && is_windows_shell && is_windows_style_path "$mcp_command_value"; then
     mcp_entry_path="$mcp_command_value"
+  elif [ -n "$mcp_cwd_value" ] && [ -f "${mcp_cwd_value}/${mcp_command_value}" ]; then
+    mcp_entry_path="${mcp_cwd_value}/${mcp_command_value}"
   elif [ -n "$mcp_args_value" ]; then
     if [[ "$mcp_args_value" = /* ]]; then
       mcp_entry_path="$mcp_args_value"
@@ -2364,14 +2393,10 @@ check_codex_config_wiring() {
     fi
   fi
 
-  # Section-scoped extraction: awk Pass 2 — [mcp_servers.harness.env] keys
-  harness_env_section="$(awk '/^\[mcp_servers\.harness\.env\][[:space:]]*(#.*)?$/{found=1;next} /^\[/{found=0} found' "$cfg")"
-
-  # Validate env values — trust boundary: read-only check, values are never written to
   local cfg_host cfg_port cfg_db_path
-  cfg_host="$(echo "$harness_env_section" | sed -nE 's/^[[:space:]]*HARNESS_MEM_HOST[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
-  cfg_port="$(echo "$harness_env_section" | sed -nE 's/^[[:space:]]*HARNESS_MEM_PORT[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
-  cfg_db_path="$(echo "$harness_env_section" | sed -nE 's/^[[:space:]]*HARNESS_MEM_DB_PATH[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
+  cfg_host="$(printf '%s' "$harness_json" | jq -r '.env.HARNESS_MEM_HOST // empty')"
+  cfg_port="$(printf '%s' "$harness_json" | jq -r '.env.HARNESS_MEM_PORT // empty')"
+  cfg_db_path="$(printf '%s' "$harness_json" | jq -r '.env.HARNESS_MEM_DB_PATH // empty')"
 
   if [ -z "$cfg_host" ] || [ -z "$cfg_port" ] || [ -z "$cfg_db_path" ]; then
     warn "Codex MCP env wiring is incomplete (missing keys) in: $cfg"
@@ -2389,11 +2414,14 @@ check_codex_config_wiring() {
   return "$failed"
 }
 
+codex_harness_mcp_present() {
+  bun "${HARNESS_ROOT}/scripts/lib/read-codex-config.ts" "$1" 2>/dev/null \
+    | jq -e '.harness != null' >/dev/null 2>&1
+}
+
 codex_harness_mcp_has_http_url() {
-  local cfg="$1"
-  [ -f "$cfg" ] || return 1
-  awk '/^\[mcp_servers\.harness\][[:space:]]*(#.*)?$/{found=1;next} /^\[/{found=0} found' "$cfg" \
-    | grep -qE '^[[:space:]]*url[[:space:]]*='
+  bun "${HARNESS_ROOT}/scripts/lib/read-codex-config.ts" "$1" 2>/dev/null \
+    | jq -e '(.harness.url // "") != ""' >/dev/null 2>&1
 }
 
 print_codex_mcp_block() {
@@ -2521,6 +2549,9 @@ ensure_codex_hooks_feature_enabled() {
   local tmp
 
   [ -f "$cfg" ] || return 1
+  if check_codex_hooks_feature_enabled "$cfg" >/dev/null 2>&1; then
+    return 0
+  fi
 
   if rg -q '^[[:space:]]*features\.(codex_hooks|hooks)[[:space:]]*=[[:space:]]*true([[:space:]]|$)' "$cfg"; then
     return 0
@@ -2586,18 +2617,8 @@ EOF
 check_codex_hooks_feature_enabled() {
   local cfg="$1"
 
-  if grep -qE '^[[:space:]]*features\.(codex_hooks|hooks)[[:space:]]*=[[:space:]]*true([[:space:]]|$)' "$cfg"; then
-    log "Codex hooks feature flag: OK"
-    return 0
-  fi
-
-  if awk '
-    BEGIN { in_features = 0; enabled = 0 }
-    /^[[:space:]]*\[features\][[:space:]]*$/ { in_features = 1; next }
-    in_features && /^[[:space:]]*\[/ { in_features = 0 }
-    in_features && /^[[:space:]]*(codex_hooks|hooks)[[:space:]]*=[[:space:]]*true([[:space:]]|$)/ { enabled = 1 }
-    END { exit enabled ? 0 : 1 }
-  ' "$cfg"; then
+  if bun "${HARNESS_ROOT}/scripts/lib/read-codex-config.ts" "$cfg" 2>/dev/null \
+    | jq -e '.features.hooks == true or .features.codex_hooks == true' >/dev/null 2>&1; then
     log "Codex hooks feature flag: OK"
     return 0
   fi
@@ -2667,7 +2688,7 @@ EOF
       log "Migrated Codex notify from legacy string to array format: $cfg"
     fi
 
-    if ! rg -q '^\[mcp_servers\.harness\]' "$cfg"; then
+    if ! codex_harness_mcp_present "$cfg"; then
       {
         echo ""
         print_codex_mcp_block
@@ -2781,6 +2802,10 @@ check_codex_skill_bundle() {
   for name in harness-mem harness-recall; do
     skill_src="${HARNESS_ROOT}/codex/skills/${name}/SKILL.md"
     skill_dst="${HOME}/.codex/skills/${name}/SKILL.md"
+    if [ ! -f "$skill_dst" ] && [ -s "${HOME}/.agents/skills/${name}/SKILL.md" ]; then
+      log "Codex Agent Skill: shared ($HOME/.agents/skills/${name}/SKILL.md)"
+      continue
+    fi
     if [ ! -f "$skill_src" ]; then
       warn "Codex Agent Skill source missing: $skill_src"
       missing=1
@@ -2836,15 +2861,10 @@ check_codex_requirements_alignment() {
     case "$path" in
         *memory-codex-notify.sh|*codex-session-start.sh|*codex-user-prompt.sh|*codex-session-stop.sh|*bin/harness-mcp-server|*mcp-server/dist/index.js|*"/.codex/skills/harness-mem/"*|*"/.codex/skills/harness-recall/"*)
         extracted_any=1
-        case "$path" in
-          "$HARNESS_ROOT"/*|"$HOME/.codex/"*)
-            :
-            ;;
-          *)
-            warn "Codex requirements.toml points to a stale harness path: $path"
-            stale=1
-            ;;
-        esac
+        if ! file_exists_for_current_shell "$path"; then
+          warn "Codex requirements.toml points to a missing harness path: $path"
+          stale=1
+        fi
         ;;
     esac
   done < <(grep -oE '"/[^"]+"' "$req" 2>/dev/null | tr -d '"')
@@ -3292,11 +3312,28 @@ EOF
   return 1
 }
 
+verified_harness_mcp_entry() {
+  local entry="${1:-}" cwd="${2:-}" root
+  [ -n "$entry" ] || return 1
+  if is_windows_shell && is_windows_style_path "$entry" && check_cmd cygpath; then
+    entry="$(cygpath -u "$entry")"
+  fi
+  case "$entry" in
+    /*) ;;
+    *) [ -n "$cwd" ] || return 1; entry="${cwd}/${entry}" ;;
+  esac
+  case "$entry" in
+    */bin/harness-mcp-server) root="${entry%/bin/harness-mcp-server}" ;;
+    *) return 1 ;;
+  esac
+  [ -f "$entry" ] || return 1
+  [ "$root" = "$HARNESS_ROOT" ] || jq -e '.name == "@chachamaru127/harness-mem"' "$root/package.json" >/dev/null 2>&1
+}
+
 check_cursor_wiring() {
   local hooks_json="${HOME}/.cursor/hooks.json"
   local mcp_json="${HOME}/.cursor/mcp.json"
   local hook_script="${HOME}/.cursor/hooks/memory-cursor-event.sh"
-  local mcp_entry="${HARNESS_ROOT}/bin/harness-mcp-server"
   local hook_command
   hook_command="$(get_cursor_hooks_command)"
   local failed=0
@@ -3334,13 +3371,20 @@ check_cursor_wiring() {
     warn "Cursor MCP config missing: $mcp_json"
     failed=1
   else
+    local entry_valid=false
+    if verified_harness_mcp_entry \
+      "$(jq -r --arg id "$CURSOR_MCP_SERVER_ID" '.mcpServers[$id].command // empty' "$mcp_json" 2>/dev/null)" \
+      "$(jq -r --arg id "$CURSOR_MCP_SERVER_ID" '.mcpServers[$id].cwd // empty' "$mcp_json" 2>/dev/null)"; then
+      entry_valid=true
+    fi
     if jq -e \
       --arg server_id "$CURSOR_MCP_SERVER_ID" \
       --arg legacy_server_id "$CURSOR_LEGACY_MCP_SERVER_ID" \
-      --arg mcp_entry "$mcp_entry" '
+      --argjson entry_valid "$entry_valid" '
       .mcpServers[$server_id] != null
+      and (.mcpServers[$server_id].enabled != false)
       and (
-        ((.mcpServers[$server_id].command // "") == $mcp_entry)
+        $entry_valid
         or (
           (.mcpServers[$server_id].command // "") == "npx"
           and ((.mcpServers[$server_id].args // []) | any((. | tostring) | contains("harness-mcp-server") or contains("harness-mem")))
@@ -3567,9 +3611,6 @@ check_opencode_wiring() {
 check_claude_wiring() {
   local failed=0
   local hooks="${HARNESS_ROOT}/hooks/hooks.json"
-  local mcp_entry="${HARNESS_ROOT}/bin/harness-mcp-server"
-  local mcp_relative_entry="bin/harness-mcp-server"
-  local mcp_cwd="${HARNESS_ROOT}"
   local mcp_http_url="$(_mcp_gateway_endpoint_url)"
   local token_env_var="${HARNESS_MEM_MCP_TOKEN_ENV_VAR:-HARNESS_MEM_MCP_TOKEN}"
   local mcp_auth_header="Bearer \${${token_env_var}}"
@@ -3608,9 +3649,15 @@ check_claude_wiring() {
       MCP_HTTP_CONFIG_DETECTED=1
     fi
 
-    if jq -e --arg mcp_entry "$mcp_entry" --arg mcp_relative_entry "$mcp_relative_entry" --arg mcp_cwd "$mcp_cwd" --arg mcp_http_url "$mcp_http_url" --arg mcp_auth_header "$mcp_auth_header" '
+    local entry_valid=false
+    if verified_harness_mcp_entry \
+      "$(jq -r '.mcpServers.harness.command // empty' "$cfg" 2>/dev/null)" \
+      "$(jq -r '.mcpServers.harness.cwd // empty' "$cfg" 2>/dev/null)"; then
+      entry_valid=true
+    fi
+    if jq -e --argjson entry_valid "$entry_valid" --arg mcp_http_url "$mcp_http_url" --arg mcp_auth_header "$mcp_auth_header" '
       .mcpServers.harness != null
-      and ((.mcpServers.harness.enabled // true) != false)
+      and (.mcpServers.harness.enabled != false)
       and (
         (
           ((.mcpServers.harness.type // "") == "http")
@@ -3618,13 +3665,7 @@ check_claude_wiring() {
           and ((.mcpServers.harness.headers.Authorization // "") == $mcp_auth_header)
         )
         or
-        (
-          ((.mcpServers.harness.command // "") == $mcp_entry)
-          or (
-            ((.mcpServers.harness.command // "") | endswith($mcp_relative_entry))
-            and ((.mcpServers.harness.cwd // "") == $mcp_cwd)
-          )
-        )
+        $entry_valid
         or (
           (.mcpServers.harness.command // "") == "npx"
           and ((.mcpServers.harness.args // []) | any((. | tostring) | contains("harness-mcp-server") or contains("harness-mem")))
@@ -6090,7 +6131,9 @@ doctor_impl() {
   local go_bin_name go_bin_path
   go_bin_name="$(_resolve_go_bin_name)"
   go_bin_path="${HARNESS_ROOT}/bin/${go_bin_name}"
-  if [ -x "$go_bin_path" ]; then
+  if [ -x "$go_bin_path" ] && [ "$READ_ONLY_MODE" -eq 1 ]; then
+    _doctor_record "go_mcp_binary" "skipped" "read-only mode did not execute the MCP server"
+  elif [ -x "$go_bin_path" ]; then
     # Smoke test: send initialize and check for valid response
     if printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"doctor","version":"0.1"}}}\n' \
       | "$go_bin_path" 2>/dev/null | grep -q '"serverInfo"'; then
@@ -6358,7 +6401,7 @@ doctor_impl() {
     else
       # Check if daemon reports managed backend status
       local _doctor_shadow_json
-      _doctor_shadow_json="$(curl -sf "http://127.0.0.1:${HARNESS_MEM_PORT:-37888}/v1/admin/shadow-metrics" 2>/dev/null)"
+      _doctor_shadow_json="$(curl -sf --max-time 3 "http://127.0.0.1:${HARNESS_MEM_PORT:-37888}/v1/admin/shadow-metrics" 2>/dev/null || true)"
       if [ -n "$_doctor_shadow_json" ]; then
         local _doctor_conn_state
         _doctor_conn_state="$(echo "$_doctor_shadow_json" | jq -r '.items[0].connection_state // "unknown"' 2>/dev/null)"
@@ -7960,6 +8003,10 @@ main() {
   fi
 
   parse_options "$@"
+  if [ "$READ_ONLY_MODE" -eq 1 ]; then
+    FIX_MODE=0
+    VERSION_CHECK_IN_SETUP=0
+  fi
   normalize_ui_lang
   if should_prompt_platform_selection "$command"; then
     prompt_language_selection

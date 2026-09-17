@@ -12,6 +12,7 @@ import { NotionConnector } from "./sync/notion-connector";
 import { GoogleDriveConnector } from "./sync/gdrive-connector";
 import type { ConnectorConfig } from "./sync/types";
 import { EmbeddingReadinessError, HarnessMemCore } from "./core/harness-mem-core";
+import { ProjectInputError, validateProjectInput } from "./core/project-registry";
 import { classifyEntityType, type RelationKind } from "./core/nlp-lite";
 import { SqliteTeamRepository } from "./db/repositories/SqliteTeamRepository.js";
 import type { ITeamRepository } from "./db/repositories/ITeamRepository.js";
@@ -273,15 +274,18 @@ function hasValidAdminToken(request: Request, remoteAddress: string | null): boo
 }
 
 async function parseRequestJson(request: Request): Promise<Record<string, unknown>> {
+  let body: unknown;
   try {
-    const body = await request.json();
-    if (typeof body === "object" && body !== null) {
-      return body as Record<string, unknown>;
-    }
+    body = await request.json();
   } catch {
-    // ignored
+    return {};
   }
-  return {};
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return {};
+  const record = body as Record<string, unknown>;
+  validateProjectInput(record.project);
+  validateProjectInput(toRecord(record.event).project);
+  validateProjectInput(toRecord(record.scope).project);
+  return record;
 }
 
 function toRecord(value: unknown): Record<string, unknown> {
@@ -456,6 +460,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
     fetch: async (request: Request, server): Promise<Response> => {
       try {
         const url = new URL(request.url);
+        validateProjectInput(url.searchParams.get("project") ?? undefined);
         const remoteAddress = server?.requestIP(request)?.address ?? null;
         if (url.pathname.startsWith("/v1/admin/forget/")) {
           server?.timeout(request, 255);
@@ -1114,7 +1119,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
       if (request.method === "POST" && url.pathname === "/v1/resume-pack") {
         const body = await parseRequestJson(request);
-        const project = typeof body.project === "string" ? body.project : "";
+        const project = typeof body.project === "string" ? body.project.trim() : "";
         if (!project) {
           return badRequest("project is required");
         }
@@ -2853,6 +2858,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
         return new Response("Not Found", { status: 404 });
       } catch (error) {
+        if (error instanceof ProjectInputError) return badRequest(error.message);
         if (error instanceof EmbeddingReadinessError) {
           return serviceUnavailable(error.message, {
             embedding_provider_status: error.readiness.providerStatus,

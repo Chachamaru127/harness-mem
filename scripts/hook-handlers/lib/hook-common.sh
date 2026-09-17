@@ -71,7 +71,8 @@ hook_init_paths() {
 
 # ---------- hook_init_context [require_input] ----------
 # Read stdin if available, source project-context.sh, resolve PROJECT_ROOT/PROJECT_NAME.
-# Sets: INPUT, PROJECT_ROOT, PROJECT_NAME
+# PROJECT_NAME is the stored identity; PROJECT_DISPLAY_NAME is for presentation.
+# Sets: INPUT, PROJECT_ROOT, PROJECT_NAME, PROJECT_DISPLAY_NAME
 # If require_input="true", exits 0 when stdin is empty.
 hook_init_context() {
   local require_input="${1:-false}"
@@ -91,16 +92,21 @@ hook_init_context() {
   fi
 
   PROJECT_ROOT=""
-  PROJECT_NAME=""
+  PROJECT_DISPLAY_NAME=""
   if command -v resolve_project_context >/dev/null 2>&1; then
     local context
     context="$(resolve_project_context "$INPUT")"
     PROJECT_ROOT="$(printf '%s\n' "$context" | sed -n '1p')"
-    PROJECT_NAME="$(printf '%s\n' "$context" | sed -n '2p')"
+    PROJECT_DISPLAY_NAME="$(printf '%s\n' "$context" | sed -n '2p')"
   fi
 
-  [ -n "$PROJECT_ROOT" ] || PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-  [ -n "$PROJECT_NAME" ] || PROJECT_NAME="$(basename "$PROJECT_ROOT")"
+  [ -n "$PROJECT_ROOT" ] || PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
+  local canonical_root
+  if canonical_root="$(cd "$PROJECT_ROOT" 2>/dev/null && pwd -P)"; then
+    PROJECT_ROOT="$canonical_root"
+  fi
+  PROJECT_NAME="$PROJECT_ROOT"
+  [ -n "$PROJECT_DISPLAY_NAME" ] || PROJECT_DISPLAY_NAME="$(basename "$PROJECT_ROOT")"
 }
 
 # ---------- hook_resolve_session_id <platform> [session_file] [mode] ----------
@@ -1969,7 +1975,6 @@ hook_emit_codex_additional_context() {
       --arg hook_event_name "$hook_event_name" \
       --arg additional_context "$additional_context" \
       '{
-        continue: true,
         hookSpecificOutput: {
           hookEventName: $hook_event_name,
           additionalContext: $additional_context

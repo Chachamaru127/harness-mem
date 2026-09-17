@@ -394,6 +394,11 @@ project-scoped search, or direct event recording and readback.
 - Project identity on request paths uses persisted, confirmed mappings and
   filesystem-free string handling. Existing stored project keys remain usable
   with an empty mapping registry; startup must not probe historical paths.
+- Lifecycle hooks submit the confirmed physical project root as the stored
+  identifier, matching history ingest. Basenames are display labels only.
+  POSIX and Windows drive roots remain valid identities. Invalid project input
+  returns a structured error before recording; existing bare-name history is
+  never automatically merged into a filesystem project.
 - Realpath, Git-root discovery, directory enumeration and source reads run in
   bounded dedicated child processes without a connection to the memory DB.
   The DB owner applies confirmed results; no source I/O runs under a DB write
@@ -416,6 +421,24 @@ project-scoped search, or direct event recording and readback.
   requests, project isolation, stale replies, lost ACK and replay, plus actual
   search and record readback. DB/storage failure itself is outside this
   continuity guarantee and must never be reported as a successful save.
+
+## Local Diagnostics and Memory Write Contracts
+
+- `doctor --read-only` must not normalize or write configuration, synchronize a
+  runtime, update packages, repair hooks, or start services. This applies even
+  when `--fix` is also supplied. Version checks respect selected platforms and
+  inspect GUI application metadata without launching the application.
+- Codex setup retains unrelated hook entries and installs exactly one current
+  managed handler per lifecycle event. Codex context output uses the supported
+  `hookSpecificOutput` shape without a top-level `continue` field.
+- MCP `bulk_add` maps top-level `title` and `content` to the event payload.
+  Existing payload fields take precedence, including empty values. Tags,
+  privacy labels, and other envelope fields remain unchanged. Malformed events
+  or payloads are rejected before any event in that batch is submitted; this
+  does not make otherwise valid batches transactionally atomic.
+- Lightweight child shutdown must not stop the parent-owned vector backfill
+  job. Parent daemon shutdown and an explicit administrative stop still persist
+  the stop request.
 
 ## Periodic Ingest Budget
 

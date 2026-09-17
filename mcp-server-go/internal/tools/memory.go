@@ -783,13 +783,68 @@ func handleMemoryToolInner(ctx context.Context, name string, args map[string]any
 		if !ok || len(events) == 0 {
 			return errorResult("events is required and must not be empty")
 		}
-		var results []any
-		for _, ev := range events {
+		normalized := make([]map[string]any, 0, len(events))
+		for i, ev := range events {
 			evMap, ok := ev.(map[string]any)
-			if !ok {
-				continue
+			if !ok || evMap == nil {
+				return errorResult(fmt.Sprintf("events[%d] must be an object", i))
 			}
-			resp, err := callMemoryAPI(ctx, "POST", "/v1/events/record", map[string]any{"event": evMap})
+			for _, key := range []string{"platform", "project", "session_id", "event_type"} {
+				value, valid := evMap[key].(string)
+				if !valid || strings.TrimSpace(value) == "" {
+					return errorResult(fmt.Sprintf("events[%d].%s must be a non-empty string", i, key))
+				}
+				if key == "project" && strings.ContainsRune(value, '\x00') {
+					return errorResult(fmt.Sprintf("events[%d].project must not contain NUL", i))
+				}
+			}
+			for _, key := range []string{"title", "content"} {
+				if raw, exists := evMap[key]; exists {
+					if _, valid := raw.(string); !valid {
+						return errorResult(fmt.Sprintf("events[%d].%s must be a string", i, key))
+					}
+				}
+			}
+			for _, key := range []string{"tags", "privacy_tags"} {
+				if raw, exists := evMap[key]; exists {
+					values, valid := raw.([]any)
+					if !valid || values == nil {
+						return errorResult(fmt.Sprintf("events[%d].%s must be an array of strings", i, key))
+					}
+					for _, value := range values {
+						if _, valid := value.(string); !valid {
+							return errorResult(fmt.Sprintf("events[%d].%s must be an array of strings", i, key))
+						}
+					}
+				}
+			}
+			payload := make(map[string]any)
+			if raw, exists := evMap["payload"]; exists {
+				existing, valid := raw.(map[string]any)
+				if !valid || existing == nil {
+					return errorResult(fmt.Sprintf("events[%d].payload must be an object", i))
+				}
+				for key, value := range existing {
+					payload[key] = value
+				}
+			}
+			for _, key := range []string{"title", "content"} {
+				if _, exists := payload[key]; !exists {
+					if value, valid := evMap[key].(string); valid {
+						payload[key] = value
+					}
+				}
+			}
+			event := make(map[string]any, len(evMap)+1)
+			for key, value := range evMap {
+				event[key] = value
+			}
+			event["payload"] = payload
+			normalized = append(normalized, event)
+		}
+		var results []any
+		for _, event := range normalized {
+			resp, err := callMemoryAPI(ctx, "POST", "/v1/events/record", map[string]any{"event": event})
 			if err != nil {
 				results = append(results, map[string]any{"ok": false, "error": err.Error()})
 			} else {

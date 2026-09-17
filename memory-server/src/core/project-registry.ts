@@ -13,11 +13,24 @@ export interface ProjectResolution {
 
 const PREFIX = "project_identity:v1:";
 
+export class ProjectInputError extends Error {}
+
+/** Optional scopes may be omitted or blank, but malformed values must not broaden a query. */
+export function validateProjectInput(input: unknown): void {
+  if (input === undefined) return;
+  if (typeof input !== "string") throw new ProjectInputError("project must be a string");
+  if (input.includes("\0")) throw new ProjectInputError("project must not contain NUL");
+}
+
 /** Identity syntax only. Never consults the filesystem or folds case/basenames. */
 export function projectKey(input: string): string {
-  const value = input.trim().replace(/\\/g, "/").replace(/\/+$/, "");
-  if (!value) throw new Error("project name must not be empty");
-  return value;
+  if (typeof input !== "string") throw new ProjectInputError("project must be a string");
+  validateProjectInput(input);
+  const value = input.trim().replace(/\\/g, "/");
+  if (!value) throw new ProjectInputError("project name must not be empty");
+  if (/^\/+$/u.test(value)) return "/";
+  if (/^[A-Za-z]:\/+$/u.test(value)) return value.slice(0, 2) + "/";
+  return value.replace(/\/+$/, "");
 }
 
 export function isProjectPath(input: string): boolean {
