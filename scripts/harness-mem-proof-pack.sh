@@ -174,7 +174,7 @@ SETUP_TIME_SECONDS=0
 SETUP_TIME_PASS=false
 
 START_NS="$(date +%s%N 2>/dev/null || echo 0)"
-"$HARNESS_MEM_CMD" setup --skip-start --skip-smoke --skip-quality >/dev/null 2>&1 || true
+"$HARNESS_MEM_CMD" setup --platform all --skip-start --skip-smoke --skip-quality >/dev/null 2>&1 || true
 END_NS="$(date +%s%N 2>/dev/null || echo 0)"
 
 if [[ "$START_NS" != "0" && "$END_NS" != "0" ]]; then
@@ -198,7 +198,7 @@ cat > "$TIMING_FILE" <<EOF
   "setup_time_seconds": ${SETUP_TIME_SECONDS},
   "sla_seconds": 300,
   "pass": ${SETUP_TIME_PASS},
-  "command": "setup --skip-start --skip-smoke --skip-quality",
+  "command": "setup --platform all --skip-start --skip-smoke --skip-quality",
   "timestamp": "${TIMESTAMP}"
 }
 EOF
