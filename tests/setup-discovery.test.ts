@@ -15,7 +15,7 @@ function fixture() {
   mkdirSync(join(dir, "scripts/lib"), { recursive: true });
   cpSync(join(ROOT, "scripts/lib/setup-discovery.sh"), join(dir, "scripts/lib/setup-discovery.sh"));
   // A closed PATH keeps installed developer clients out of discovery.
-  for (const name of ["dirname", "tr", "xargs", "uname", "pwd", "cat"]) {
+  for (const name of ["dirname", "tr", "xargs", "uname", "pwd", "cat", "echo"]) {
     const actual = Bun.which(name)!;
     symlinkSync(actual, join(bin, name));
   }
@@ -63,7 +63,7 @@ describe("guided setup discovery", () => {
     try {
       f.client("codex"); f.client("opencode"); f.file(".claude.json", "DO_NOT_PRINT_SECRET");
       const r = await f.run("\n", f.noApps + 'prompt_platform_selection\nprintf "RESULT:%s\\n" "$PLATFORM"');
-      expect(r.code).toBe(0);
+      expect(r.code, r.err).toBe(0);
       expect(r.out).toContain("RESULT:codex,claude");
       expect(r.out).toContain("設定あり（実行環境は未確認）");
       expect(r.out).toContain("試験対応、手動選択");
@@ -85,7 +85,7 @@ describe("guided setup discovery", () => {
     const f = fixture();
     try {
       const r = await f.run("\n9\n4, 1,4\n", f.noApps + 'prompt_platform_selection\nprintf "RESULT:%s\\n" "$PLATFORM"');
-      expect(r.code).toBe(0);
+      expect(r.code, r.err).toBe(0);
       expect(r.out).toContain("推奨候補: なし");
       expect(r.err).toContain("無効な選択");
       expect(r.out).toContain("RESULT:claude,codex");
@@ -113,7 +113,7 @@ describe("guided setup discovery", () => {
       const f = fixture();
       try {
         const r = await f.run(input, installationDriver);
-        expect(r.code).toBe(0);
+        expect(r.code, r.err).toBe(0);
         expect(r.out).toContain("Setup cancelled");
         expect(r.out).not.toContain("MUTATION_");
         expect(r.out).not.toContain("INSTALL:");
@@ -127,7 +127,7 @@ describe("guided setup discovery", () => {
     try {
       f.client("codex"); f.client("claude");
       const r = await f.run("1\n\nn\nn\ny\n", installationDriver);
-      expect(r.code).toBe(0);
+      expect(r.code, r.err).toBe(0);
       expect(r.out).toContain("接続先: codex,claude");
       expect(r.out).toContain("INSTALL:codex,claude");
       expect(r.out.indexOf("インストール内容")).toBeLessThan(r.out.indexOf("MUTATION_SYNC"));
@@ -138,7 +138,7 @@ describe("guided setup discovery", () => {
     const f = fixture();
     try {
       const r = await f.run("", installationDriver, { HARNESS_MEM_FORCE_PLATFORM_PROMPT: "0" });
-      expect(r.code).toBe(1);
+      expect(r.code, r.err).toBe(1);
       expect(r.err).toContain("interactive terminal");
       expect(r.out).not.toContain("MUTATION_");
       expect(r.out).not.toContain("INSTALL:");
@@ -150,7 +150,7 @@ describe("guided setup discovery", () => {
     const f = fixture();
     try {
       const r = await f.run("", installationDriver.replace("main setup", "main setup --platform claude"));
-      expect(r.code).toBe(0);
+      expect(r.code, r.err).toBe(0);
       expect(r.out).toContain("INSTALL:claude");
       expect(r.out).not.toContain("推奨候補");
       expect(r.out).not.toContain("インストール内容");
