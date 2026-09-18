@@ -26,7 +26,7 @@ for (const [language, content, model] of [
     } finally { db.close(); }
     const proc = Bun.spawn([process.execPath,
       new URL("../../src/tools/vector-backfill-tick.ts", import.meta.url).pathname,
-      JSON.stringify({ type: "reindex", limit: 25, status_counts: true })], {
+      JSON.stringify({ type: "reindex", limit: 25, status_counts: true, missing_only: true })], {
       env: {
         ...process.env, HOME: dir, NODE_ENV: "test", HARNESS_MEM_HOME: dir,
         HARNESS_MEM_DB_PATH: dbPath, HARNESS_MEM_VECTOR_BACKFILL_CHILD: "1",
@@ -47,7 +47,7 @@ for (const [language, content, model] of [
       expect(exit, stderr).toBe(0);
       const response = JSON.parse(stdout.trim().split("\n").filter(line => line.startsWith("{")).at(-1)!);
       expect(response.items[0], JSON.stringify(response.meta)).toMatchObject({
-        reindexed: 1, skipped_retryable: 0, missing_vectors_remaining: 0, vector_coverage: 1,
+        reindexed: 1, skipped_retryable: 0, missing_vectors_remaining: 0, vector_coverage: 1, scanned: 1,
       });
       const readback = new Database(dbPath);
       try {

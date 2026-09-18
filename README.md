@@ -931,6 +931,10 @@ Phase B (April 2026) added verbatim raw storage (`HARNESS_MEM_RAW_MODE=1`), hier
 
 ---
 
+## Background vector repair
+
+Fast capture is followed by automatic, bounded vector repair while the daemon runs. Repair continues after a backfill completes and resumes after daemon restart. A model or dimension change restarts historical discovery on the next repair tick; a manual reset also starts discovery from the beginning. An explicit administrative stop stays in effect until you start the worker again. Coverage counts active records with all required passage models and dimensions; it does not measure semantic search quality. Automatic repair defaults to local providers; remote providers retain the existing `HARNESS_MEM_REINDEX_VECTORS_ENABLED=1` opt-in. Set `HARNESS_MEM_VECTOR_REPAIR_ENABLED=0` to disable recurring discovery. Coverage snapshots are cached for up to 30 seconds. Failed measurements return unknown coverage, not zero or a fabricated percentage.
+
 ## License
 
 Business Source License 1.1 (SPDX: `BUSL-1.1`). See [`LICENSE`](LICENSE).

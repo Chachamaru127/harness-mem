@@ -11,6 +11,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
+import { createVectorBackfillWorker } from "../../src/core/vector-backfill-worker";
 import { ConfigManager, type ConfigManagerDeps } from "../../src/core/config-manager";
 import { getConfig, type Config, type ApiResponse } from "../../src/core/config-manager";
 import { __resetUserConfigCache } from "../../src/core/core-utils";
@@ -566,7 +567,7 @@ describe("config-manager: reindexVectors", () => {
     test("current model の vector が無い observation を legacy vector より先に reindex する", async () => {
       const db = createTestDb();
       dbs.push(db);
-      const config = createTestConfig();
+      const config = createTestConfig({ vectorDimension: 2 });
       const missingId = insertTestObservation(db, {
         id: "obs-missing-vector",
         content: "older row without any current vector",
@@ -652,6 +653,7 @@ describe("config-manager: reindexVectors", () => {
         getVectorEngine: () => "sqlite-vec",
         getVecTableReady: () => true,
         getVectorModelVersion: () => "adaptive:router",
+        requiredVectorModels: () => [model],
         upsertSqliteVecRow: fakeSqliteVecUpsert,
         reindexObservationVector: (id) => {
           reindexed.push(id);
@@ -884,4 +886,202 @@ describe("config-manager: shutdown", () => {
     const res = manager2.health();
     expect(res.ok).toBe(true);
   });
+});
+
+
+describe("exact passage coverage and durable repair discovery", () => {
+  test("counts observations, required variants, dimension and active state independently", async () => {
+    const db = createTestDb(); dbs.push(db);
+    const config = createTestConfig({ vectorDimension: 2 });
+    const manager = new ConfigManager(createDeps(db, config, {
+      getVectorEngine: () => "js-fallback",
+      getVectorModelVersion: () => "adaptive:router",
+      requiredVectorModels: content => content.includes("mixed") ? ["adaptive:ruri", "adaptive:general"] : ["adaptive:general"],
+    }));
+    for (const id of ["complete", "partial", "fallback", "wrong-dimension", "old-model", "archived", "expired"]) {
+      insertTestObservation(db, { id, content: id === "complete" || id === "partial" ? "mixed text" : "plain text" });
+    }
+    for (const model of ["adaptive:ruri", "adaptive:general"]) insertVector(db, "complete", model, 2, "[1,0]");
+    insertVector(db, "partial", "adaptive:ruri", 2, "[1,0]");
+    insertVector(db, "fallback", "fallback:local-hash-v3", 2, "[1,0]");
+    insertVector(db, "wrong-dimension", "adaptive:general", 3, "[1,0,0]");
+    insertVector(db, "old-model", "adaptive:general:old", 2, "[1,0]");
+    for (const id of ["archived", "expired"]) insertVector(db, id, "adaptive:general", 2, "[1,0]");
+    db.query("UPDATE mem_observations SET archived_at = ? WHERE id = 'archived'").run(new Date().toISOString());
+    db.query("UPDATE mem_observations SET expires_at = ? WHERE id = 'expired'").run("2000-01-01T00:00:00Z");
+    expect(manager.vectorCoverage()).toEqual({ total_observations: 5, current_count: 1, legacy_count: 4, current_rows: 3 });
+    const res = await manager.reindexVectors(1);
+    expect(res.items[0]).toMatchObject({ current_model_vectors: 1, missing_vectors_remaining: 4, vector_coverage: 0.2 });
+  });
+
+  test("two adaptive rows cannot hide a completely missing second observation", () => {
+    const db = createTestDb(); dbs.push(db);
+    const manager = new ConfigManager(createDeps(db, createTestConfig({ vectorDimension: 2 }), {
+      requiredVectorModels: () => ["adaptive:a", "adaptive:b"],
+    }));
+    for (const id of ["two", "none"]) insertTestObservation(db, { id });
+    for (const model of ["adaptive:a", "adaptive:b"]) insertVector(db, "two", model, 2, "[1,0]");
+    expect(manager.vectorCoverage()).toMatchObject({ total_observations: 2, current_count: 1, current_rows: 2 });
+  });
+
+  test("bounded cursor resumes, revisits completed scans, and isolates poison rows", async () => {
+    const db = createTestDb(); dbs.push(db);
+    const config = createTestConfig({ vectorDimension: 2 });
+    for (let n = 0; n < 30; n++) insertTestObservation(db, { id: `repair-${n}`, content: `passage-${n}` });
+    for (let n = 0; n < 22; n++) insertVector(db, `repair-${n}`, "test:model", 2, "[1,0]");
+    const calls: string[] = [];
+    const deps = createDeps(db, config, {
+      getVectorEngine: () => "js-fallback",
+      reindexObservationVector(id) {
+        calls.push(id);
+        if (id === "repair-22") throw new Error("synthetic poison");
+        insertVector(db, id, "test:model", 2, "[1,0]");
+      },
+    });
+    const first = new ConfigManager(deps);
+    const opts = { missing_only: true, status_counts: false };
+    expect((await first.reindexVectors(1, opts)).items[0]).toMatchObject({ scanned: 20, reindexed: 0 });
+    const restarted = new ConfigManager(deps);
+    expect((await restarted.reindexVectors(1, opts)).items[0]).toMatchObject({ skipped_retryable: 1, repair_failures: 1 });
+    expect((await restarted.reindexVectors(1, opts)).items[0]).toMatchObject({ reindexed: 1 });
+    for (let n = 0; n < 12; n++) await restarted.reindexVectors(1, opts);
+    expect(calls.filter(id => id === "repair-22")).toHaveLength(1);
+    expect(restarted.vectorCoverage()).toMatchObject({ total_observations: 30, current_count: 29 });
+    insertTestObservation(db, { id: "after-completion" });
+    for (let n = 0; n < 4; n++) await restarted.reindexVectors(1, opts);
+    expect(calls).toContain("after-completion");
+  });
+});
+
+
+test("completed discovery retains its cursor, retries due failures, and eventually rescans history", async () => {
+  const db = createTestDb(); dbs.push(db);
+  insertTestObservation(db, { id: "historic" });
+  insertVector(db, "historic", "test:model", 2, "[1,0]");
+  const calls: string[] = [];
+  const manager = new ConfigManager(createDeps(db, createTestConfig({ vectorDimension: 2 }), {
+    getVectorEngine: () => "js-fallback",
+    reindexObservationVector(id) { calls.push(id); insertVector(db, id, "test:model", 2, "[1,0]"); },
+  }));
+  const opts = { missing_only: true, status_counts: false };
+  await manager.reindexVectors(1, opts);
+  await manager.reindexVectors(1, opts);
+  expect((await manager.reindexVectors(1, opts)).items[0]).toMatchObject({ scanned: 0, scan_exhausted: true });
+  const cursor = db.query("SELECT * FROM mem_vector_repair_scan WHERE key = 'continuous'").get() as any;
+  expect(cursor.last_rowid).toBeGreaterThan(0);
+  expect(cursor.next_rescan_at).toBeGreaterThan(Date.now());
+  db.query("DELETE FROM mem_vectors WHERE observation_id = 'historic'").run();
+  db.query("INSERT INTO mem_vector_repair_failures VALUES ('historic', 1, '2000-01-01')").run();
+  await manager.reindexVectors(1, opts);
+  expect(calls).toEqual(["historic"]);
+  db.query("DELETE FROM mem_vectors WHERE observation_id = 'historic'").run();
+  db.query("UPDATE mem_vector_repair_scan SET next_rescan_at = 1 WHERE key = 'continuous'").run();
+  await manager.reindexVectors(1, opts);
+  expect(calls).toEqual(["historic", "historic"]);
+});
+
+
+test("manual discovery respects retry cooldown and only explicit refresh embeds covered records", async () => {
+  const db = createTestDb(); dbs.push(db);
+  insertTestObservation(db, { id: "covered" }); insertVector(db, "covered", "test:model", 2, "[1,0]");
+  insertTestObservation(db, { id: "deferred" });
+  let calls = 0;
+  const manager = new ConfigManager(createDeps(db, createTestConfig({ vectorDimension: 2 }), {
+    getVectorEngine: () => "js-fallback", reindexObservationVector() { calls++; },
+  }));
+  await manager.reindexVectors(1, { missing_only: true, status_counts: false });
+  db.query("INSERT INTO mem_vector_repair_failures VALUES ('deferred', 1, '2099-01-01')").run();
+  calls = 0;
+  const response = await manager.reindexVectors(5, { status_counts: false });
+  expect(response.items[0]).toMatchObject({ reindexed: 0 });
+  expect(calls).toBe(0);
+});
+
+test("failed vector writes roll back the whole record before deferring it", async () => {
+  const db = createTestDb(); dbs.push(db);
+  insertTestObservation(db, { id: "atomic-repair" });
+  const manager = new ConfigManager(createDeps(db, createTestConfig({ vectorDimension: 2 }), {
+    getVectorEngine: () => "js-fallback", reindexObservationVector(id) {
+      insertVector(db, id, "test:model", 2, "[1,0]");
+      throw new Error("synthetic map write failure");
+    },
+  }));
+  expect((await manager.reindexVectors(1, { missing_only: true, status_counts: false })).items[0]).toMatchObject({ skipped_retryable: 1 });
+  expect(db.query("SELECT COUNT(*) AS n FROM mem_vectors").get()).toEqual({ n: 0 });
+});
+
+
+test("model and dimension changes restart exhausted discovery without waiting for daily rescan", async () => {
+  const db = createTestDb(); dbs.push(db);
+  const config = createTestConfig({ vectorDimension: 2 });
+  let model = "old:model";
+  insertTestObservation(db, { id: "old-history" });
+  const manager = new ConfigManager(createDeps(db, config, {
+    getVectorEngine: () => "js-fallback", getVectorModelVersion: () => model,
+    requiredVectorModels: () => [model],
+    reindexObservationVector(id) { insertVector(db, id, model, config.vectorDimension, JSON.stringify(Array(config.vectorDimension).fill(0))); },
+  }));
+  const opts = { missing_only: true };
+  await manager.reindexVectors(1, opts); await manager.reindexVectors(1, opts);
+  model = "new:model";
+  expect((await manager.reindexVectors(1, opts)).items[0]).toMatchObject({ reindexed: 1, vector_coverage: 1 });
+  await manager.reindexVectors(1, opts);
+  config.vectorDimension = 3;
+  expect((await manager.reindexVectors(1, opts)).items[0]).toMatchObject({ reindexed: 1, vector_coverage: 1 });
+});
+
+test("manual reset repairs history after exhausted discovery and uses the current model", async () => {
+  const db = createTestDb(); dbs.push(db);
+  let model = "old:model";
+  const config = createTestConfig({ vectorDimension: 2 });
+  for (const id of ["reset-a", "reset-b"]) insertTestObservation(db, { id });
+  const manager = new ConfigManager(createDeps(db, config, {
+    getVectorEngine: () => "js-fallback", getVectorModelVersion: () => model,
+    requiredVectorModels: () => [model],
+    reindexObservationVector(id) { insertVector(db, id, model, config.vectorDimension, JSON.stringify(Array(config.vectorDimension).fill(0))); },
+  }));
+  const worker = createVectorBackfillWorker({
+    db, getVectorModelVersion: () => model, getVectorDimension: () => config.vectorDimension,
+    resetVectorRepairScan: () => manager.resetVectorRepairScan(),
+    repairSqliteVecMap: () => okResponse([{ remaining: 0, repaired: 25 }]),
+    reindexVectors: (limit, options) => manager.reindexVectors(limit, options),
+  }, { autoSchedule: false });
+  worker.start({ target_coverage: 1 }); await worker.tick();
+  await manager.reindexVectors(5, { missing_only: true });
+  model = "new:model"; config.vectorDimension = 3;
+  worker.start({ reset: true, target_coverage: 1, reindex_batch_size: 1 });
+  await worker.tick();
+  expect(worker.status().items[0]).toMatchObject({ model, dimension: 3, reindex_processed: 1, reindex_coverage: 0.5, status: "running" });
+  await worker.tick();
+  expect(manager.vectorCoverage()).toMatchObject({ total_observations: 2, current_count: 2 });
+  await worker.tick();
+  expect(worker.status().items[0]).toMatchObject({ reindex_processed: 2, status: "completed" });
+  await manager.reindexVectors(5, { missing_only: true });
+  // Even unchanged model/dimension must rescan on an explicit manual reset.
+  db.query("DELETE FROM mem_vectors WHERE observation_id = 'reset-a'").run();
+  worker.start({ reset: true, target_coverage: 1 });
+  await worker.tick(); await worker.tick();
+  expect(worker.status().items[0]).toMatchObject({ reindex_processed: 1, reindex_coverage: 1 });
+  await worker.shutdown();
+});
+
+test("manual reset during an in-flight embedding cannot be overwritten by its old cursor", async () => {
+  const db = createTestDb(); dbs.push(db);
+  insertTestObservation(db, { id: "pending-reset" });
+  let release!: () => void;
+  let entered!: () => void;
+  const ready = new Promise<void>(resolve => { entered = resolve; });
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const manager = new ConfigManager(createDeps(db, createTestConfig({ vectorDimension: 2 }), {
+    getVectorEngine: () => "js-fallback",
+    prepareReindexEmbedding: async () => { entered(); await pending; },
+    reindexObservationVector(id) { insertVector(db, id, "test:model", 2, "[1,0]"); },
+  }));
+  const tick = manager.reindexVectors(1, { missing_only: true });
+  await ready;
+  manager.resetVectorRepairScan();
+  release(); await tick;
+  expect(db.query("SELECT last_rowid, next_rescan_at FROM mem_vector_repair_scan WHERE key = 'continuous'").get())
+    .toEqual({ last_rowid: 0, next_rescan_at: 0 });
+  expect((await manager.reindexVectors(1, { missing_only: true })).items[0]).toMatchObject({ scanned: 1, reindexed: 0 });
 });

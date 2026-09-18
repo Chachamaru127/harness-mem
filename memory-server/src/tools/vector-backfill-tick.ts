@@ -43,6 +43,7 @@ function parseOperation(raw: string | undefined): VectorBackfillOperation {
       type: "reindex",
       limit: parsed.limit,
       status_counts: parsed.status_counts === false ? false : true,
+      missing_only: parsed.missing_only === true,
     };
   }
   throw new Error("unknown vector backfill operation type");
@@ -143,14 +144,13 @@ async function main(): Promise<void> {
   };
   const core = new HarnessMemCore(config);
   try {
-    if (operation.type === "reindex") {
-      await core.warmEmbedding("memory reindex", "passage");
-    }
     const response =
       operation.type === "compact"
         ? runCompactOperation(core, operation)
         : await core.reindexVectors(operation.limit, {
             status_counts: operation.status_counts !== false,
+            missing_only: operation.missing_only,
+            reindex_all: false,
           });
     process.stdout.write(`${JSON.stringify(response)}\n`);
   } finally {

@@ -128,7 +128,7 @@ import {
 import { createPartialFinalizeScheduler, type PartialFinalizeScheduler } from "./partial-finalize-scheduler";
 import { createReindexVectorsScheduler, type ReindexVectorsScheduler } from "./reindex-vectors-scheduler";
 import {
-  createVectorBackfillWorker,
+  createVectorBackfillWorker, vectorRepairErrorCode,
   type VectorBackfillOperation,
   type VectorBackfillStartOptions,
   type VectorBackfillWorker,
@@ -785,6 +785,14 @@ export function resolveBackgroundWorkersEnabled(
     return envTruthy(env.HARNESS_MEM_BACKGROUND_WORKERS_ENABLED);
   }
   return env.NODE_ENV !== "test";
+}
+
+export function shouldContinuouslyRepairVectors(
+  provider: string, reindexEnabled: boolean | undefined, env: Record<string, string | undefined> = process.env,
+): boolean {
+  if (envFalsy(env.HARNESS_MEM_VECTOR_REPAIR_ENABLED)) return false;
+  // Automatic remote inference retains the existing explicit reindex opt-in.
+  return ["adaptive", "local", "fallback"].includes(provider) || reindexEnabled === true;
 }
 
 export function shouldRunSearchOutOfProcess(
@@ -1672,7 +1680,11 @@ export function parseChildApiResponse(stdout: string, stderr = "", label = "chil
 }
 
 export function parseVectorBackfillChildResponse(stdout: string, stderr = ""): ApiResponse {
-  return parseChildApiResponse(stdout, stderr, "vector backfill child");
+  try {
+    return parseChildApiResponse(stdout, stderr, "vector backfill child");
+  } catch {
+    throw new Error("vector backfill child returned invalid JSON");
+  }
 }
 
 export interface ProjectReferenceOptions {
@@ -1872,6 +1884,10 @@ export class HarnessMemCore {
   private reindexVectorsScheduler!: ReindexVectorsScheduler;
   /** S124-007: out-of-request vector compact rebuild + reindex worker */
   private vectorBackfillWorker!: VectorBackfillWorker;
+  private cancelVectorBackfill: (() => void) | null = null;
+  private metricsPending: Promise<ApiResponse> | null = null;
+  private vectorCoverageCache: { value: ReturnType<ConfigManager["vectorCoverage"]>; expiresAt: number } | null = null;
+  private cancelMetrics: (() => void) | null = null;
   /** S132: opt-in restore-capable archive maintenance scheduler */
   private forgetMaintenanceTimer: ReturnType<typeof setInterval> | null = null;
   private forgetMaintenanceRunning = false;
@@ -2054,6 +2070,13 @@ export class HarnessMemCore {
       ledger: this.projectReferences.sourceReader?.ledger ?? new ReferenceProcessLedger(this.db, "source-reader"),
     });
 
+    let reindexWarmed = false;
+    const prepareReindex = async () => {
+      if (!reindexWarmed) {
+        await this.warmEmbedding("memory reindex", "passage");
+        reindexWarmed = true;
+      }
+    };
     this.cfgMgr = new ConfigManager({
       db: this.db,
       config: this.config,
@@ -2073,14 +2096,20 @@ export class HarnessMemCore {
         this.vecTableReady = ready;
       },
       getVectorModelVersion: () => this.vectorModelVersion,
+      requiredVectorModels: (content) => [
+        this.embeddingProvider.primaryModelFor?.(content) || this.vectorModelVersion,
+        this.embeddingProvider.secondaryModelFor?.(content),
+      ].filter((model): model is string => Boolean(model)),
       embeddingProviderName: this.embeddingProvider.name,
       getEmbeddingHealthStatus: () => this.embeddingHealth.status,
       reindexObservationVector: (id, content, createdAt) =>
         this.eventRec.reindexObservationVector(id, content, createdAt),
       prepareReindexEmbedding: async (content) => {
+        await prepareReindex();
         await this.primeEmbedding(content, "passage");
       },
       prepareReindexEmbeddings: async (contents) => {
+        await prepareReindex();
         await this.primeEmbeddingsBatch(contents, "passage");
       },
       isAntigravityIngestEnabled: () => this.config.antigravityIngestEnabled !== false,
@@ -2131,12 +2160,16 @@ export class HarnessMemCore {
       getVectorModelVersion: () => this.vectorModelVersion,
       getVectorDimension: () => this.config.vectorDimension,
       repairSqliteVecMap: (options) => this.repairSqliteVecMap(options),
-      reindexVectors: (limit) => this.reindexVectors(limit),
+      reindexVectors: (limit, options) => this.reindexVectors(limit, { ...options, reindex_all: false }),
+      resetVectorRepairScan: () => this.cfgMgr.resetVectorRepairScan(),
       runExternalOperation: (operation) => this.runVectorBackfillOperationOutOfProcess(operation),
       writeAuditLog: (action, targetType, targetId, details) =>
         this.writeAuditLog(action, targetType, targetId, details ?? {}),
     }, {
       autoSchedule: process.env.NODE_ENV !== "test",
+      maintenanceBatchSize: this.config.reindexVectorsEnabled ? Math.max(1, Math.min(500, this.config.reindexVectorsBatchSize || 100)) : 5,
+      maintenanceIntervalMs: this.config.reindexVectorsEnabled ? Math.max(5000, this.config.reindexVectorsIntervalMs || 600000) : 1000,
+      maintenanceIdleIntervalMs: this.config.reindexVectorsEnabled ? Math.max(60000, this.config.reindexVectorsIntervalMs || 600000) : 60000,
     });
   }
 
@@ -2171,15 +2204,21 @@ export class HarnessMemCore {
       stdout: "pipe",
       stderr: "pipe",
     });
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    if (exitCode !== 0) {
-      throw new Error(`vector backfill child exited ${exitCode}: ${stderr.trim() || stdout.trim()}`);
+    const cancel = () => { if (proc.exitCode === null) proc.kill("SIGKILL"); };
+    this.cancelVectorBackfill = cancel;
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; cancel(); }, 120_000);
+    try {
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited,
+      ]);
+      if (exitCode !== 0) throw new Error(timedOut ? "vector backfill child timed out" :
+        `${vectorRepairErrorCode(new Error(stderr))}: vector backfill child exited ${exitCode}`);
+      return parseVectorBackfillChildResponse(stdout, stderr);
+    } finally {
+      clearTimeout(timeout);
+      if (this.cancelVectorBackfill === cancel) this.cancelVectorBackfill = null;
     }
-    return parseVectorBackfillChildResponse(stdout, stderr);
   }
 
   private async runSearchOutOfProcess(request: SearchRequest): Promise<ApiResponse> {
@@ -3435,8 +3474,11 @@ export class HarnessMemCore {
     this.ingestCoord.startTimers();
     // §91-002: start partial-finalize scheduler (no-op when enabled=false)
     this.partialFinalizeScheduler.start();
-    // S89-003: start reindex backfill scheduler (no-op when enabled=false)
-    this.reindexVectorsScheduler.start();
+    // One owner for recurring repair; the manual worker and maintenance share a lock.
+    if (this.config.dbPath !== ":memory:" && this.vectorEngine !== "disabled" && this.maintenanceWorkerConfigCompatible &&
+      shouldContinuouslyRepairVectors(this.embeddingProvider.name, this.config.reindexVectorsEnabled)) {
+      this.vectorBackfillWorker.monitor();
+    }
     this.startForgetMaintenanceScheduler();
   }
 
@@ -9113,7 +9155,50 @@ export class HarnessMemCore {
     );
   }
 
-  metrics(): ApiResponse {
+  getVectorCoverage(): ReturnType<ConfigManager["vectorCoverage"]> {
+    return this.cfgMgr.vectorCoverage();
+  }
+
+  metricsQueued(): Promise<ApiResponse> {
+    if (this.metricsPending) return this.metricsPending;
+    if (this.vectorCoverageCache && Date.now() < this.vectorCoverageCache.expiresAt) return Promise.resolve(this.metrics(this.vectorCoverageCache.value));
+    this.metricsPending = Promise.resolve().then(async () => {
+      try {
+        let coverage: ReturnType<ConfigManager["vectorCoverage"]>;
+        if (this.config.dbPath === ":memory:" || !this.maintenanceWorkerConfigCompatible) {
+          coverage = await this.cfgMgr.vectorCoverageAsync();
+        } else {
+          const proc = Bun.spawn({
+            cmd: [process.execPath, "run", fileURLToPath(new URL("../tools/vector-coverage-child.ts", import.meta.url))],
+            env: { ...process.env, HARNESS_MEM_DB_PATH: this.config.dbPath, HARNESS_MEM_VECTOR_BACKFILL_CHILD: "1", NODE_ENV: "test" },
+            stdout: "pipe", stderr: "ignore",
+          });
+          const cancel = () => { if (proc.exitCode === null) proc.kill("SIGKILL"); };
+          this.cancelMetrics = cancel;
+          const timeout = setTimeout(cancel, 120_000);
+          try {
+            const [stdout, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+            if (code !== 0 || this.shuttingDown) throw new Error("vector coverage unavailable");
+            const line = stdout.trim().split("\n").filter(line => line.startsWith("{")).at(-1);
+            if (!line) throw new Error("vector coverage unavailable");
+            coverage = JSON.parse(line);
+          } finally { clearTimeout(timeout); this.cancelMetrics = null; }
+        }
+        if (this.shuttingDown) throw new Error("vector coverage unavailable");
+        this.vectorCoverageCache = { value: coverage, expiresAt: Date.now() + 30000 };
+        return this.metrics(coverage);
+      } catch {
+        if (this.shuttingDown) return makeErrorResponse(performance.now(), "server shutting down", {});
+        return this.metrics(null, "vector_coverage_unavailable");
+      } finally { this.metricsPending = null; }
+    });
+    return this.metricsPending;
+  }
+
+  // Synchronous consumers receive a recent snapshot or an explicit unknown, never a corpus scan.
+  metrics(coverage: ReturnType<ConfigManager["vectorCoverage"]> | null =
+    this.vectorCoverageCache && Date.now() < this.vectorCoverageCache.expiresAt ? this.vectorCoverageCache.value : null,
+    coverageError?: string): ApiResponse {
     const startedAt = performance.now();
     this.refreshEmbeddingHealth();
     const embeddingReadiness = this.getEmbeddingReadiness();
@@ -9127,17 +9212,8 @@ export class HarnessMemCore {
         mem_vectors_count: number;
         observations_count: number;
       } | null;
-    const currentModelVectorRows = this.vectorModelVersion.startsWith("adaptive:")
-      ? this.db
-          .query<{ count: number }, []>(
-            `SELECT COUNT(*) AS count FROM mem_vectors WHERE model >= 'adaptive:' AND model < 'adaptive;'`,
-          )
-          .get()
-      : this.db
-          .query<{ count: number }, [string]>(`SELECT COUNT(*) AS count FROM mem_vectors WHERE model = ?`)
-          .get(this.vectorModelVersion);
-    const observationsCount = Number(vectorCoverage?.observations_count ?? 0);
-    const currentModelObservations = Math.min(observationsCount, Number(currentModelVectorRows?.count ?? 0));
+    const observationsCount = coverage?.total_observations ?? Number(vectorCoverage?.observations_count ?? 0);
+    const currentModelObservations = coverage?.current_count ?? 0;
     const currentModelCoverage = observationsCount === 0 ? 1 : currentModelObservations / observationsCount;
 
     const vecMapTables = this.db
@@ -9205,16 +9281,17 @@ export class HarnessMemCore {
           embedding_readiness_retryable: embeddingReadiness.retryable,
           reranker_enabled: this.rerankerEnabled,
           reranker_name: this.reranker?.name || null,
-            coverage: {
+            coverage: coverage ? {
               observations: observationsCount,
               mem_vectors: Number(vectorCoverage?.mem_vectors_count ?? 0),
               current_model_observations: currentModelObservations,
-              current_model_vector_rows: Number(currentModelVectorRows?.count ?? 0),
+              current_model_vector_rows: coverage.current_rows,
               vector_coverage: currentModelCoverage,
               target_coverage: 0.95,
               missing_current_model_vectors: Math.max(0, observationsCount - currentModelObservations),
               mem_vectors_vec_map: vecMapCount,
-            },
+            } : null,
+            ...(coverageError ? { coverage_error: coverageError } : {}),
           retry_queue: {
             count: Number(queueStats?.count ?? 0),
             max_retry_count: Number(queueStats?.max_retry_count ?? 0),
@@ -9743,7 +9820,7 @@ export class HarnessMemCore {
   }
 
     reindexVectors(limitInput?: number, options?: ReindexVectorsOptions): Promise<ApiResponse> {
-      return this.cfgMgr.reindexVectors(limitInput, options);
+      return this.cfgMgr.reindexVectors(limitInput, { reindex_all: true, ...options });
     }
 
     repairSqliteVecMap(options: RepairSqliteVecMapOptions = {}): ApiResponse {
@@ -9755,7 +9832,9 @@ export class HarnessMemCore {
     }
 
     stopVectorBackfillWorker(): ApiResponse {
-      return this.vectorBackfillWorker.stop();
+      const result = this.vectorBackfillWorker.stop();
+      this.cancelVectorBackfill?.();
+      return result;
     }
 
     getVectorBackfillWorkerStatus(): ApiResponse {
@@ -10123,9 +10202,10 @@ export class HarnessMemCore {
       clearInterval(this.forgetMaintenanceTimer);
       this.forgetMaintenanceTimer = null;
     }
-    if (!lightweightChild) {
-      this.vectorBackfillWorker.stop();
-    }
+    const hadVectorBackfill = !lightweightChild && this.vectorBackfillWorker.isTicking();
+    const vectorBackfillStop = lightweightChild ? Promise.resolve() : this.vectorBackfillWorker.shutdown();
+    if (!lightweightChild) this.cancelVectorBackfill?.();
+    this.cancelMetrics?.();
     this.ingestCoord.stopTimers();
 
     const finishShutdown = (): void => {
@@ -10184,7 +10264,7 @@ export class HarnessMemCore {
       }
     };
 
-    if (!hadSearchWorker && !hadPeriodicIngestWorker && !hadBackgroundMaintenanceWorker) {
+    if (!hadSearchWorker && !hadPeriodicIngestWorker && !hadBackgroundMaintenanceWorker && !hadVectorBackfill) {
       finishShutdown();
       this.shutdownPromise = Promise.resolve();
     } else {
@@ -10192,6 +10272,7 @@ export class HarnessMemCore {
         searchWorkerStop,
         periodicIngestWorkerStop,
         backgroundMaintenanceWorkerStop,
+        vectorBackfillStop,
       ]).then(finishShutdown);
     }
     return this.shutdownPromise;

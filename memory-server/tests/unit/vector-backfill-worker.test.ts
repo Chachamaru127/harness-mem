@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import {
   createVectorBackfillWorker,
+  vectorRepairErrorCode,
   type VectorBackfillWorker,
   type VectorBackfillWorkerDeps,
 } from "../../src/core/vector-backfill-worker";
@@ -531,4 +532,153 @@ describe("vector-backfill-worker", () => {
     expect(status.reindex_coverage).toBe(1);
     expect(status.reindex_total).toBe(1);
   });
+});
+
+
+describe("continuous vector maintenance", () => {
+  test("repairs records arriving after completion and respects explicit stop across monitor restart", async () => {
+    const h = makeHarness({ vectorCount: 0, totalObservations: 1 });
+    try {
+      h.worker.start({ target_coverage: 1 });
+      await h.worker.tick();
+      expect(item(h.worker.status()).status).toBe("completed");
+      h.reindexState.total = 2;
+      await h.worker.maintain();
+      expect(h.reindexState.current).toBe(2);
+      h.worker.stop(); h.worker.monitor();
+      h.reindexState.total = 3;
+      await h.worker.maintain();
+      expect(h.reindexState.current).toBe(2);
+      expect(item(h.worker.status()).stop_reason).toBe("operator");
+    } finally { h.close(); }
+  });
+
+  test("shutdown drains pending work without overwriting the stop state", async () => {
+    const h = makeHarness({ vectorCount: 0, totalObservations: 1, pendingReindex: true });
+    try {
+      const tick = h.worker.maintain();
+      expect(h.worker.isTicking()).toBe(true);
+      let drained = false;
+      const shutdown = h.worker.shutdown().then(() => { drained = true; });
+      await Promise.resolve(); expect(drained).toBe(false);
+      h.reindexState.pending!.resolve();
+      await Promise.all([tick, shutdown]);
+      expect(item(h.worker.status())).toMatchObject({ stop_requested: true, stop_reason: "shutdown" });
+    } finally { h.close(); }
+  });
+});
+
+
+test("maintenance cannot overwrite a manual start while its child is pending", async () => {
+  const h = makeHarness({ vectorCount: 0, totalObservations: 1, pendingReindex: true });
+  try {
+    const pending = h.worker.maintain();
+    const started = item(h.worker.start({ reset: true, target_coverage: 1 }));
+    h.reindexState.pending!.resolve(); await pending;
+    expect(item(h.worker.status())).toMatchObject({ running: true, job_id: started.job_id, ticks: 0 });
+  } finally { h.close(); }
+});
+
+test("parent restart resumes shutdown pauses but retains explicit stops", async () => {
+  const h = makeHarness({ vectorCount: 0, totalObservations: 1 });
+  const deps: VectorBackfillWorkerDeps = {
+    db: h.db, getVectorModelVersion: () => MODEL, getVectorDimension: () => DIMENSION,
+    repairSqliteVecMap: makeRepair(h.db, h.repairCalls), reindexVectors: makeReindex(h.reindexState),
+  };
+  try {
+    await h.worker.shutdown();
+    const restarted = createVectorBackfillWorker(deps, { autoSchedule: false });
+    restarted.monitor(); await restarted.maintain();
+    expect(h.reindexState.current).toBe(1);
+    restarted.stop();
+    const stopped = createVectorBackfillWorker(deps, { autoSchedule: false });
+    stopped.monitor(); h.reindexState.total++;
+    await stopped.maintain();
+    expect(h.reindexState.current).toBe(1);
+  } finally { h.close(); }
+});
+
+
+test("continuous discovery retains the failed manual job and its diagnosis", async () => {
+  let fail = true;
+  const h = makeHarness({ vectorCount: 0, totalObservations: 1, runExternalOperation: async () => {
+    if (fail) throw new Error("SQLITE_BUSY");
+    return makeOk([{ scanned: 0, reindexed: 0 }]);
+  } });
+  try {
+    h.worker.monitor(); h.worker.start({ target_coverage: 1 });
+    await h.worker.tick();
+    const failure = item(h.worker.status());
+    expect(failure.status).toBe("failed");
+    fail = false; await h.worker.maintain();
+    expect(item(h.worker.status())).toMatchObject({ status: "failed", last_error: failure.last_error, maintenance_last_error: null });
+  } finally { h.close(); }
+});
+
+
+test("repair failure diagnostics preserve categories and exit codes without raw stderr", () => {
+  expect(vectorRepairErrorCode(new Error("SQLITE_BUSY: private captured text; vector backfill child exited 1"))).toBe("SQLITE_BUSY; exit=1");
+  expect(vectorRepairErrorCode(new Error("embedding failed with secret-token"))).toBe("embedding_unavailable");
+  expect(vectorRepairErrorCode(new Error("unclassified secret-token"))).toBe("vector_repair_failed");
+});
+
+test("a manual start during idle discovery is scheduled immediately after the child drains", async () => {
+  let release!: () => void;
+  let calls = 0;
+  const h = makeHarness({ vectorCount: 0, totalObservations: 0, autoSchedule: true,
+    runExternalOperation: async () => {
+      calls++;
+      if (calls === 1) await new Promise<void>(resolve => { release = resolve; });
+      return makeOk([{ scanned: 0, scan_exhausted: true, reindexed: 0, vector_coverage: 1 }]);
+    },
+  });
+  try {
+    h.worker.monitor();
+    const pending = h.worker.maintain();
+    h.worker.start({ reset: true, target_coverage: 1 });
+    release(); await pending;
+    const deadline = Date.now() + 1000;
+    while (calls < 2 && Date.now() < deadline) await sleep(10);
+    expect(calls).toBeGreaterThanOrEqual(2);
+  } finally { h.close(); }
+});
+
+
+for (const reason of ["operator", "shutdown"] as const) test(`cancelled child remains stopped on ${reason}`, async () => {
+  let reject!: (error: Error) => void;
+  const h = makeHarness({ vectorCount: 0, totalObservations: 1,
+    runExternalOperation: () => new Promise((_, fail) => { reject = fail; }),
+  });
+  try {
+    h.worker.start(); const tick = h.worker.tick();
+    let shutdown: Promise<void> | undefined;
+    if (reason === "shutdown") shutdown = h.worker.shutdown(); else h.worker.stop();
+    reject(new Error("vector backfill child exited 137"));
+    await tick; await shutdown;
+    expect(item(h.worker.status())).toMatchObject({ status: "stopped", running: false, stop_requested: true, stop_reason: reason, last_error: null });
+  } finally { h.close(); }
+});
+
+test("background maintenance does not block other schedulers; manual jobs retain their gate", async () => {
+  const h = makeHarness({ vectorCount: 0, totalObservations: 1, pendingReindex: true });
+  try {
+    const maintenance = h.worker.maintain();
+    expect(h.worker.isTicking()).toBe(true);
+    expect(h.worker.isRunning()).toBe(false);
+    h.reindexState.pending!.resolve(); await maintenance;
+    h.worker.start(); const manual = h.worker.tick();
+    expect(h.worker.isRunning()).toBe(true);
+    await manual;
+  } finally { h.close(); }
+});
+
+test("exhausted manual discovery yields instead of refreshing covered rows until retry time", async () => {
+  const h = makeHarness({ vectorCount: 0, totalObservations: 1, runExternalOperation: async operation => {
+    expect(operation).toMatchObject({ type: "reindex", missing_only: true });
+    return makeOk([{ reindexed: 0, skipped_retryable: 0, scan_exhausted: true, vector_coverage: 0.8 }]);
+  } });
+  try {
+    h.worker.start({ target_coverage: 1 }); await h.worker.tick();
+    expect(item(h.worker.status())).toMatchObject({ status: "completed", running: false, reindex_coverage: 0.8 });
+  } finally { h.close(); }
 });
