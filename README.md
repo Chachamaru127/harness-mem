@@ -69,12 +69,20 @@ Harness-mem gives your AI coding tools the same local project memory. Claude Cod
 
 ### 3-minute setup path
 
-1. Run `npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude`.
-2. Run `npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude`.
-3. Confirm both clients are green and point at the current checkout or install path.
-4. Start a fresh Claude Code or Codex CLI session and check that the first turn already knows the current thread.
+Run the same command on every supported shell. No client names or flags need editing.
 
-If Cursor is part of your workflow, use `--platform codex,claude,cursor` or run a separate `harness-mem setup --platform cursor` followed by `harness-mem doctor --platform cursor`. Cursor may need an MCP reload or a new Cursor session before the `harness-mem` server appears.
+```bash
+npx -y --package @chachamaru127/harness-mem harness-mem setup
+```
+
+1. Choose a language. Setup checks for client commands and configuration paths without launching apps.
+2. Select clients by number. Enter accepts detected Codex, Claude Code and Cursor candidates. With no detected candidates, choose explicitly.
+3. Choose optional migration and automatic updates, then review the install plan. Type `y` at the final confirmation to configure and install.
+4. Check the setup result, start a fresh conversation in a selected client, and verify that a saved marker can be found in the same project.
+
+Run this in an interactive terminal. Non-interactive setup requires an explicit `--platform`; an implicit `all` is no longer applied.
+
+Detection is not proof of healthy wiring. Experimental OpenCode and Antigravity require manual selection. `q`, EOF, or declining the final confirmation exits without configuration changes. Cursor may need a reload.
 
 ### Trust block
 
@@ -156,15 +164,21 @@ Full benchmark gate (primary ship gate + Japanese companion + historical baselin
 
 ## Install
 
-Pick the path that matches your stack. That's the whole decision.
+Start with the common command above. Alternative installation paths are available below.
+
+<details>
+<summary>Persistent CLI, Claude plugin and Hermes alternatives</summary>
+
 
 | You use... | Run this |
 |---|---|
 | **Only Claude Code** | `/plugin marketplace add Chachamaru127/harness-mem` → `/plugin install harness-mem@chachamaru127` |
-| **Claude Code + Codex** _(recommended first run)_ | `npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude` → `npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude` |
-| **Claude Code + Codex** _(persistent CLI)_ | `npm install -g @chachamaru127/harness-mem` → `harness-mem setup --platform codex,claude` → `harness-mem doctor --platform codex,claude` |
-| **Cursor as an additional local client** | `harness-mem setup --platform cursor` → `harness-mem doctor --platform cursor` → reload/restart Cursor if MCP discovery is cached |
+| **Claude Code + Codex** _(recommended first run)_ | `npx -y --package @chachamaru127/harness-mem harness-mem setup` → `npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude` |
+| **Claude Code + Codex** _(persistent CLI)_ | `npm install -g @chachamaru127/harness-mem` → `harness-mem setup` → `harness-mem doctor --platform codex,claude` |
+| **Cursor as an additional local client** | `harness-mem setup` → `harness-mem doctor --platform cursor` → reload/restart Cursor if MCP discovery is cached |
 | **Hermes Agent as a command tower** | `harness-mem mcp-config --transport http --client hermes --write` for Layer 1 MCP, or follow [`integrations/hermes/`](integrations/hermes/) for the optional MemoryProvider plugin |
+
+</details>
 
 If periodic ingest reports `dedupe_claims_rebuild_required`, ordinary daemon
 restarts intentionally keep writes blocked. After resolving the underlying
@@ -263,20 +277,18 @@ The Hermes integration has two layers:
 
 ### About `harness-mem setup`
 
-`harness-mem setup` is **interactive**. It asks which tools to wire up:
+Example when Codex and Claude Code are detected:
 
-```
-[harness-mem] Select setup targets (multiple allowed)
-  1) codex        (global: ~/.codex/config.toml)
-  2) cursor       (global: ~/.cursor/hooks.json + ~/.cursor/mcp.json)
-  3) opencode     (global: ~/.config/opencode/opencode.json)
-  4) claude       (global: ~/.claude.json mcpServers)
-  5) antigravity  (experimental workspace scanning)
-  a) all
-Example: 1,2   (Enter=1,2)
+```text
+Recommended: codex,claude
+Enter accepts recommendations only when available.
+> [Enter]
+...
+Connect: codex,claude
+Install with these choices? [y/N]: y
 ```
 
-No `--platform` flag is required. For CI / scripted installs you can still pass `--platform codex,claude,cursor` to skip the prompt.
+`--platform` is normally unnecessary. Automation can still pass an explicit platform list to use the existing non-interactive path.
 
 ### Verify
 

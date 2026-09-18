@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-09-18
+
+### Changed
+
+- Simplify interactive setup to a common command, read-only client discovery, target selection and a final install confirmation. Recommend detected Codex/Claude/Cursor candidates, keep experimental clients opt-in, and cancel on EOF or declined confirmation before runtime/config changes. Non-interactive setup now requires an explicit `--platform`, instead of silently applying `all`. Explicit platform automation is unchanged.
+
 ### Dependencies
 
 - Update protobufjs, compatible adm-zip 0.5.x, and MCP transitive dependencies with synchronized npm/Bun locks. Keep sharp 0.34.5 and pin transformers 4.2.0 to avoid introducing a Node 20.9 requirement; sharp 0.35.x and adm-zip 0.6.x remain deferred.

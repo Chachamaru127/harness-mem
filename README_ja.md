@@ -69,12 +69,20 @@ harness-mem は、AI コーディングツールに同じローカルのプロ�
 
 ### 3分で試す流れ
 
-1. `npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude` を実行する
-2. `npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude` で確認する
-3. 両方の client が green で、現在の checkout または install path を指していることを確認する
-4. Claude Code か Codex CLI の新しいセッションを開き、最初のターンに今の話題が戻ってくるかを見る
+共通コマンドをそのまま実行します。接続先をコマンドに書き足す必要はありません。
 
-Cursor も使う場合は `--platform codex,claude,cursor` にするか、別途 `harness-mem setup --platform cursor` と `harness-mem doctor --platform cursor` を実行します。設定後、Cursor 側の MCP discovery がキャッシュされている場合は reload / restart または新しい Cursor セッションが必要です。
+```bash
+npx -y --package @chachamaru127/harness-mem harness-mem setup
+```
+
+1. 言語を選ぶと、コマンドや設定の有無から利用環境の候補を表示します。アプリは起動しません。
+2. 接続する道具を番号で選びます。検出したCodex、Claude Code、CursorはEnterで選べます。未検出時は自分で選択します。
+3. 任意の移行と自動更新を選び、表示されたインストール内容を確認します。最後に `y` を入力すると設定と導入が始まります。
+4. 導入結果を確認し、選んだ道具で新しい会話を開きます。同じプロジェクトで残した目印が検索できれば動作確認は完了です。
+
+対話できるターミナルで実行します。自動処理では `--platform` の明示が必要です。無指定で全対象を設定する動作は行いません。
+
+検出結果は接続成功の保証ではありません。試験対応のOpenCodeとAntigravityは手動選択です。`q`、入力終了、最後の確認で `n` を選んだ場合は設定を変更せず終了します。Cursorは再読込みが必要な場合があります。
 
 ### 信頼ブロック
 
@@ -166,15 +174,21 @@ general-lifelog 競合の公開数値については、機械可読な監査証�
 
 ## インストール
 
-自分の使い方に合う行を 1 つ選ぶだけです。
+最初は上記の共通コマンドを使います。別の導入経路が必要な場合だけ、次を参照してください。
+
+<details>
+<summary>常用コマンド、Claudeプラグイン、Hermesの別経路</summary>
+
 
 | 使う道具 | 実行コマンド |
 |---|---|
 | **Claude Code のみ** | `/plugin marketplace add Chachamaru127/harness-mem` → `/plugin install harness-mem@chachamaru127` |
-| **Claude Code + Codex**（初回推奨） | `npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude` → `npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude` |
-| **Claude Code + Codex**（常用 CLI を残したい） | `npm install -g @chachamaru127/harness-mem` → `harness-mem setup --platform codex,claude` → `harness-mem doctor --platform codex,claude` |
-| **Cursor もローカルクライアントとして使う** | `harness-mem setup --platform cursor` → `harness-mem doctor --platform cursor` → 必要なら Cursor を reload / restart |
+| **Claude Code + Codex**（初回推奨） | `npx -y --package @chachamaru127/harness-mem harness-mem setup` → `npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude` |
+| **Claude Code + Codex**（常用 CLI を残したい） | `npm install -g @chachamaru127/harness-mem` → `harness-mem setup` → `harness-mem doctor --platform codex,claude` |
+| **Cursor もローカルクライアントとして使う** | `harness-mem setup` → `harness-mem doctor --platform cursor` → 必要なら Cursor を reload / restart |
 | **Hermes Agent を command tower として使う** | Layer 1 MCP は `harness-mem mcp-config --transport http --client hermes --write`。Layer 2 MemoryProvider は [`integrations/hermes/`](integrations/hermes/) の手順を参照 |
+
+</details>
 
 定期 ingest が `dedupe_claims_rebuild_required` を返した場合、通常の daemon
 再起動では意図的に write block を維持します。原因となる observation / schema
@@ -245,20 +259,18 @@ harness-mem uninstall --platform codex,claude --purge-db
 
 ### `harness-mem setup` について
 
-`harness-mem setup` は **対話式** です。どのツールを配線するか聞いてくれます:
+例: CodexとClaude Codeを検出した場合。
 
-```
-[harness-mem] setup 対象を選択してください（複数可）
-  1) codex        (global: ~/.codex/config.toml)
-  2) cursor       (global: ~/.cursor/hooks.json + ~/.cursor/mcp.json)
-  3) opencode     (global: ~/.config/opencode/opencode.json)
-  4) claude       (global: ~/.claude.json mcpServers)
-  5) antigravity  (experimental workspace scanning)
-  a) all
-入力例: 1,2   (Enter=1,2)
+```text
+推奨候補: codex,claude
+候補がある場合はEnterで選択できます。
+> [Enter]
+...
+接続先: codex,claude
+この内容でインストールを実行しますか? [y/N]: y
 ```
 
-`--platform` フラグは不要です。CI やスクリプトから非対話で流したいときだけ `--platform codex,claude,cursor` のように渡せます。
+`--platform` は通常不要です。自動処理から実行するときだけ明示し、既存の非対話経路を利用できます。
 
 ### 動作確認
 

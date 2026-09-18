@@ -3,24 +3,25 @@
 このガイドは、セットアップ、診断、移行、環境調整のための詳細リファレンスです。
 まず全体像だけ知りたい場合は `README.md` を先に読んでください。
 
-Claude Code + Codex の初回セットアップは、まずこの手順を使ってください。
+共通コマンドをそのまま実行します。接続先をコマンドに書き足す必要はありません。
 
 ```bash
-npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude
-npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude
+npx -y --package @chachamaru127/harness-mem harness-mem setup
 ```
 
-同じローカル workflow で Cursor も使う場合は、明示的に追加します。
+1. 言語を選ぶと、コマンドや設定の有無から利用環境の候補を表示します。アプリは起動しません。
+2. 接続する道具を番号で選びます。検出したCodex、Claude Code、CursorはEnterで選べます。未検出時は自分で選択します。
+3. 任意の移行と自動更新を選び、表示されたインストール内容を確認します。最後に `y` を入力すると設定と導入が始まります。
+4. 導入結果を確認し、選んだ道具で新しい会話を開きます。同じプロジェクトで残した目印が検索できれば動作確認は完了です。
 
-```bash
-npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude,cursor
-npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude,cursor
-```
+対話できるターミナルで実行します。自動処理では `--platform` の明示が必要です。無指定で全対象を設定する動作は行いません。
+
+検出結果は接続成功の保証ではありません。試験対応のOpenCodeとAntigravityは手動選択です。`q`、入力終了、最後の確認で `n` を選んだ場合は設定を変更せず終了します。Cursorは再読込みが必要な場合があります。
 
 成功の目安は次の4つです。
 
-- `doctor` が両方のクライアントで green
-- `~/.codex/hooks.json` と `~/.claude.json` が現在の harness-mem の checkout を参照している
+- 設定したクライアントの `doctor` 診断が green
+- 選んだクライアントの接続設定が現在のharness-memを参照している
 - 各対応クライアントの最初のプロンプトで、直前の作業コンテキストを復元できる
 - Cursor では `~/.cursor/hooks.json` と `~/.cursor/mcp.json` が配線され、実際の Cursor prompt / assistant exchange が ingest 後の project-scoped search で見つかる
 
@@ -139,10 +140,11 @@ package 更新が成功したあと、harness-mem は過去の `setup` で覚え
 `--platform` を指定しない場合は対話式です。
 
 1. 言語
-2. 対象 tools (複数選択)
+2. アプリを起動せず環境を検出し、対象を複数選択
 3. Claude-mem から import するか
 4. 検証済み import 後に Claude-mem を止めるか
 5. auto-update opt-in を有効にするか
+6. インストール内容を確認し、実行するか（既定は中止）
 
 ### `1 コマンド setup` の意味
 

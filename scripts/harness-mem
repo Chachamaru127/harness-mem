@@ -143,6 +143,8 @@ END_CODEX_MCP="# <<< harness-mem codex mcp"
 BEGIN_CODEX_FEATURES="# >>> harness-mem codex features"
 END_CODEX_FEATURES="# <<< harness-mem codex features"
 
+source "${SCRIPT_DIR}/lib/setup-discovery.sh"
+
 usage() {
   cat <<'EOF'
 Unified Harness Memory helper
@@ -244,10 +246,12 @@ Command options:
                         New Claude/Codex setup defaults to http; existing stdio wiring is preserved unless explicit.
     (no --platform)     Interactive setup prompt:
                         1) language (Japanese/English)
-                        2) target tools (multi-select)
+                        2) read-only environment detection, then target selection
+                           Enter selects detected supported clients; q cancels
                         3) import from Claude-mem (yes/no)
                         4) stop Claude-mem after import (yes/no)
                         5) enable auto-update opt-in (yes/no)
+                        6) review choices and confirm installation (default: no)
     doctor:
       --fix               Attempt to repair missing wiring
       --fix --plan        Print a repair plan without applying changes
@@ -1005,79 +1009,53 @@ should_prompt_platform_selection() {
 
 prompt_platform_selection() {
   local input choices token selected valid
+  print_setup_discovery
   while true; do
     if ui_is_en; then
-      cat <<'EOF'
-[harness-mem] Select setup targets (multiple allowed)
-  1) codex     (global: ~/.codex/config.toml)
-  2) cursor    (global: ~/.cursor/hooks.json + ~/.cursor/mcp.json)
-  3) opencode  (global: ~/.config/opencode/opencode.json)
-  4) claude    (global: ~/.claude.json mcpServers)
-  5) antigravity (experimental workspace scanning)
-  a) all
-Example: 1,2   (Enter=1,2)
-EOF
+      printf 'Select targets by number (e.g. 1,4); a=all (includes experimental); q=cancel\n'
+      printf 'Recommended: %s\n' "${SETUP_RECOMMENDED_PLATFORMS:-none; choose explicitly}"
+      printf 'Enter accepts recommendations only when available.\n'
     else
-      cat <<'EOF'
-[harness-mem] setup 対象を選択してください（複数可）
-  1) codex     (global: ~/.codex/config.toml)
-  2) cursor    (global: ~/.cursor/hooks.json + ~/.cursor/mcp.json)
-  3) opencode  (global: ~/.config/opencode/opencode.json)
-  4) claude    (global: ~/.claude.json mcpServers)
-  5) antigravity (experimental workspace scanning)
-  a) all
-入力例: 1,2   (Enter=1,2)
-EOF
+      printf '使うものを番号で選択（例: 1,4）。a=すべて（試験対応を含む）、q=中止\n'
+      printf '推奨候補: %s\n' "${SETUP_RECOMMENDED_PLATFORMS:-なし。使うものを選択してください}"
+      printf '候補がある場合はEnterで選択できます。\n'
     fi
     printf "> "
-    read -r input || input=""
+    read -r input || return 1
     input="$(printf '%s' "$input" | tr -d '[:space:]')"
-
     if [ -z "$input" ]; then
-      PLATFORM="codex,cursor"
-      log "Selected platforms: $PLATFORM"
-      return
+      if [ -n "$SETUP_RECOMMENDED_PLATFORMS" ]; then
+        PLATFORM="$SETUP_RECOMMENDED_PLATFORMS"
+        log "Selected platforms: $PLATFORM"
+        return
+      fi
+      continue
     fi
-
     case "$input" in
+      q|Q|quit|cancel) return 1 ;;
       a|A|all|ALL)
         PLATFORM="all"
         log "Selected platforms: $PLATFORM"
         return
         ;;
     esac
-
     selected=""
     valid=1
     IFS=',' read -r -a choices <<<"$input"
     for token in "${choices[@]}"; do
       case "$token" in
-        1|codex)
-          selected="$(csv_append_unique "$selected" "codex")"
-          ;;
-        2|cursor)
-          selected="$(csv_append_unique "$selected" "cursor")"
-          ;;
-        3|opencode)
-          selected="$(csv_append_unique "$selected" "opencode")"
-          ;;
-        4|claude)
-          selected="$(csv_append_unique "$selected" "claude")"
-          ;;
-        5|antigravity)
-          selected="$(csv_append_unique "$selected" "antigravity")"
-          ;;
+        1|codex) selected="$(csv_append_unique "$selected" "codex")" ;;
+        2|cursor) selected="$(csv_append_unique "$selected" "cursor")" ;;
+        3|opencode) selected="$(csv_append_unique "$selected" "opencode")" ;;
+        4|claude) selected="$(csv_append_unique "$selected" "claude")" ;;
+        5|antigravity) selected="$(csv_append_unique "$selected" "antigravity")" ;;
         *)
-          if ui_is_en; then
-            warn "Invalid selection: ${token}. Use 1,2,3,4,5 or a"
-          else
-            warn "無効な選択: ${token}。1,2,3,4,5 または a を入力してください"
-          fi
+          if ui_is_en; then warn "Invalid selection: ${token}. Use 1,2,3,4,5 or a";
+          else warn "無効な選択: ${token}。1,2,3,4,5 または a を入力してください"; fi
           valid=0
           ;;
       esac
     done
-
     if [ "$valid" -eq 1 ] && [ -n "$selected" ]; then
       PLATFORM="$selected"
       log "Selected platforms: $PLATFORM"
@@ -1096,7 +1074,7 @@ prompt_language_selection() {
 入力例: 1   (Enter=1)
 EOF
     printf "> "
-    read -r input || input=""
+    read -r input || return 1
     input="$(printf '%s' "$input" | tr -d '[:space:]')"
     case "$input" in
       ""|1|ja|JA|jp|JP|japanese|Japanese)
@@ -8008,9 +7986,14 @@ main() {
     VERSION_CHECK_IN_SETUP=0
   fi
   normalize_ui_lang
+  if [ "$command" = "setup" ] && [ "$PLATFORM_EXPLICIT" -eq 0 ] && ! should_prompt_platform_selection "$command"; then
+    fail "Setup needs an interactive terminal to choose clients. For automation, specify --platform explicitly."
+  fi
   if should_prompt_platform_selection "$command"; then
-    prompt_language_selection
-    prompt_platform_selection
+    if ! prompt_language_selection || ! prompt_platform_selection; then
+      log "Setup cancelled / セットアップを中止しました"
+      return 0
+    fi
     SETUP_INTERACTIVE_PROMPT_USED=1
   fi
   if should_prompt_setup_migration_selection "$command"; then
@@ -8029,6 +8012,13 @@ main() {
     if { [ ! -t 0 ] || [ "${HARNESS_MEM_NON_INTERACTIVE:-0}" = "1" ]; } \
       && ! check_codex_skill_bundle >/dev/null 2>&1; then
       SETUP_INSTALL_CODEX_SKILL=1
+    fi
+  fi
+
+  if [ "$SETUP_INTERACTIVE_PROMPT_USED" -eq 1 ]; then
+    if ! confirm_setup_selection; then
+      log "Setup cancelled / セットアップを中止しました"
+      return 0
     fi
   fi
 
