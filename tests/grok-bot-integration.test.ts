@@ -29,6 +29,8 @@ function cli(home: string, args: string[]) {
 // Load real shell functions without invoking main or provisioning a runtime.
 function shell(home: string, commands: string) {
   const library = join(home, "harness-mem-functions.sh");
+  mkdirSync(join(home, "lib"), { recursive: true });
+  writeFileSync(join(home, "lib/setup-discovery.sh"), readFileSync(join(ROOT, "scripts/lib/setup-discovery.sh")));
   writeFileSync(library, readFileSync(join(ROOT, "scripts/harness-mem"), "utf8").replace(/main "\$@"\s*$/, ""));
   return spawnSync("bash", ["-c", `
     source "$2"

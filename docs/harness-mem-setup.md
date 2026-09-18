@@ -3,24 +3,25 @@
 This guide is the detailed reference for setup, diagnostics, migration, and environment tuning.
 If you only need a quick start, read `README.md` first.
 
-For a first-time Claude Code + Codex setup, use this path first:
+Run the same command on every supported shell. No client names or flags need editing.
 
 ```bash
-npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude
-npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude
+npx -y --package @chachamaru127/harness-mem harness-mem setup
 ```
 
-If Cursor is part of the same local workflow, add it explicitly:
+1. Choose a language. Setup checks for client commands and configuration paths without launching apps.
+2. Select clients by number. Enter accepts detected Codex, Claude Code and Cursor candidates. With no detected candidates, choose explicitly.
+3. Choose optional migration and automatic updates, then review the install plan. Type `y` at the final confirmation to configure and install.
+4. Check the setup result, start a fresh conversation in a selected client, and verify that a saved marker can be found in the same project.
 
-```bash
-npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude,cursor
-npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude,cursor
-```
+Run this in an interactive terminal. Non-interactive setup requires an explicit `--platform`; an implicit `all` is no longer applied.
+
+Detection is not proof of healthy wiring. Experimental OpenCode and Antigravity require manual selection. `q`, EOF, or declining the final confirmation exits without configuration changes. Cursor may need a reload.
 
 Success means:
 
-- `doctor` is green for both clients
-- `~/.codex/hooks.json` and `~/.claude.json` point at the current harness-mem checkout
+- `doctor` is green for the configured clients
+- the selected clients point at the current harness-mem installation
 - the first prompt in each supported client can recover recent project context
 - for Cursor, `~/.cursor/hooks.json` and `~/.cursor/mcp.json` are wired, and a real Cursor prompt/assistant exchange can be found through project-scoped search after ingest
 
@@ -157,10 +158,11 @@ After a successful package update, harness-mem also runs a quiet post-update rep
 When `--platform` is omitted, setup is interactive:
 
 1. Language
-2. Target tools (multi-select)
+2. Read-only client discovery, then target selection
 3. Import from Claude-mem (yes/no)
 4. Stop Claude-mem after verified import (yes/no)
-5. Enable auto-update opt-in (yes/no)
+5. Enable auto-update opt-in
+6. Review the install plan and confirm (default: cancel)
 
 ### What "one command setup" means in practice
 
