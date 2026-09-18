@@ -490,7 +490,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         }
 
         if (request.method === "GET" && url.pathname === "/v1/admin/metrics") {
-          return jsonResponse(core.metrics());
+          return jsonResponse(await core.metricsQueued());
         }
 
         if (request.method === "GET" && url.pathname === "/v1/admin/forget/status") {

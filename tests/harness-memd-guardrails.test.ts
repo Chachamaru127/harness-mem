@@ -120,11 +120,14 @@ describe("harness-memd guardrails", () => {
     expect(schema).toContain("ON mem_observations(project, archived_at, created_at DESC, id)");
   });
 
-  test("admin metrics avoids observation-vector join coverage scan", () => {
+  test("admin metrics avoids synchronous corpus coverage scans", () => {
     const core = readFileSync(CORE, "utf8");
 
     expect(core).toContain("current_model_vector_rows");
-    expect(core).toContain("model >= 'adaptive:' AND model < 'adaptive;'");
+    expect(core).toContain("metricsQueued(): Promise<ApiResponse>");
+    expect(core).toContain("../tools/vector-coverage-child.ts");
+    const metricsBody = core.slice(core.indexOf("  metrics(coverage:"), core.indexOf("  metrics(coverage:") + 6000);
+    expect(metricsBody).not.toContain("this.cfgMgr.vectorCoverage()");
     expect(core).not.toContain("JOIN mem_vectors v ON v.observation_id = o.id");
   });
 
@@ -234,7 +237,7 @@ describe("harness-memd guardrails", () => {
     expect(core).toContain("health(options: { includeCounts?: boolean } = {})");
     expect(core).toContain("counts_status: includeCounts ? \"exact\" : \"omitted\"");
     const readinessStart = core.indexOf("readiness(): ApiResponse");
-    const metricsStart = core.indexOf("metrics(): ApiResponse");
+    const metricsStart = core.indexOf("getVectorCoverage():");
     expect(readinessStart).toBeGreaterThan(0);
     expect(metricsStart).toBeGreaterThan(readinessStart);
     const readinessBody = core.slice(readinessStart, metricsStart);

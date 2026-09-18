@@ -15,6 +15,7 @@ export interface VectorBackfillWorkerDeps {
   db: Database;
   getVectorModelVersion: () => string;
   getVectorDimension: () => number;
+  resetVectorRepairScan?: () => void;
   repairSqliteVecMap: (options: {
     model?: string;
     dimension?: number;
@@ -25,7 +26,7 @@ export interface VectorBackfillWorkerDeps {
   }) => ApiResponse;
   reindexVectors: (
     limit?: number,
-    options?: { status_counts?: boolean },
+    options?: { status_counts?: boolean; missing_only?: boolean; reindex_all?: boolean },
   ) => ApiResponse | Promise<ApiResponse>;
   runExternalOperation?: (operation: VectorBackfillOperation) => Promise<ApiResponse>;
   writeAuditLog?: (
@@ -49,6 +50,7 @@ export type VectorBackfillOperation =
       type: "reindex";
       limit: number;
       status_counts?: boolean;
+      missing_only?: boolean;
     };
 
 export interface VectorBackfillWorkerLogger {
@@ -90,6 +92,13 @@ export interface VectorBackfillWorkerStatus {
   last_tick_latency_ms: number | null;
   last_error: string | null;
   stop_requested: boolean;
+  stop_reason?: "operator" | "shutdown";
+  repair_failures?: number;
+  maintenance_ticks?: number;
+  maintenance_repaired?: number;
+  maintenance_last_started_at?: string;
+  maintenance_last_finished_at?: string;
+  maintenance_last_error?: string | null;
   interval_ms: number;
   compact_batch_size: number;
   reindex_batch_size: number;
@@ -101,6 +110,9 @@ export interface VectorBackfillWorkerConfig {
   intervalMs: number;
   targetCoverage: number;
   autoSchedule: boolean;
+  maintenanceBatchSize: number;
+  maintenanceIntervalMs: number;
+  maintenanceIdleIntervalMs: number;
 }
 
 const STATE_TABLE = "mem_vector_backfill_worker_state";
@@ -112,6 +124,9 @@ export const DEFAULT_VECTOR_BACKFILL_WORKER_CONFIG: VectorBackfillWorkerConfig =
   intervalMs: 1000,
   targetCoverage: 0.95,
   autoSchedule: true,
+  maintenanceBatchSize: 5,
+  maintenanceIntervalMs: 1000,
+  maintenanceIdleIntervalMs: 60000,
 };
 
 function jsonClone<T>(value: T): T {
@@ -175,6 +190,17 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+export function vectorRepairErrorCode(error: unknown): string {
+  const message = errorMessage(error);
+  const sqlite = message.match(/\bSQLITE_(BUSY|LOCKED|FULL|CORRUPT|IOERR)\b/);
+  const exit = message.match(/vector backfill child exited (-?\d+)/);
+  const code = sqlite?.[0] || (/timed out|timeout/i.test(message) ? "vector_child_timeout"
+    : /embedding|warmup|warming|model.*load|model.*not.*found/i.test(message) ? "embedding_unavailable"
+    : /permission|EACCES|EPERM/i.test(message) ? "permission_denied" : "vector_repair_failed");
+  // Never persist arbitrary stderr: it may contain captured text or credentials.
+  return exit ? `${code}; exit=${exit[1]}` : code;
+}
+
 function makeWorkerResponse(
   startedAt: number,
   status: VectorBackfillWorkerStatus,
@@ -197,6 +223,66 @@ export class VectorBackfillWorker {
   private readonly logger: VectorBackfillWorkerLogger;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private ticking = false;
+  private monitoring = false;
+  private revision = 0;
+  private disposed = false;
+  private drained: Array<() => void> = [];
+
+  /** Resume durable discovery only in the parent. Explicit operator stop is sticky. */
+  monitor(): void {
+    this.monitoring = true;
+    const status = this.loadStatus();
+    if (status.stop_requested && status.stop_reason !== "shutdown") return;
+    if (status.stop_reason === "shutdown") this.saveStatus({ ...status, stop_requested: false, stop_reason: undefined });
+    this.schedule(1000);
+  }
+
+  isTicking(): boolean { return this.ticking; }
+
+  shutdown(): Promise<void> {
+    this.disposed = true;
+    this.monitoring = false;
+    const current = this.loadStatus();
+    if (!current.stop_requested) this.stop("shutdown");
+    else this.clearTimer();
+    return this.ticking ? new Promise(resolve => this.drained.push(resolve)) : Promise.resolve();
+  }
+
+  async maintain(): Promise<void> {
+    if (this.disposed || this.ticking) return;
+    const current = this.loadStatus();
+    if (current.stop_requested) return;
+    if (current.running) return this.tick();
+    this.ticking = true;
+    const revision = this.revision;
+    let status = { ...current, maintenance_last_started_at: nowIso() };
+    let delay = this.config.maintenanceIdleIntervalMs;
+    try {
+      const operation: VectorBackfillOperation = { type: "reindex", limit: this.config.maintenanceBatchSize, status_counts: false, missing_only: true };
+      const response = this.deps.runExternalOperation
+        ? await this.deps.runExternalOperation(operation)
+        : await this.deps.reindexVectors(operation.limit, operation);
+      if (!response.ok) throw new Error("vector repair operation failed");
+      const result = responseItem(response);
+      const processed = numberFrom(result.reindexed) + numberFrom(result.adopted_legacy_vectors);
+      status = { ...status, maintenance_ticks: (status.maintenance_ticks || 0) + 1,
+        maintenance_repaired: (status.maintenance_repaired || 0) + processed,
+        repair_failures: numberFrom(result.repair_failures), maintenance_last_error: null };
+      delay = processed > 0 ? this.config.maintenanceIntervalMs
+        : result.scan_exhausted === true ? Math.max(300000, this.config.maintenanceIdleIntervalMs)
+        : Math.max(15000, this.config.maintenanceIntervalMs);
+    } catch (error) {
+      status = { ...status, maintenance_last_error: vectorRepairErrorCode(error) };
+    } finally {
+      const latest = this.loadStatus();
+      if (!latest.stop_requested && !this.disposed && revision === this.revision) {
+        this.saveStatus({ ...status, maintenance_last_finished_at: nowIso() });
+      }
+      this.ticking = false;
+      this.drained.splice(0).forEach(resolve => resolve());
+      if (this.monitoring && !latest.stop_requested && !this.disposed) this.schedule(latest.running ? 0 : delay);
+    }
+  }
 
   constructor(
     deps: VectorBackfillWorkerDeps,
@@ -221,14 +307,16 @@ export class VectorBackfillWorker {
       }
       return makeWorkerResponse(startedAt, current, { already_running: true });
     }
+    this.deps.resetVectorRepairScan?.();
+    this.revision++;
     if (options.reset) {
       this.clearTimer();
     }
 
     const model = typeof options.model === "string" && options.model.trim()
       ? options.model.trim()
-      : current.model || this.deps.getVectorModelVersion();
-    const dimension = clampLimit(options.dimension, current.dimension || this.deps.getVectorDimension(), 1, 8192);
+      : (!options.reset && current.model) || this.deps.getVectorModelVersion();
+    const dimension = clampLimit(options.dimension, (!options.reset && current.dimension) || this.deps.getVectorDimension(), 1, 8192);
     const compactBatchSize = clampLimit(options.compact_batch_size, this.config.compactBatchSize, 1, 1000);
     const reindexBatchSize = clampLimit(options.reindex_batch_size, this.config.reindexBatchSize, 1, 500);
     const intervalMs = clampLimit(options.interval_ms, this.config.intervalMs, 25, 60_000);
@@ -268,6 +356,7 @@ export class VectorBackfillWorker {
       ticks: options.reset ? 0 : current.ticks,
       last_error: null,
       stop_requested: false,
+      stop_reason: undefined,
       interval_ms: intervalMs,
       compact_batch_size: compactBatchSize,
       reindex_batch_size: reindexBatchSize,
@@ -286,7 +375,8 @@ export class VectorBackfillWorker {
     return makeWorkerResponse(startedAt, status);
   }
 
-  stop(): ApiResponse {
+  stop(reason: "operator" | "shutdown" = "operator"): ApiResponse {
+    this.revision++;
     const startedAt = performance.now();
     const current = this.loadStatus();
     this.clearTimer();
@@ -295,6 +385,7 @@ export class VectorBackfillWorker {
       status: current.status === "running" ? "stopped" : current.status,
       running: false,
       stop_requested: true,
+      stop_reason: reason,
       last_tick_finished_at: current.last_tick_finished_at || nowIso(),
     };
     this.saveStatus(status);
@@ -314,7 +405,7 @@ export class VectorBackfillWorker {
     if (status.running && !status.stop_requested && this.timer === null && !this.ticking) {
       this.schedule(0);
     }
-    return makeWorkerResponse(performance.now(), status);
+    return makeWorkerResponse(performance.now(), status, { continuous_repair: this.monitoring && !status.stop_requested });
   }
 
   isRunning(): boolean {
@@ -327,6 +418,7 @@ export class VectorBackfillWorker {
       return;
     }
     this.ticking = true;
+    const revision = this.revision;
     const startedAtMs = performance.now();
     const tickStartedAt = nowIso();
     let status = this.loadStatus();
@@ -394,9 +486,12 @@ export class VectorBackfillWorker {
               type: "reindex",
               limit: status.reindex_batch_size,
               status_counts: shouldRefreshReindexStatus,
+              missing_only: true,
             })
           : await this.deps.reindexVectors(status.reindex_batch_size, {
               status_counts: shouldRefreshReindexStatus,
+              missing_only: true,
+              reindex_all: false,
             });
         const item = responseItem(reindexResponse);
         const processed =
@@ -426,6 +521,10 @@ export class VectorBackfillWorker {
           status.reindex_coverage = coverage;
         }
         status.next_phase = "reindex";
+        if (item.scan_exhausted === true && processed === 0 && skippedRetryable === 0) {
+          status.status = "completed";
+          status.running = false;
+        }
       }
 
       compactRemainingAfter = Math.max(
@@ -451,17 +550,22 @@ export class VectorBackfillWorker {
       const latest = this.loadStatus();
       const stopRequested =
         latest.stop_requested === true || latest.status === "stopped" || latest.status === "stopping";
-      if (stopRequested && status.status !== "failed") {
-        status.status = "stopped";
-        status.running = false;
-        status.stop_requested = true;
+      if (stopRequested) {
+        status = { ...status, status: "stopped", running: false, stop_requested: true,
+          stop_reason: latest.stop_reason, last_error: null };
+      } else if (revision !== this.revision) {
+        status = latest;
       }
       status.last_tick_finished_at = nowIso();
       status.last_tick_latency_ms = Math.round(performance.now() - startedAtMs);
       this.saveStatus(status);
       this.ticking = false;
-      if (status.running && !status.stop_requested) {
+      this.drained.splice(0).forEach(resolve => resolve());
+      if (this.disposed) this.clearTimer();
+      else if (status.running && !status.stop_requested) {
         this.schedule(status.interval_ms);
+      } else if (this.monitoring && !status.stop_requested) {
+        this.schedule(1000);
       } else {
         this.clearTimer();
       }
@@ -507,11 +611,11 @@ export class VectorBackfillWorker {
   }
 
   private schedule(delayMs: number): void {
-    if (!this.config.autoSchedule) return;
+    if (!this.config.autoSchedule || this.disposed) return;
     this.clearTimer();
     this.timer = setTimeout(() => {
       this.timer = null;
-      this.tick().catch((error) => {
+      (this.monitoring ? this.maintain() : this.tick()).catch((error) => {
         const current = this.loadStatus();
         this.saveStatus({
           ...current,

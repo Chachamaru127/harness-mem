@@ -1611,6 +1611,14 @@ DoD: clean / ambiguous / interrupted migration が crash-safe・idempotentで、
 - §159 の tick budget 機構を作り直さない。ループ構造は実測で妥当と確認済み (非 200 3 / 300、p95 14ms)。
 - 計測前に最適化を始めない。§159 では症状からの推論で 3 回誤診しており、計測ログを入れた回に当たっている。
 
+## Vector capture repair (2026-09-18)
+
+- cc:完了 Keep fast child-process capture and continuously repair missing passage representations using the existing bounded vector worker. Count coverage per active observation using exact routed models and dimensions. Preserve explicit stop, child shutdown isolation, project/privacy boundaries, and bounded work; expose retry failures without starving other records.
+- DoD met: isolated save → repair → vector search regression; mixed/adaptive/legacy/dimension/archived coverage; worker completion/restart/stop/error; model/dimension changes, manual reset and in-flight reset race; production secondary passage writes and convergence; independent Fable APPROVE. Live data migration, deployment and publication remain separate.
+- Verification: final npm test 3648 pass / 0 fail / 14 skip, exit 0. Latest focused suite 79 pass / 0 fail across 5 files. TypeScript checks and git diff --check passed. Reviewed source hashes match the tested revision; only this completion record was updated afterward.
+- Review: Fable 5.1 high rounds 1/2 REQUEST_CHANGES were fixed. Invocation 3 hit the session limit and was not a review verdict. Invocation 4 identified exhausted-cursor reuse after model changes/reset; fixed with model/dimension invalidation, ConfigManager-owned manual reset and generation guard. Invocation 5 APPROVE, exit 0, is_error false, at 2026-09-18 22:57 JST. Its sole remaining condition (full suite pass) is satisfied. Evidence remains in the private local task artifact directory.
+- Non-blocking follow-ups: routing-only setting changes require manual reset for immediate historical repair; otherwise daily rescan applies. Large-corpus count timeouts, no-progress manual-job failure policy, and fallback-provider idle overhead remain operational tuning topics. No live rollout, database migration, commit, push, release or publication was performed for this repair.
+
 ## アーカイブ (完了 / 休止セクション)
 
 2026-04-13 のメンテナンスで §51〜§76 を `docs/archive/Plans-s51-s76-2026-04-13.md` に移動しました。
@@ -1648,3 +1656,8 @@ Plans.md は working plan（§78 + §89 + §90 + §97 + §110 + §112 + §115 + 
 - Scope: repository dependency update only; no live installation, daemon restart, or data migration.
 - Compatibility: retain sharp 0.34.5 and pin transformers 4.2.0; transformers 4.3.0 would pull sharp 0.35.4 and require Node >=20.9. Keep the supported runtime contract unchanged.
 - adm-zip uses the compatible 0.5.18 patch; 0.6.x is deferred because onnxruntime-node 1.24.3 requires ^0.5.16. No Node support-policy change or new runtime release.
+
+## Release v0.31.1 and local rollout (2026-09-19)
+
+- cc:WIP Publish the Fable-approved vector capture repair as v0.31.1 and update the existing Mac runtime, preserving local edits and configuration. User authorized publication and local rollout.
+- DoD: version surfaces aligned, package validation and release checks pass, merged source/tag/GitHub Release/npm version match, Mac serves the new revision, same-project save/search/readback and repair status verified. Preserve existing short-project data; no bulk migration.

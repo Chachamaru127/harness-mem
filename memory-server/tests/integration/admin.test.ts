@@ -372,7 +372,7 @@ describe("memory admin integration", () => {
       const payload = reindex.items[0] as { reindexed: number };
       expect(payload.reindexed).toBeGreaterThan(0);
 
-      const metrics = core.metrics();
+      const metrics = await core.metricsQueued();
       expect(metrics.ok).toBe(true);
       const metricsItem = metrics.items[0] as {
         coverage: { observations: number; mem_vectors: number; mem_vectors_vec_map: number };

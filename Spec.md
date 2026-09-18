@@ -438,7 +438,39 @@ project-scoped search, or direct event recording and readback.
   does not make otherwise valid batches transactionally atomic.
 - Lightweight child shutdown must not stop the parent-owned vector backfill
   job. Parent daemon shutdown and an explicit administrative stop still persist
-  the stop request.
+  the stop request. An operator stop remains sticky across restart. A shutdown
+  stop resumes discovery when the parent restarts; legacy stop states without a
+  reason remain stopped until explicitly started.
+- Fast capture children may store fallback embeddings. The parent-owned vector
+  worker continuously discovers incomplete passage representations in bounded
+  rowid pages, including after a manual backfill completes. Local providers are
+  enabled by default; remote providers require the existing reindex opt-in.
+  `HARNESS_MEM_VECTOR_REPAIR_ENABLED=0` disables recurring discovery. It repairs only
+  exact routed models at the configured dimension. Archived/expired rows are
+  excluded. A persisted scan cursor survives restart; failed rows have exponential
+  retry delay capped at one hour and do not starve other rows. After reaching
+  the end, the cursor stays there to discover new records. Due retries are
+  selected directly; with an unchanged model and dimension, a historical rescan
+  starts 24 hours after reaching the end. A model or dimension change restarts
+  discovery immediately. Accepted manual starts reset discovery, including after
+  an operator stop; discovery resumes after the manual job completes. Reset jobs
+  default to the current model and dimension. In-flight children cannot overwrite
+  a newer manual cursor reset.
+  Covered pages wait at least 15 seconds and exhausted scans at least five minutes.
+  Discovery reports separate maintenance fields without replacing manual job
+  failure status or diagnosis. Worker jobs never refresh covered records;
+  the one-shot administrative reindex endpoint retains explicit refresh behavior.
+  Exhausted jobs yield even if retry-deferred records keep coverage below target.
+  Per-record vector/map writes are atomic, including compatible legacy adoption.
+  Intentional child cancellation records a stopped job, not an execution failure.
+  Routine discovery does not hold the manual-job gate for other schedulers.
+- Coverage counts active observations with all required passage variants, not
+  vector rows. Metrics HTTP requests compute routing counts outside the daemon
+  event loop and cache them for 30 seconds. Synchronous metrics consumers get
+  that snapshot or `coverage: null`; a failed queued measurement reports
+  `coverage_error` without making unrelated metrics unavailable.
+  Counts describe passage representations, not semantic relevance or
+  sqlite-vec query expansion capacity.
 
 ## Periodic Ingest Budget
 

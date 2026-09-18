@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-09-19
+
+- Repair fallback-only captures continuously with bounded, resumable discovery and per-record retry delays. Correct coverage to count active observations with exact passage models and dimensions, and move coverage scans outside the HTTP event loop. Preserve explicit operator stops and lightweight child isolation.
+
 ## [0.31.0] - 2026-09-18
 
 ### Changed
