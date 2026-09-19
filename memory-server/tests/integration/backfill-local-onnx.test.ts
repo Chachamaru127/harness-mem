@@ -47,7 +47,7 @@ for (const [language, content, model] of [
       expect(exit, stderr).toBe(0);
       const response = JSON.parse(stdout.trim().split("\n").filter(line => line.startsWith("{")).at(-1)!);
       expect(response.items[0], JSON.stringify(response.meta)).toMatchObject({
-        reindexed: 1, skipped_retryable: 0, missing_vectors_remaining: 0, vector_coverage: 1, scanned: 1,
+        reindexed: 1, skipped_retryable: 0, missing_vectors_remaining: 0, vector_coverage: 1, scanned: 2,
       });
       const readback = new Database(dbPath);
       try {

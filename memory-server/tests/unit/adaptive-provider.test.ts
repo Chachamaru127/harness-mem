@@ -123,3 +123,26 @@ describe("adaptive provider fallback", () => {
     expect(provider.secondaryModelFor(mixedQuery)).toContain("gte-small");
   });
 });
+
+
+test("shared general space defaults only to local providers and respects explicit opt-out", () => {
+  const old = process.env.HARNESS_MEM_ADAPTIVE_RURI_GENERAL_FALLBACK;
+  try {
+    delete process.env.HARNESS_MEM_ADAPTIVE_RURI_GENERAL_FALLBACK;
+    const make = (name: EmbeddingProvider["name"]) => createAdaptiveEmbeddingProvider({
+      japaneseProvider: makeStubProvider("local", "ruri", { vector: [1,0], health: () => ({ status: "healthy", details: "ok" }) }),
+      generalProvider: makeStubProvider(name, "general", { vector: [0,1], health: () => ({ status: "healthy", details: "ok" }) }), dimension: 8,
+    });
+    const japanese = "保存した会話を検索して仕事を再開する";
+    const local = make("local");
+    expect(local.secondaryModelFor(japanese)).toBe("adaptive:general:local:general");
+    expect(make("openai").secondaryModelFor(japanese)).toBeNull();
+    process.env.HARNESS_MEM_ADAPTIVE_RURI_GENERAL_FALLBACK = "0";
+    const optedOut = make("local");
+    expect(optedOut.secondaryModelFor(japanese)).toBeNull();
+    expect(optedOut.repairPolicyKey).not.toBe(local.repairPolicyKey);
+  } finally {
+    if (old === undefined) delete process.env.HARNESS_MEM_ADAPTIVE_RURI_GENERAL_FALLBACK;
+    else process.env.HARNESS_MEM_ADAPTIVE_RURI_GENERAL_FALLBACK = old;
+  }
+});

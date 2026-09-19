@@ -78,7 +78,7 @@ test.skipIf(!localModelInstalled || (provider === "adaptive" && !existsSync(join
       } finally { db.close(); }
     };
     const expected = { count: 2, offset: statSync(rolloutPath).size, privateLeaks: 0,
-      models: [provider === "local" ? "local:multilingual-e5" : "adaptive:ruri:local:ruri-v3-30m"] };
+      models: provider === "local" ? ["local:multilingual-e5"] : ["adaptive:general:local:multilingual-e5", "adaptive:ruri:local:ruri-v3-30m"] };
     expect(readCounts()).toEqual(expected);
     await runTick();
     expect(errors).toEqual([]);

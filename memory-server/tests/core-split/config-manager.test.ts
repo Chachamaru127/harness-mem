@@ -940,10 +940,10 @@ describe("exact passage coverage and durable repair discovery", () => {
     });
     const first = new ConfigManager(deps);
     const opts = { missing_only: true, status_counts: false };
-    expect((await first.reindexVectors(1, opts)).items[0]).toMatchObject({ scanned: 20, reindexed: 0 });
+    expect((await first.reindexVectors(1, opts)).items[0]).toMatchObject({ reindexed: 1 });
     const restarted = new ConfigManager(deps);
+    await restarted.reindexVectors(1, opts);
     expect((await restarted.reindexVectors(1, opts)).items[0]).toMatchObject({ skipped_retryable: 1, repair_failures: 1 });
-    expect((await restarted.reindexVectors(1, opts)).items[0]).toMatchObject({ reindexed: 1 });
     for (let n = 0; n < 12; n++) await restarted.reindexVectors(1, opts);
     expect(calls.filter(id => id === "repair-22")).toHaveLength(1);
     expect(restarted.vectorCoverage()).toMatchObject({ total_observations: 30, current_count: 29 });
@@ -966,13 +966,13 @@ test("completed discovery retains its cursor, retries due failures, and eventual
   const opts = { missing_only: true, status_counts: false };
   await manager.reindexVectors(1, opts);
   await manager.reindexVectors(1, opts);
-  expect((await manager.reindexVectors(1, opts)).items[0]).toMatchObject({ scanned: 0, scan_exhausted: true });
+  expect((await manager.reindexVectors(1, opts)).items[0]).toMatchObject({ scan_exhausted: true });
   const cursor = db.query("SELECT * FROM mem_vector_repair_scan WHERE key = 'continuous'").get() as any;
   expect(cursor.last_rowid).toBeGreaterThan(0);
   expect(cursor.next_rescan_at).toBeGreaterThan(Date.now());
   db.query("DELETE FROM mem_vectors WHERE observation_id = 'historic'").run();
   db.query("INSERT INTO mem_vector_repair_failures VALUES ('historic', 1, '2000-01-01')").run();
-  await manager.reindexVectors(1, opts);
+  for (let n = 0; n < 3; n++) await manager.reindexVectors(1, opts);
   expect(calls).toEqual(["historic"]);
   db.query("DELETE FROM mem_vectors WHERE observation_id = 'historic'").run();
   db.query("UPDATE mem_vector_repair_scan SET next_rescan_at = 1 WHERE key = 'continuous'").run();
@@ -1083,5 +1083,102 @@ test("manual reset during an in-flight embedding cannot be overwritten by its ol
   release(); await tick;
   expect(db.query("SELECT last_rowid, next_rescan_at FROM mem_vector_repair_scan WHERE key = 'continuous'").get())
     .toEqual({ last_rowid: 0, next_rescan_at: 0 });
-  expect((await manager.reindexVectors(1, { missing_only: true })).items[0]).toMatchObject({ scanned: 1, reindexed: 0 });
+  expect((await manager.reindexVectors(1, { missing_only: true })).items[0]).toMatchObject({ scanned: 2, reindexed: 0 });
+});
+
+
+test.each([1, 2, 5])("fresh captures and history both progress through backlog and retries (limit=%s)", async limit => {
+  const db = createTestDb(); dbs.push(db);
+  for (let n = 0; n < 1200; n++) insertTestObservation(db, { id: `backlog-${n}` });
+  const calls: string[] = [];
+  const deps = createDeps(db, createTestConfig({ vectorDimension: 2 }), {
+    getVectorEngine: () => "js-fallback",
+    reindexObservationVector(id) { calls.push(id); insertVector(db, id, "test:model", 2, "[1,0]"); },
+  });
+  let manager = new ConfigManager(deps);
+  const options = { missing_only: true, status_counts: false };
+  await manager.reindexVectors(limit, options);
+  for (let n = 0; n < 100; n++) db.query("INSERT INTO mem_vector_repair_failures VALUES (?, 1, '2000-01-01')").run(`backlog-${300+n}`);
+  for (let n = 0; n < 12; n++) {
+    insertTestObservation(db, { id: `fresh-${n}` });
+    manager = new ConfigManager(deps);
+    const item = (await manager.reindexVectors(limit, options)).items[0] as any;
+    expect(item.reindexed).toBeLessThanOrEqual(limit);
+    expect(item.scanned).toBeLessThanOrEqual(500);
+  }
+  expect(calls.some(id => id.startsWith("fresh-"))).toBe(true);
+  expect(calls.filter(id => /^backlog-[0-9]$/.test(id)).length).toBeGreaterThan(1);
+  expect(calls.some(id => /^backlog-3[0-9][0-9]$/.test(id))).toBe(true);
+  if (limit > 1) expect(calls).toContain("fresh-11");
+});
+
+test("routing policy changes revisit formerly covered history", async () => {
+  const db = createTestDb(); dbs.push(db);
+  for (let n = 0; n < 600; n++) { insertTestObservation(db, { id: `policy-${n}` }); insertVector(db, `policy-${n}`, "primary", 2, "[1,0]"); }
+  let secondary = false;
+  const manager = new ConfigManager(createDeps(db, createTestConfig({ vectorDimension: 2 }), {
+    getVectorEngine: () => "js-fallback", getVectorRepairPolicy: () => String(secondary),
+    requiredVectorModels: () => secondary ? ["primary", "secondary"] : ["primary"],
+    reindexObservationVector(id) { insertVector(db, id, "secondary", 2, "[1,0]"); },
+  }));
+  const options = { missing_only: true, status_counts: false };
+  for (let n = 0; n < 8; n++) await manager.reindexVectors(5, options);
+  secondary = true;
+  await manager.reindexVectors(5, options);
+  expect(db.query("SELECT 1 FROM mem_vectors WHERE observation_id='policy-0' AND model='secondary'").get()).not.toBeNull();
+});
+
+
+test.each([0, 1])("exhausted history cannot complete before an old due retry gets a turn (%s)", async turn => {
+  const db = createTestDb(); dbs.push(db);
+  for (let n = 0; n < 60; n++) { insertTestObservation(db, { id: `retry-tail-${n}` }); insertVector(db, `retry-tail-${n}`, "test:model", 2, "[1,0]"); }
+  const manager = new ConfigManager(createDeps(db, createTestConfig({ vectorDimension: 2 }), {
+    getVectorEngine: () => "js-fallback", reindexObservationVector(id) { insertVector(db, id, "test:model", 2, "[1,0]"); },
+  }));
+  const options = { missing_only: true, status_counts: false };
+  for (let n = 0; n < 6; n++) await manager.reindexVectors(1, options);
+  db.query("DELETE FROM mem_vectors WHERE observation_id='retry-tail-0'").run();
+  db.query("INSERT INTO mem_vector_repair_failures VALUES ('retry-tail-0',1,'2000-01-01')").run();
+  db.query("UPDATE mem_vector_repair_scan SET recent_turn=? WHERE key='continuous'").run(turn);
+  expect((await manager.reindexVectors(1, options)).items[0]).toMatchObject({ reindexed: 0, scan_exhausted: false });
+  for (let n = 0; n < 3; n++) await manager.reindexVectors(1, options);
+  expect(manager.vectorCoverage().current_count).toBe(60);
+});
+
+
+test("legacy E5 adoption completes a Japanese record without re-embedding existing models", async () => {
+  const db = createTestDb(); dbs.push(db);
+  insertTestObservation(db, { id: "adopt-pair", content: "日本語の会話の記録" });
+  insertVector(db, "adopt-pair", "ruri", 2, "[1,0]");
+  insertVector(db, "adopt-pair", "local:multilingual-e5", 2, "[0,1]");
+  let embeddings = 0;
+  const manager = new ConfigManager(createDeps(db, createTestConfig({ vectorDimension: 2 }), {
+    getVectorEngine: () => "js-fallback", requiredVectorModels: () => ["ruri", "adaptive:general:local:multilingual-e5"],
+    reindexObservationVector() { embeddings++; throw new Error("compatible pair is already complete"); },
+  }));
+  expect((await manager.reindexVectors(5, { missing_only: true })).items[0]).toMatchObject({
+    reindexed: 0, adopted_legacy_vectors: 1, vector_coverage: 1,
+  });
+  expect(embeddings).toBe(0);
+});
+
+
+test("archived and expired imports cannot occupy the recent repair window", async () => {
+  const db = createTestDb(); dbs.push(db);
+  for (let n = 0; n < 600; n++) insertTestObservation(db, { id: `active-history-${n}` });
+  insertTestObservation(db, { id: "active-fresh" });
+  for (let n = 0; n < 300; n++) {
+    insertTestObservation(db, { id: `inactive-import-${n}` });
+    if (n % 2) db.query("UPDATE mem_observations SET archived_at='2020-01-01' WHERE id=?").run(`inactive-import-${n}`);
+    else db.query("UPDATE mem_observations SET expires_at='2020-01-01' WHERE id=?").run(`inactive-import-${n}`);
+  }
+  const calls: string[] = [];
+  const manager = new ConfigManager(createDeps(db, createTestConfig({ vectorDimension: 2 }), {
+    getVectorEngine: () => "js-fallback", reindexObservationVector(id) { calls.push(id); insertVector(db, id, "test:model", 2, "[1,0]"); },
+  }));
+  const item = (await manager.reindexVectors(5, { missing_only: true, status_counts: false })).items[0] as any;
+  expect(calls).toContain("active-fresh");
+  expect(calls.some(id => id.startsWith("inactive-import-"))).toBe(false);
+  expect(calls).toContain("active-history-0");
+  expect(item.reindexed).toBe(5);
 });

@@ -18,6 +18,7 @@
  *   - shutdown (委譲)
  */
 
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { statSync } from "node:fs";
 import type { Database } from "bun:sqlite";
@@ -155,6 +156,7 @@ export interface ConfigManagerDeps {
   getVectorModelVersion: () => string;
   /** 埋め込みプロバイダー名 */
   embeddingProviderName: string;
+  getVectorRepairPolicy?: () => string;
   requiredVectorModels?: (content: string) => string[];
   /** 埋め込みヘルスステータス（呼び出し時に現在値を取得） */
   getEmbeddingHealthStatus: () => string;
@@ -661,7 +663,7 @@ export class ConfigManager {
     ); CREATE INDEX IF NOT EXISTS idx_vector_repair_retry ON mem_vector_repair_failures(next_retry_at, observation_id)`);
     this.deps.db.transaction(() => {
       const columns = this.deps.db.query("PRAGMA table_info(mem_vector_repair_scan)").all() as Array<{ name: string }>;
-      for (const [name, definition] of [["model", "TEXT"], ["dimension", "INTEGER"], ["generation", "INTEGER NOT NULL DEFAULT 0"]]) {
+      for (const [name, definition] of [["model", "TEXT"], ["dimension", "INTEGER"], ["generation", "INTEGER NOT NULL DEFAULT 0"], ["policy", "TEXT"], ["recent_turn", "INTEGER NOT NULL DEFAULT 0"]]) {
         if (!columns.some(column => column.name === name)) this.deps.db.exec(`ALTER TABLE mem_vector_repair_scan ADD COLUMN ${name} ${definition}`);
       }
     }).immediate();
@@ -699,14 +701,26 @@ export class ConfigManager {
     let scanned = 0;
     const scanKey = options.missing_only ? "continuous" : "manual";
     const dimension = this.deps.config.vectorDimension;
-    this.deps.db.query("INSERT OR IGNORE INTO mem_vector_repair_scan(key, last_rowid, next_rescan_at) VALUES (?, 0, 0)").run(scanKey);
-    const cursor = this.deps.db.query("SELECT * FROM mem_vector_repair_scan WHERE key = ?")
-      .get(scanKey) as { last_rowid: number; next_rescan_at: number; model: string | null; dimension: number | null; generation: number };
-    const rescanDue = cursor.model !== model || cursor.dimension !== dimension
-      || (cursor.next_rescan_at > 0 && Date.now() >= cursor.next_rescan_at);
-    let nextCursor = rescanDue ? 0 : cursor.last_rowid;
-    let nextRescanAt = rescanDue ? 0 : cursor.next_rescan_at;
+    const policy = JSON.stringify([this.deps.getVectorRepairPolicy?.() || "",
+      clampLimit(Number(process.env.HARNESS_MEM_REINDEX_VECTOR_MAX_CHARS || 2000), 2000, 256, 20000)]);
+    type RepairCursor = { last_rowid: number; next_rescan_at: number; model: string | null;
+      dimension: number | null; generation: number; policy: string | null; recent_turn: number };
+    // A parent reset cannot slip between the policy reset and generation read.
+    const cursor = this.deps.db.transaction(() => {
+      this.deps.db.query("INSERT OR IGNORE INTO mem_vector_repair_scan(key, last_rowid, next_rescan_at) VALUES (?, 0, 0)").run(scanKey);
+      const current = this.deps.db.query("SELECT * FROM mem_vector_repair_scan WHERE key = ?").get(scanKey) as RepairCursor;
+      if (current.model !== model || current.dimension !== dimension || current.policy !== policy
+        || (current.next_rescan_at > 0 && Date.now() >= current.next_rescan_at)) {
+        this.deps.db.query(`UPDATE mem_vector_repair_scan SET last_rowid = 0, next_rescan_at = 0,
+          model = ?, dimension = ?, policy = ?, generation = generation + 1 WHERE key = ?`)
+          .run(model, dimension, policy, scanKey);
+      }
+      return this.deps.db.query("SELECT * FROM mem_vector_repair_scan WHERE key = ?").get(scanKey) as RepairCursor;
+    }).immediate();
+    let nextCursor = cursor.last_rowid;
+    let nextRescanAt = cursor.next_rescan_at;
     let scanExhausted = false;
+    let recentExhausted = !options.missing_only;
     if (!options.missing_only) {
       // Preserve no-vector-first priority with SQL LIMIT before materializing rows.
       rows = this.deps.db.query(this.vectorRowsSql(`${activeFilter} AND NOT EXISTS
@@ -715,28 +729,55 @@ export class ConfigManager {
         .all(nowIso(), limit) as VectorRepairRow[];
     }
     if (rows.length === 0) {
+      const retryQuota = !options.missing_only ? limit
+        : limit >= 3 ? Math.max(1, Math.floor(limit / 4)) : cursor.recent_turn === 2 ? 1 : 0;
       const retries = this.deps.db.query(`SELECT observation_id FROM mem_vector_repair_failures
-        WHERE next_retry_at <= ? ORDER BY next_retry_at LIMIT ?`).all(nowIso(), limit) as Array<{observation_id: string}>;
+        WHERE next_retry_at <= ? ORDER BY next_retry_at LIMIT ?`).all(nowIso(), retryQuota) as Array<{observation_id: string}>;
       for (const retry of retries) {
         const row = this.deps.db.query(this.vectorRowsSql(`${activeFilter} AND o.id = ?`, "o.rowid"))
           .get(retry.observation_id) as VectorRepairRow | null;
         if (row && !this.isCovered(row)) rows.push(row);
         else this.deps.db.query("DELETE FROM mem_vector_repair_failures WHERE observation_id = ?").run(retry.observation_id);
       }
-      const page = this.deps.db.query(this.vectorRowsSql("o.rowid > ?", "o.rowid") + " LIMIT ?")
-        .all(nextCursor, Math.min(500, limit * 20)) as VectorRepairRow[];
-      scanExhausted = page.length === 0;
-      if (scanExhausted && !nextRescanAt) nextRescanAt = Date.now() + 24 * 3600000;
-      for (const row of page) {
-        if (rows.length >= limit) break;
-        scanned++;
-        nextCursor = row.scan_rowid;
-        const eligible = this.deps.db.query(`SELECT 1 FROM mem_observations o WHERE o.id = ? AND ${activeFilter}
-          AND NOT EXISTS (SELECT 1 FROM mem_vector_repair_failures f
-            WHERE f.observation_id = o.id AND f.next_retry_at > ?)`)
-          .get(row.id, nowIso());
-        if (eligible && !this.isCovered(row) && !rows.some(r => r.id === row.id)) rows.push(row);
+      const selectPage = (recent: boolean, quota: number): void => {
+        const page = this.deps.db.query(this.vectorRowsSql(recent ? `${activeFilter} AND o.rowid > ?` : "o.rowid > ?",
+          recent ? "o.rowid DESC" : "o.rowid") + " LIMIT ?")
+          .all(recent ? 0 : nextCursor, Math.min(options.missing_only ? 250 : 500, limit * 20)) as VectorRepairRow[];
+        if (recent) recentExhausted = true;
+        else {
+          scanExhausted = page.length === 0;
+          if (scanExhausted && !nextRescanAt) nextRescanAt = Date.now() + 24 * 3600000;
+        }
+        let selected = 0;
+        for (const row of page) {
+          if (rows.length >= limit || selected >= quota) break;
+          scanned++;
+          if (!recent) nextCursor = row.scan_rowid;
+          const eligible = this.deps.db.query(`SELECT 1 FROM mem_observations o WHERE o.id = ? AND ${activeFilter}
+            AND NOT EXISTS (SELECT 1 FROM mem_vector_repair_failures f
+              WHERE f.observation_id = o.id AND f.next_retry_at > ?)`)
+            .get(row.id, nowIso());
+          if (eligible && !this.isCovered(row) && !rows.some(r => r.id === row.id)) {
+            rows.push(row); selected++;
+            if (recent) recentExhausted = false;
+          }
+        }
+      };
+      // Bounded tail discovery gives new captures service ahead of history.
+      // Reserve historical capacity, and alternate small batches durably.
+      let visitedRecent = false;
+      if (options.missing_only && (limit > 1 || cursor.recent_turn === 1)) {
+        selectPage(true, Math.max(1, Math.floor(limit / 2)));
+        visitedRecent = true;
       }
+      if (rows.length < limit) selectPage(false, limit - rows.length);
+      if (options.missing_only && rows.length < limit && !visitedRecent) {
+        selectPage(true, limit - rows.length);
+      }
+      const dueRetry = this.deps.db.query(`SELECT 1 FROM mem_vector_repair_failures f
+        JOIN mem_observations o ON o.id = f.observation_id
+        WHERE f.next_retry_at <= ? AND ${activeFilter} LIMIT 1`).get(nowIso());
+      scanExhausted = scanExhausted && recentExhausted && !dueRetry;
     }
     if (options.reindex_all === true && rows.length === 0) {
       rows = this.deps.db.query(this.vectorRowsSql(activeFilter, priority.orderBy) + " LIMIT ?").all(limit) as VectorRepairRow[];
@@ -770,7 +811,8 @@ export class ConfigManager {
                 if (!ok) this.deps.setVecTableReady?.(false);
               }
             })();
-            if (this.requiredModels(content).length === 1) {
+            const adoptedRow = this.deps.db.query(this.vectorRowsSql("o.id = ?", "o.rowid")).get(row.id) as VectorRepairRow;
+            if (this.isCovered(adoptedRow)) {
               adoptedLegacy++;
               this.deps.db.query("DELETE FROM mem_vector_repair_failures WHERE observation_id = ?").run(row.id);
               continue;
@@ -796,14 +838,16 @@ export class ConfigManager {
         if (!options.missing_only) retryableErrors.add(summarizeRetryableEmbeddingWarmup(error));
       }
     }
-    this.deps.db.query(`UPDATE mem_vector_repair_scan SET last_rowid = ?, next_rescan_at = ?, model = ?, dimension = ?
+    this.deps.db.query(`UPDATE mem_vector_repair_scan SET last_rowid = ?, next_rescan_at = ?, model = ?, dimension = ?, policy = ?, recent_turn = ?
       WHERE key = ? AND generation = ?`)
-      .run(nextCursor, nextRescanAt, model, dimension, scanKey, cursor.generation);
+      .run(nextCursor, nextRescanAt, model, dimension, policy, (cursor.recent_turn + 1) % 3, scanKey, cursor.generation);
     const counts = includeStatusCounts ? await this.vectorCoverageAsync() : null;
     const item: Record<string, unknown> = {
       reindexed, adopted_legacy_vectors: adoptedLegacy, skipped_retryable: skippedRetryable,
       repair_failures: (this.deps.db.query("SELECT COUNT(*) AS n FROM mem_vector_repair_failures").get() as {n: number}).n,
       missing_only: options.missing_only === true,
+      scan_last_rowid: nextCursor, scan_generation: cursor.generation,
+      scan_policy: createHash("sha256").update(JSON.stringify([model, dimension, policy])).digest("hex").slice(0, 16),
       limit, scanned, scan_exhausted: scanExhausted, priority: priority.priority, status_counts: includeStatusCounts,
       max_content_chars: clampLimit(Number(process.env.HARNESS_MEM_REINDEX_VECTOR_MAX_CHARS || 2000), 2000, 256, 20000),
       prime_batch_size: this.deps.prepareReindexEmbeddings ? primeBatchSize : 0,

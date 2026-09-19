@@ -140,3 +140,35 @@ test("metrics reports unknown on failure, retries, and reuses the 30-second snap
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+
+test("local adaptive default shares a vector space across passage/query languages", async () => {
+  const old = process.env.HARNESS_MEM_ADAPTIVE_RURI_GENERAL_FALLBACK;
+  delete process.env.HARNESS_MEM_ADAPTIVE_RURI_GENERAL_FALLBACK;
+  const dir = mkdtempSync(join(tmpdir(), "mem-cross-language-"));
+  let core: HarnessMemCore | undefined;
+  try {
+    core = new HarnessMemCore({ ...getConfig(), dbPath: join(dir, "test.db"), embeddingProvider: "fallback", backgroundWorkersEnabled: false });
+    const internal = core as any;
+    const stub = (model: string): EmbeddingProvider => ({ name: "local", model, dimension: 384,
+      embed: () => [1, ...Array(383).fill(0)], health: () => ({ status: "healthy", details: "fixture" }) });
+    const provider = createAdaptiveEmbeddingProvider({ japaneseProvider: stub("ruri-v3-30m"), generalProvider: stub("multilingual-e5"), dimension: 384 });
+    internal.embeddingProvider = provider; internal.vectorModelVersion = "adaptive:ruri-v3-30m+multilingual-e5";
+    for (const [session, content, query] of [
+      ["ja", "目印abc。" + "保存した会話を検索して次の作業を再開する。".repeat(8), "abc"],
+      ["en", "We saved the conversation and resume the work using searchable project memory.", "会話を検索して作業を再開する"],
+    ]) {
+      await core.recordEventQueued({ platform: "codex", project: dir, session_id: session, event_type: "user_prompt", payload: { prompt: content } });
+      await core.reindexVectors(10, { missing_only: true, status_counts: false });
+      const row = internal.db.query("SELECT id FROM mem_observations WHERE session_id = ?").get(session);
+      const result = internal.obsStore.vectorSearch({ query, project: dir, strict_project: true }, 20, [row.id]);
+      expect(result.scores.size).toBe(1);
+      expect((result.degradedReasons || []).some((r: string) => r.includes("no vector rows"))).toBe(false);
+    }
+    expect(core.getVectorCoverage()).toMatchObject({ total_observations: 2, current_count: 2 });
+  } finally {
+    await core?.shutdown("test");
+    if (old === undefined) delete process.env.HARNESS_MEM_ADAPTIVE_RURI_GENERAL_FALLBACK; else process.env.HARNESS_MEM_ADAPTIVE_RURI_GENERAL_FALLBACK = old;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

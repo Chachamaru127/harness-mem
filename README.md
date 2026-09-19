@@ -953,3 +953,5 @@ On **2029-03-08**, the license automatically converts to **Apache License 2.0**.
 **Metadata note**: The repository root is BUSL-1.1. Some distributable subpackages keep their own package-level SPDX fields (for example MIT in `sdk/`, `mcp-server/`, and `vscode-extension/`). If a GitHub repo header or API shows `Other` / `NOASSERTION`, treat [`LICENSE`](LICENSE) and each package's `package.json` as the authoritative source.
 
 **Third-party model note**: The default Granite embedding artifact is fetched from Hugging Face at a pinned revision and SHA-256 checked after download. The upstream model card declares Apache 2.0, and the pinned tree currently has no separate NOTICE file.
+
+Recent captures and historical records share the repair budget. Local adaptive models use a common multilingual space across Japanese and English passages/queries by default; an explicit `HARNESS_MEM_ADAPTIVE_RURI_GENERAL_FALLBACK=0` opts out. Remote providers still require explicit opt-in. Routing-policy changes also restart historical discovery. Capture and repair remain asynchronous; missing-vector warnings can occur until repair catches up.
