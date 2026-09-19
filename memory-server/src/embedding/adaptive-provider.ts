@@ -102,9 +102,10 @@ export function createAdaptiveEmbeddingProvider(
   const generalFallbackLabel = generalFallbackProvider
     ? `adaptive:general:${generalFallbackProvider.name}:${generalFallbackProvider.model}`
     : generalLabel;
-  const ruriGeneralFallbackEnabled = (process.env.HARNESS_MEM_ADAPTIVE_RURI_GENERAL_FALLBACK || "")
-    .trim()
-    .toLowerCase() === "1";
+  // Local routes share the multilingual space so passage/query language changes
+  // still have a comparable vector. Remote providers retain explicit opt-in.
+  const ruriGeneralFallbackEnabled = (process.env.HARNESS_MEM_ADAPTIVE_RURI_GENERAL_FALLBACK
+    ?? (generalProvider.name === "local" ? "1" : "0")).trim() === "1";
   let generalFallbackState: GeneralFallbackState = {
     active: false,
     failCount: 0,
@@ -352,6 +353,8 @@ export function createAdaptiveEmbeddingProvider(
 
   return {
     name: "adaptive",
+    repairPolicyKey: JSON.stringify([japaneseLabel, generalLabel, generalFallbackLabel,
+      options.jaThreshold ?? null, options.codeThreshold ?? null, ruriGeneralFallbackEnabled]),
     model: modelLabel,
     dimension,
     usesLocalModels: Boolean(

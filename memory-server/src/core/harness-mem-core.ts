@@ -2096,6 +2096,7 @@ export class HarnessMemCore {
         this.vecTableReady = ready;
       },
       getVectorModelVersion: () => this.vectorModelVersion,
+      getVectorRepairPolicy: () => this.embeddingProvider.repairPolicyKey || "",
       requiredVectorModels: (content) => [
         this.embeddingProvider.primaryModelFor?.(content) || this.vectorModelVersion,
         this.embeddingProvider.secondaryModelFor?.(content),
@@ -2169,7 +2170,7 @@ export class HarnessMemCore {
       autoSchedule: process.env.NODE_ENV !== "test",
       maintenanceBatchSize: this.config.reindexVectorsEnabled ? Math.max(1, Math.min(500, this.config.reindexVectorsBatchSize || 100)) : 5,
       maintenanceIntervalMs: this.config.reindexVectorsEnabled ? Math.max(5000, this.config.reindexVectorsIntervalMs || 600000) : 1000,
-      maintenanceIdleIntervalMs: this.config.reindexVectorsEnabled ? Math.max(60000, this.config.reindexVectorsIntervalMs || 600000) : 60000,
+      maintenanceIdleIntervalMs: this.config.reindexVectorsEnabled ? Math.max(60000, this.config.reindexVectorsIntervalMs || 600000) : 15000,
     });
   }
 

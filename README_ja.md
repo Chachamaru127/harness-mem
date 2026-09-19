@@ -922,3 +922,5 @@ Business Source License 1.1（SPDX: `BUSL-1.1`）。[`LICENSE`](LICENSE) を参�
 **メタデータ補足**: リポジトリのルートは BUSL-1.1 です。配布可能なサブパッケージはパッケージ単位で独自の SPDX を維持している場合があります（例: `sdk/`, `mcp-server/`, `vscode-extension/` は MIT）。GitHub の repo header や API が `Other` / `NOASSERTION` と表示する場合は、[`LICENSE`](LICENSE) と各 package の `package.json` を正として扱ってください。
 
 **サードパーティ model 補足**: default の Granite embedding artifact は Hugging Face の pin revision から取得し、download 後に SHA-256 を検証します。upstream model card は Apache 2.0 を宣言しており、pin tree には現時点で別個の NOTICE file はありません。
+
+補完の処理量を、新しい会話と過去の記録に分けます。ローカルのadaptiveモデルは、日本語と英語の本文や検索語を共通の汎用モデルでも照合します。`HARNESS_MEM_ADAPTIVE_RURI_GENERAL_FALLBACK=0` を明示すると共通化を無効にできます。外部モデルの追加使用は従来どおり明示指定が必要です。言語の振り分け設定を変えた場合も過去の記録を再走査します。保存と補完は非同期のため、補完が追いつくまでは不足警告が出ることがあります。

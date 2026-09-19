@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.31.2] - 2026-09-19
+
+- Prioritize recent captures while continuing historical vector repair and retrying failed records. Local adaptive embeddings share a multilingual model across Japanese and English passage/query routes by default; remote usage remains opt-in. Restart historical discovery when routing policy changes. Missing data still requires actual backfill and is never hidden by suppressing warnings.
+
 ## [0.31.1] - 2026-09-19
 
 - Repair fallback-only captures continuously with bounded, resumable discovery and per-record retry delays. Correct coverage to count active observations with exact passage models and dimensions, and move coverage scans outside the HTTP event loop. Preserve explicit operator stops and lightweight child isolation.

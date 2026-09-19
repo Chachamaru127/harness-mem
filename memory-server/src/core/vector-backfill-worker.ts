@@ -94,6 +94,9 @@ export interface VectorBackfillWorkerStatus {
   stop_requested: boolean;
   stop_reason?: "operator" | "shutdown";
   repair_failures?: number;
+  scan_last_rowid?: number;
+  scan_policy?: string;
+  scan_generation?: number;
   maintenance_ticks?: number;
   maintenance_repaired?: number;
   maintenance_last_started_at?: string;
@@ -126,7 +129,7 @@ export const DEFAULT_VECTOR_BACKFILL_WORKER_CONFIG: VectorBackfillWorkerConfig =
   autoSchedule: true,
   maintenanceBatchSize: 5,
   maintenanceIntervalMs: 1000,
-  maintenanceIdleIntervalMs: 60000,
+  maintenanceIdleIntervalMs: 15000,
 };
 
 function jsonClone<T>(value: T): T {
@@ -267,9 +270,11 @@ export class VectorBackfillWorker {
       const processed = numberFrom(result.reindexed) + numberFrom(result.adopted_legacy_vectors);
       status = { ...status, maintenance_ticks: (status.maintenance_ticks || 0) + 1,
         maintenance_repaired: (status.maintenance_repaired || 0) + processed,
-        repair_failures: numberFrom(result.repair_failures), maintenance_last_error: null };
+        repair_failures: numberFrom(result.repair_failures),
+        scan_last_rowid: numberFrom(result.scan_last_rowid), scan_generation: numberFrom(result.scan_generation),
+        scan_policy: typeof result.scan_policy === "string" ? result.scan_policy : undefined, maintenance_last_error: null };
       delay = processed > 0 ? this.config.maintenanceIntervalMs
-        : result.scan_exhausted === true ? Math.max(300000, this.config.maintenanceIdleIntervalMs)
+        : result.scan_exhausted === true ? this.config.maintenanceIdleIntervalMs
         : Math.max(15000, this.config.maintenanceIntervalMs);
     } catch (error) {
       status = { ...status, maintenance_last_error: vectorRepairErrorCode(error) };
@@ -494,6 +499,10 @@ export class VectorBackfillWorker {
               reindex_all: false,
             });
         const item = responseItem(reindexResponse);
+        status.scan_last_rowid = numberFrom(item.scan_last_rowid);
+        status.scan_generation = numberFrom(item.scan_generation);
+        status.scan_policy = typeof item.scan_policy === "string" ? item.scan_policy : undefined;
+        status.repair_failures = numberFrom(item.repair_failures);
         const processed =
           numberFrom(item.reindexed) + numberFrom(item.adopted_legacy_vectors);
         const skippedRetryable = numberFrom(item.skipped_retryable);

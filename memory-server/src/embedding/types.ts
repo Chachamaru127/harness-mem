@@ -43,6 +43,7 @@ export interface EmbeddingProvider {
   cacheStats?(): EmbeddingCacheStats;
   ready?: Promise<void>;
   usesLocalModels?: boolean;
+  repairPolicyKey?: string;
   health(): EmbeddingHealth;
 }
 
