@@ -740,7 +740,7 @@ export class ConfigManager {
         else this.deps.db.query("DELETE FROM mem_vector_repair_failures WHERE observation_id = ?").run(retry.observation_id);
       }
       const selectPage = (recent: boolean, quota: number): void => {
-        const page = this.deps.db.query(this.vectorRowsSql("o.rowid > ?",
+        const page = this.deps.db.query(this.vectorRowsSql(recent ? `${activeFilter} AND o.rowid > ?` : "o.rowid > ?",
           recent ? "o.rowid DESC" : "o.rowid") + " LIMIT ?")
           .all(recent ? 0 : nextCursor, Math.min(options.missing_only ? 250 : 500, limit * 20)) as VectorRepairRow[];
         if (recent) recentExhausted = true;

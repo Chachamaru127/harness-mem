@@ -1161,3 +1161,24 @@ test("legacy E5 adoption completes a Japanese record without re-embedding existi
   });
   expect(embeddings).toBe(0);
 });
+
+
+test("archived and expired imports cannot occupy the recent repair window", async () => {
+  const db = createTestDb(); dbs.push(db);
+  for (let n = 0; n < 600; n++) insertTestObservation(db, { id: `active-history-${n}` });
+  insertTestObservation(db, { id: "active-fresh" });
+  for (let n = 0; n < 300; n++) {
+    insertTestObservation(db, { id: `inactive-import-${n}` });
+    if (n % 2) db.query("UPDATE mem_observations SET archived_at='2020-01-01' WHERE id=?").run(`inactive-import-${n}`);
+    else db.query("UPDATE mem_observations SET expires_at='2020-01-01' WHERE id=?").run(`inactive-import-${n}`);
+  }
+  const calls: string[] = [];
+  const manager = new ConfigManager(createDeps(db, createTestConfig({ vectorDimension: 2 }), {
+    getVectorEngine: () => "js-fallback", reindexObservationVector(id) { calls.push(id); insertVector(db, id, "test:model", 2, "[1,0]"); },
+  }));
+  const item = (await manager.reindexVectors(5, { missing_only: true, status_counts: false })).items[0] as any;
+  expect(calls).toContain("active-fresh");
+  expect(calls.some(id => id.startsWith("inactive-import-"))).toBe(false);
+  expect(calls).toContain("active-history-0");
+  expect(item.reindexed).toBe(5);
+});
