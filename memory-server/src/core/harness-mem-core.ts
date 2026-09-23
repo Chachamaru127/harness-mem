@@ -265,16 +265,18 @@ const DEFAULT_RUNTIME_WARNING_TTL_MS = 60_000;
 const GRANITE_MIGRATION_NOTICE_DEFAULT_RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
 const GRANITE_MIGRATION_NOTICE_MESSAGE =
   "Granite embedding migration recommended: shadow A/B cleared composite +0.20; ja cross-lingual 0.54->0.96.";
+// Backfill embeds with the active model, and restart (kickstart) keeps the old
+// LaunchAgent env, so switch and reload the daemon before the backfill starts.
 const GRANITE_MIGRATION_FIX_COMMAND =
   "harness-mem model pull granite-embedding-311m-r2 --yes && " +
-  "harness-mem admin-vector-backfill start --model granite-embedding-311m-r2 --dimension 384 --reset && " +
   "bun run scripts/s154-granite-flag-set.ts --execute --to granite-embedding-311m-r2@384 && " +
   "harness-mem model use-default && " +
-  "scripts/harness-memd restart";
+  "scripts/harness-memd offline-stop && scripts/harness-memd offline-start && " +
+  "harness-mem admin-vector-backfill start --reset";
 const GRANITE_MIGRATION_ROLLBACK_COMMAND =
   "bun run scripts/s154-granite-flag-set.ts --execute --to multilingual-e5 && " +
   "harness-mem model use-default && " +
-  "scripts/harness-memd restart";
+  "scripts/harness-memd offline-stop && scripts/harness-memd offline-start";
 const DEFAULT_REPEAT_RECALL_CACHE_TTL_MS = 60_000;
 const MAX_REPEAT_RECALL_CACHE_TTL_MS = 300_000;
 const REPEAT_RECALL_CACHE_CAPACITY = 128;

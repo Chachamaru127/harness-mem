@@ -208,7 +208,7 @@ Common options:
   --job <job_id>        Import job id for verify/cutover
   --import-project <s>  Override project name on import
   --project-key <s>     Override harness-mem project key for Hermes Backfill
-  --model <model>       Model for admin-repair-sqlite-vec-map or admin-vector-backfill start
+  --model <model>       Model for admin-repair-sqlite-vec-map (admin-vector-backfill start accepts only the active model)
   --dimension <n>       Vector dimension for admin-repair-sqlite-vec-map or admin-vector-backfill start
   --dry-run             Plan import without writing events
                         For admin-repair-sqlite-vec-map, this is the default.

@@ -8,7 +8,7 @@
 
 import type { Database } from "bun:sqlite";
 import { getSqliteVecMapTableName } from "../vector/providers";
-import { clampLimit, makeResponse, nowIso } from "./core-utils";
+import { clampLimit, makeErrorResponse, makeResponse, nowIso } from "./core-utils";
 import type { ApiResponse } from "./types";
 
 export interface VectorBackfillWorkerDeps {
@@ -306,22 +306,30 @@ export class VectorBackfillWorker {
   start(options: VectorBackfillStartOptions = {}): ApiResponse {
     const startedAt = performance.now();
     const current = this.loadStatus();
+    // Reindex always embeds with the active model, so any other label would report coverage for vectors never written.
+    const model = this.deps.getVectorModelVersion();
+    const requestedModel = typeof options.model === "string" ? options.model.trim() : "";
+    if (requestedModel && requestedModel !== model) {
+      return makeErrorResponse(startedAt,
+        `model ${requestedModel} is not the active vector model ${model}; switch the default model, reload the daemon, then start without --model`,
+        { model: requestedModel });
+    }
     if (current.running && !options.reset) {
       if (this.timer === null && !this.ticking) {
         this.schedule(0);
       }
       return makeWorkerResponse(startedAt, current, { already_running: true });
     }
+    // Progress from another model or dimension would let stale coverage complete the new job.
+    const reset = options.reset === true || (current.model !== null
+      && (current.model !== model || (current.dimension !== null && current.dimension !== this.deps.getVectorDimension())));
     this.deps.resetVectorRepairScan?.();
     this.revision++;
-    if (options.reset) {
+    if (reset) {
       this.clearTimer();
     }
 
-    const model = typeof options.model === "string" && options.model.trim()
-      ? options.model.trim()
-      : (!options.reset && current.model) || this.deps.getVectorModelVersion();
-    const dimension = clampLimit(options.dimension, (!options.reset && current.dimension) || this.deps.getVectorDimension(), 1, 8192);
+    const dimension = clampLimit(options.dimension, (!reset && current.dimension) || this.deps.getVectorDimension(), 1, 8192);
     const compactBatchSize = clampLimit(options.compact_batch_size, this.config.compactBatchSize, 1, 1000);
     const reindexBatchSize = clampLimit(options.reindex_batch_size, this.config.reindexBatchSize, 1, 500);
     const intervalMs = clampLimit(options.interval_ms, this.config.intervalMs, 25, 60_000);
@@ -330,13 +338,13 @@ export class VectorBackfillWorker {
       current.target_coverage || this.config.targetCoverage,
     );
     const compactStartedAt =
-      !options.reset && current.compact_started_at ? current.compact_started_at : nowIso();
+      !reset && current.compact_started_at ? current.compact_started_at : nowIso();
     const persistedCompactRemaining =
       typeof current.compact_remaining === "number" && Number.isFinite(current.compact_remaining)
         ? current.compact_remaining
         : null;
     const compactRemaining =
-      options.reset || persistedCompactRemaining === null
+      reset || persistedCompactRemaining === null
         ? this.countCompactRemaining(model, dimension, compactStartedAt)
         : Math.max(0, persistedCompactRemaining);
 
@@ -344,21 +352,21 @@ export class VectorBackfillWorker {
       ...defaultStatus(this.config),
       status: "running",
       running: true,
-      job_id: !options.reset && current.job_id ? current.job_id : `vector-backfill-${Date.now()}`,
+      job_id: !reset && current.job_id ? current.job_id : `vector-backfill-${Date.now()}`,
       model,
       dimension,
       compact_started_at: compactStartedAt,
       compact_remaining: compactRemaining,
-      compact_total_repaired: options.reset ? 0 : current.compact_total_repaired,
-      reindex_processed: options.reset ? 0 : current.reindex_processed,
-      reindex_total: options.reset ? 0 : current.reindex_total,
-      reindex_current_model_vectors: options.reset ? 0 : current.reindex_current_model_vectors,
-      reindex_missing_vectors_remaining: options.reset ? 0 : current.reindex_missing_vectors_remaining,
-      reindex_legacy_vectors_remaining: options.reset ? 0 : current.reindex_legacy_vectors_remaining,
-      reindex_coverage: options.reset ? null : current.reindex_coverage,
+      compact_total_repaired: reset ? 0 : current.compact_total_repaired,
+      reindex_processed: reset ? 0 : current.reindex_processed,
+      reindex_total: reset ? 0 : current.reindex_total,
+      reindex_current_model_vectors: reset ? 0 : current.reindex_current_model_vectors,
+      reindex_missing_vectors_remaining: reset ? 0 : current.reindex_missing_vectors_remaining,
+      reindex_legacy_vectors_remaining: reset ? 0 : current.reindex_legacy_vectors_remaining,
+      reindex_coverage: reset ? null : current.reindex_coverage,
       target_coverage: targetCoverage,
-      next_phase: options.reset ? "compact" : current.next_phase || "compact",
-      ticks: options.reset ? 0 : current.ticks,
+      next_phase: reset ? "compact" : current.next_phase || "compact",
+      ticks: reset ? 0 : current.ticks,
       last_error: null,
       stop_requested: false,
       stop_reason: undefined,
@@ -374,7 +382,7 @@ export class VectorBackfillWorker {
       reindex_batch_size: reindexBatchSize,
       interval_ms: intervalMs,
       target_coverage: targetCoverage,
-      reset: options.reset === true,
+      reset,
     });
     this.schedule(0);
     return makeWorkerResponse(startedAt, status);
