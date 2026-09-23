@@ -256,6 +256,16 @@ describe("vector-backfill-worker", () => {
     expect(item(harness.worker.status())).toMatchObject({ running: true, reindex_processed: 2, job_id: jobId, last_error: null });
   });
 
+  test("start rejects a model other than the active vector model", () => {
+    const harness = makeHarness({ vectorCount: 0, totalObservations: 2 });
+    harnesses.push(harness);
+    const rejected = harness.worker.start({ model: "granite-embedding-311m-r2", reset: true });
+    expect(rejected.ok).toBe(false);
+    expect(String(rejected.error)).toContain(MODEL);
+    expect(item(harness.worker.status())).toMatchObject({ running: false, job_id: null });
+    expect(item(harness.worker.start({ model: MODEL, reset: true }))).toMatchObject({ running: true, model: MODEL });
+  });
+
   test("partial retryable skips do not stop successful progress", async () => {
     const harness = makeHarness({ vectorCount: 0, totalObservations: 2,
       runExternalOperation: async () => makeOk([{ reindexed: 1, skipped_retryable: 1,

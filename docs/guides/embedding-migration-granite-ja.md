@@ -31,22 +31,29 @@ raw daemon 起動では、`embedding_default_model` flag が効くのは provide
 
 ## 移行コマンド
 
-vector backfill を行う準備ができたら、次を順に実行します。
+vector backfill を行う準備ができたら、次を順に実行します。先に model を切り替えます。backfill は常に稼働中の model で埋め込むため、切り替え前に始めると `multilingual-e5` のベクトルが作られます。
 
 ```bash
 harness-mem model pull granite-embedding-311m-r2 --yes
-harness-mem admin-vector-backfill start --model granite-embedding-311m-r2 --dimension 384 --reset
 bun run scripts/s154-granite-flag-set.ts --execute --to granite-embedding-311m-r2@384
 harness-mem model use-default
-scripts/harness-memd restart
+scripts/harness-memd offline-stop && scripts/harness-memd offline-start
+curl -s http://127.0.0.1:37888/health | jq -r '.items[0].vector_model'   # local:granite-embedding-311m-r2 を確認
+harness-mem admin-vector-backfill start --reset
 ```
+
+- 再読み込みは `offline-stop` と `offline-start` で行います。LaunchAgent を bootout と bootstrap し直すので、`model use-default` が書いた環境変数を読み直します。`restart` は kickstart だけで古い環境変数を保つため、古い `HARNESS_MEM_EMBEDDING_PROVIDER=adaptive` が残ります。
+- backfill に `--model` を渡しません。稼働中と違う model は `start` が拒否します。reset job は稼働中の model と dimension を使います。
+- backfill が終わるまで、Granite ベクトルの無い観察は vector 検索に出ません。語彙検索には影響しません。
+- 完了は `reindex_coverage` ではなく、期限内の有効な観察のうち `local:granite-embedding-311m-r2` のベクトルが無いものを数えて判定します。期限切れの観察は設計上 repair の対象外で、ベクトルが無いまま残ることがあります。
+- `admin-vector-backfill stop` は再起動後も残る operator stop を記録し、continuous repair も止めます。再開は `admin-vector-backfill start` を実行します。
 
 rollback は incumbent model に戻します。
 
 ```bash
 bun run scripts/s154-granite-flag-set.ts --execute --to multilingual-e5
 harness-mem model use-default
-scripts/harness-memd restart
+scripts/harness-memd offline-stop && scripts/harness-memd offline-start
 ```
 
 ## dismiss

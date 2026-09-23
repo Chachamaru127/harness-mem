@@ -31,22 +31,29 @@ The notice is silent when you use `openai` or `ollama`, set an explicit model pi
 
 ## Migration Command
 
-Run the steps when you are ready to backfill vectors:
+Run the steps when you are ready to backfill vectors. Switch the model first: the backfill always embeds with the active model, so a backfill started before the switch writes `multilingual-e5` vectors.
 
 ```bash
 harness-mem model pull granite-embedding-311m-r2 --yes
-harness-mem admin-vector-backfill start --model granite-embedding-311m-r2 --dimension 384 --reset
 bun run scripts/s154-granite-flag-set.ts --execute --to granite-embedding-311m-r2@384
 harness-mem model use-default
-scripts/harness-memd restart
+scripts/harness-memd offline-stop && scripts/harness-memd offline-start
+curl -s http://127.0.0.1:37888/health | jq -r '.items[0].vector_model'   # expect local:granite-embedding-311m-r2
+harness-mem admin-vector-backfill start --reset
 ```
+
+- Reload with `offline-stop` and `offline-start`. They boot out and bootstrap the LaunchAgent, which rereads the environment that `model use-default` wrote. `restart` only kickstarts the job and keeps the old environment, so a stale `HARNESS_MEM_EMBEDDING_PROVIDER=adaptive` would survive it.
+- Do not pass `--model` to the backfill. `start` rejects a model other than the active one; reset jobs use the active model and dimension.
+- Until the backfill finishes, vector search misses observations that still lack a Granite vector. Lexical search is unaffected.
+- Judge completion by counting active, non-expired observations that lack a `local:granite-embedding-311m-r2` vector, not by `reindex_coverage`. Expired observations are excluded from repair by design and may stay without one.
+- `admin-vector-backfill stop` records a sticky operator stop that also pauses continuous repair across restarts. Run `admin-vector-backfill start` again to resume it.
 
 Rollback keeps the incumbent model available:
 
 ```bash
 bun run scripts/s154-granite-flag-set.ts --execute --to multilingual-e5
 harness-mem model use-default
-scripts/harness-memd restart
+scripts/harness-memd offline-stop && scripts/harness-memd offline-start
 ```
 
 ## Dismiss

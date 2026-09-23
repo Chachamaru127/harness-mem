@@ -1004,11 +1004,13 @@ describe("memory admin integration", () => {
   test("vector backfill admin endpoints start, stop, and report status", async () => {
     const runtime = await createRuntime("vector-backfill");
     try {
+      const mismatched = await postJson(runtime.baseUrl, "/v1/admin/vector-backfill/start", { model: "test:model", reset: true });
+      expect(((await mismatched.json()) as { ok: boolean }).ok).toBe(false);
+
       const startResponse = await fetch(`${runtime.baseUrl}/v1/admin/vector-backfill/start`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          model: "test:model",
           dimension: "32",
           compact_batch_size: "7",
           reindex_batch_size: "8",
@@ -1023,7 +1025,8 @@ describe("memory admin integration", () => {
         items: Array<Record<string, unknown>>;
       };
       expect(startPayload.ok).toBe(true);
-      expect(startPayload.items[0].model).toBe("test:model");
+      expect(typeof startPayload.items[0].model).toBe("string");
+      expect(startPayload.items[0].model).not.toBe("test:model");
       expect(startPayload.items[0].dimension).toBe(32);
       expect(startPayload.items[0].compact_batch_size).toBe(7);
       expect(startPayload.items[0].reindex_batch_size).toBe(8);

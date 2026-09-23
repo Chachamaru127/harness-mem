@@ -8,7 +8,7 @@
 
 import type { Database } from "bun:sqlite";
 import { getSqliteVecMapTableName } from "../vector/providers";
-import { clampLimit, makeResponse, nowIso } from "./core-utils";
+import { clampLimit, makeErrorResponse, makeResponse, nowIso } from "./core-utils";
 import type { ApiResponse } from "./types";
 
 export interface VectorBackfillWorkerDeps {
@@ -312,15 +312,20 @@ export class VectorBackfillWorker {
       }
       return makeWorkerResponse(startedAt, current, { already_running: true });
     }
+    // Reindex always embeds with the active model, so any other label would report coverage for vectors never written.
+    const model = this.deps.getVectorModelVersion();
+    const requestedModel = typeof options.model === "string" ? options.model.trim() : "";
+    if (requestedModel && requestedModel !== model) {
+      return makeErrorResponse(startedAt,
+        `model ${requestedModel} is not the active vector model ${model}; switch the default model, reload the daemon, then start without --model`,
+        { model: requestedModel });
+    }
     this.deps.resetVectorRepairScan?.();
     this.revision++;
     if (options.reset) {
       this.clearTimer();
     }
 
-    const model = typeof options.model === "string" && options.model.trim()
-      ? options.model.trim()
-      : (!options.reset && current.model) || this.deps.getVectorModelVersion();
     const dimension = clampLimit(options.dimension, (!options.reset && current.dimension) || this.deps.getVectorDimension(), 1, 8192);
     const compactBatchSize = clampLimit(options.compact_batch_size, this.config.compactBatchSize, 1, 1000);
     const reindexBatchSize = clampLimit(options.reindex_batch_size, this.config.reindexBatchSize, 1, 500);

@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+- Reject `admin-vector-backfill start --model` values other than the active vector model; the backfill always embedded with the active model, so a different label reported coverage for vectors that were never written. Reorder the Granite migration guide and notice to switch the model and reload the LaunchAgent before the backfill.
+
 ## [0.31.2] - 2026-09-19
 
 - Prioritize recent captures while continuing historical vector repair and retrying failed records. Local adaptive embeddings share a multilingual model across Japanese and English passage/query routes by default; remote usage remains opt-in. Restart historical discovery when routing policy changes. Missing data still requires actual backfill and is never hidden by suppressing warnings.
