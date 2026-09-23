@@ -126,7 +126,6 @@ import {
   stopOwnedSearchWorkerProcess,
 } from "./search-worker-lifecycle";
 import { createPartialFinalizeScheduler, type PartialFinalizeScheduler } from "./partial-finalize-scheduler";
-import { createReindexVectorsScheduler, type ReindexVectorsScheduler } from "./reindex-vectors-scheduler";
 import {
   createVectorBackfillWorker, vectorRepairErrorCode,
   type VectorBackfillOperation,
@@ -1882,8 +1881,6 @@ export class HarnessMemCore {
   private readonly preverifiedBackupEvidenceTokens = new Map<string, PreverifiedBackupEvidence>();
   /** §91-002: partial-finalize scheduler (opt-in via config.partialFinalizeEnabled) */
   private partialFinalizeScheduler!: PartialFinalizeScheduler;
-  /** S89-003: vector reindex backfill scheduler (opt-in via config.reindexVectorsEnabled) */
-  private reindexVectorsScheduler!: ReindexVectorsScheduler;
   /** S124-007: out-of-request vector compact rebuild + reindex worker */
   private vectorBackfillWorker!: VectorBackfillWorker;
   private cancelVectorBackfill: (() => void) | null = null;
@@ -2138,23 +2135,6 @@ export class HarnessMemCore {
         intervalMs: this.config.partialFinalizeIntervalMs
           ? Math.max(5000, Number(this.config.partialFinalizeIntervalMs))
           : 300_000,
-      }
-    );
-
-    // S89-003: vector reindex backfill scheduler
-    this.reindexVectorsScheduler = createReindexVectorsScheduler(
-      {
-        db: this.db,
-        reindexVectors: (limit) => this.reindexVectors(limit),
-      },
-      {
-        enabled: this.config.reindexVectorsEnabled === true,
-        intervalMs: this.config.reindexVectorsIntervalMs
-          ? Math.max(5000, Number(this.config.reindexVectorsIntervalMs))
-          : 600_000,
-        batchSize: this.config.reindexVectorsBatchSize
-          ? Math.max(1, Math.min(10000, Number(this.config.reindexVectorsBatchSize)))
-          : 100,
       }
     );
 
@@ -10199,8 +10179,6 @@ export class HarnessMemCore {
 
     // §91-002: stop partial-finalize scheduler before stopping ingest timers
     this.partialFinalizeScheduler.stop();
-    // S89-003: stop reindex backfill scheduler
-    this.reindexVectorsScheduler.stop();
     if (this.forgetMaintenanceTimer) {
       clearInterval(this.forgetMaintenanceTimer);
       this.forgetMaintenanceTimer = null;

@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+- 使われていない `ReindexVectorsScheduler` を削除しました。0.31.1 以降は vector backfill worker が定期補完を担い、scheduler は生成と停止だけで起動されていませんでした。`HARNESS_MEM_REINDEX_VECTORS_*` は引き続き worker の設定に効きます。
+
 - `admin-vector-backfill start --model` が稼働中と違う model を受け付けないようにしました。backfill は常に稼働中の model で埋め込むため、別の名前では作られていないベクトルの網羅率を表示していました。Granite 移行の手順書と案内を、model の切替と LaunchAgent の再読込を backfill より先にする順へ直しました。
 
 ## [0.31.2] - 2026-09-19

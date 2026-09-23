@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+- Remove the unused `ReindexVectorsScheduler`. Since 0.31.1 the vector backfill worker owns recurring repair and the scheduler was constructed and stopped but never started; `HARNESS_MEM_REINDEX_VECTORS_*` still tunes the worker.
+
 - Reject `admin-vector-backfill start --model` values other than the active vector model; the backfill always embedded with the active model, so a different label reported coverage for vectors that were never written. Reorder the Granite migration guide and notice to switch the model and reload the LaunchAgent before the backfill.
 
 ## [0.31.2] - 2026-09-19
