@@ -155,6 +155,7 @@ function makeHarness(options: {
   intervalMs?: number;
   pendingReindex?: boolean;
   runExternalOperation?: VectorBackfillWorkerDeps["runExternalOperation"];
+  getVectorModelVersion?: () => string;
 }): Harness {
   const db = createDb(options.vectorCount, options.mappedCount ?? 0);
   const repairCalls = { count: 0 };
@@ -176,7 +177,7 @@ function makeHarness(options: {
   const worker = createVectorBackfillWorker(
     {
       db,
-      getVectorModelVersion: () => MODEL,
+      getVectorModelVersion: options.getVectorModelVersion ?? (() => MODEL),
       getVectorDimension: () => DIMENSION,
       repairSqliteVecMap: makeRepair(db, repairCalls),
       reindexVectors: makeReindex(reindexState),
@@ -264,6 +265,19 @@ describe("vector-backfill-worker", () => {
     expect(String(rejected.error)).toContain(MODEL);
     expect(item(harness.worker.status())).toMatchObject({ running: false, job_id: null });
     expect(item(harness.worker.start({ model: MODEL, reset: true }))).toMatchObject({ running: true, model: MODEL });
+    const whileRunning = harness.worker.start({ model: "granite-embedding-311m-r2" });
+    expect(whileRunning.ok).toBe(false);
+  });
+
+  test("start does not reuse progress from a job for another model", () => {
+    let active = MODEL;
+    const harness = makeHarness({ vectorCount: 0, totalObservations: 2, getVectorModelVersion: () => active });
+    harnesses.push(harness);
+    harness.worker.start({ reset: true });
+    harness.worker.stop();
+    active = "other:model";
+    const resumed = item(harness.worker.start());
+    expect(resumed).toMatchObject({ running: true, model: "other:model", reindex_coverage: null, ticks: 0, next_phase: "compact" });
   });
 
   test("partial retryable skips do not stop successful progress", async () => {
