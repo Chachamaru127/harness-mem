@@ -49,8 +49,8 @@
     ".cursor/hooks/"
   ],
   "dependencies": {
-    "@huggingface/transformers": "4.2.0",
-    "sharp": "0.34.5"
+    "@huggingface/transformers": "4.3.0",
+    "sharp": "0.35.4"
   },
   "optionalDependencies": {
     "@img/sharp-libvips-darwin-arm64": "1.2.4",
