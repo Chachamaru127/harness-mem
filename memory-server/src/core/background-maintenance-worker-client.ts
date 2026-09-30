@@ -38,6 +38,7 @@ export interface MaintenanceProgress {
   jobs_processed?: number;
   observations_scanned?: number;
   existing_facts_scanned?: number;
+  fact_llm_failures?: number;
   pending_jobs?: number;
   busy?: number;
   log?: number;
@@ -94,7 +95,7 @@ export function resolveSchedulerConsolidationLimit(
 }
 
 const SAFE_RESULT_KEYS = new Set([
-  "jobs_processed", "observations_scanned", "existing_facts_scanned", "pending_jobs", "facts_extracted", "facts_merged",
+  "jobs_processed", "observations_scanned", "existing_facts_scanned", "fact_llm_failures", "pending_jobs", "facts_extracted", "facts_merged",
   "derives_links_created", "dreaming_rewrites_created", "busy", "log",
   "checkpointed", "wal_bytes_before", "wal_bytes_after", "wal_limit_bytes",
   "wal_above_limit", "elapsed_ms",

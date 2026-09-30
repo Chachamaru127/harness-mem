@@ -641,6 +641,47 @@ describe("background maintenance persistent workers", () => {
     db.close();
   });
 
+  test("counts LLM fact extraction failures in consolidation stats", async () => {
+    const db = new Database(":memory:");
+    configureDatabase(db);
+    initSchema(db);
+    migrateSchema(db);
+    const now = new Date().toISOString();
+    db.query(`INSERT INTO mem_sessions(session_id, project, platform, started_at, created_at, updated_at)
+      VALUES ('llm-fail-session', 'llm-fail-project', 'claude', ?, ?, ?)`).run(now, now, now);
+    for (const id of ["llm-fail-1", "llm-fail-2"]) {
+      db.query(`INSERT INTO mem_observations(
+        id, event_id, platform, project, session_id, title, content, content_redacted,
+        observation_type, tags_json, privacy_tags_json, created_at, updated_at
+      ) VALUES (?, NULL, 'claude', 'llm-fail-project', 'llm-fail-session', '', ?, ?, 'decision', '[]', '[]', ?, ?)`)
+        .run(id, "TypeScript を採用することを決定した。", "TypeScript を採用することを決定した。", now, now);
+    }
+    enqueueConsolidationJob(db, "llm-fail-project", "llm-fail-session", "checkpoint");
+    const keys = ["HARNESS_MEM_FACT_EXTRACTOR_MODE", "HARNESS_MEM_FACT_LLM_PROVIDER", "HARNESS_MEM_OLLAMA_HOST"] as const;
+    const previous = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    const originalFetch = globalThis.fetch;
+    const originalStderrWrite = process.stderr.write;
+    process.env.HARNESS_MEM_FACT_EXTRACTOR_MODE = "llm";
+    process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "ollama";
+    process.env.HARNESS_MEM_OLLAMA_HOST = "http://127.0.0.1:11434";
+    globalThis.fetch = (async () => new Response("", { status: 500 })) as unknown as typeof fetch;
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+    let result: Awaited<ReturnType<typeof runConsolidationOnce>>;
+    try {
+      result = await runConsolidationOnce(db, { reason: "manual" });
+    } finally {
+      globalThis.fetch = originalFetch;
+      process.stderr.write = originalStderrWrite;
+      for (const k of keys) {
+        if (previous[k] === undefined) delete process.env[k];
+        else process.env[k] = previous[k];
+      }
+    }
+    expect(result.fact_llm_failures).toBe(2);
+    expect(result.facts_extracted).toBeGreaterThan(0);
+    db.close();
+  });
+
   test("indexed unchanged scheduler scan stays bounded at task scale", async () => {
     const db = new Database(":memory:");
     configureDatabase(db);

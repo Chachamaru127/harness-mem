@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+- consolidation の集計と `[maintenance-worker]` の進捗の行に `fact_llm_failures`（LLM 事実抽出が失敗して heuristic へ退避した観測の数）を載せました。consolidation は stderr を親へ転送しない子プロセスで動くため、失敗ごとの警告が daemon のログに出ていませんでした。
+
 - LLM 差分抽出のプロンプトに上限を付けました。既存ファクトは新しい順に件数（`HARNESS_MEM_FACT_DIFF_MAX_EXISTING`、既定 50）と文字数（`HARNESS_MEM_FACT_DIFF_EXISTING_CHAR_BUDGET`、既定 12000）の範囲だけ入れ、置き換え・削除は見せたファクトからだけ受け付けます。以前はプロジェクトの有効ファクトを全件（最大約146万トークン）入れており、ローカル Ollama の呼び出しの多くが 15 秒で打ち切られていました。Ollama へ `think: false` と `num_predict` を送り、タイムアウトを `HARNESS_MEM_FACT_LLM_TIMEOUT_MS` で変えられるようにしました。失敗や使えない応答は理由を記録して heuristic 抽出へ退避し、事実 0 件のまま黙って残さなくなりました。
 
 - 使われていない `ReindexVectorsScheduler` を削除しました。0.31.1 以降は vector backfill worker が定期補完を担い、scheduler は生成と停止だけで起動されていませんでした。`HARNESS_MEM_REINDEX_VECTORS_*` は引き続き worker の設定に効きます。
