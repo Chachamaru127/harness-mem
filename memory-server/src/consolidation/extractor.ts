@@ -68,6 +68,50 @@ function isLoopbackHost(rawHost: string): boolean {
   }
 }
 
+const DEFAULT_OLLAMA_TIMEOUT_MS = 15_000;
+const OLLAMA_NUM_PREDICT = 1024;
+const DEFAULT_DIFF_MAX_EXISTING_FACTS = 50;
+const DEFAULT_DIFF_EXISTING_CHAR_BUDGET = 12_000;
+
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const parsed = Number(process.env[name] || "");
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function warnLlmFailure(provider: string, reason: string): void {
+  process.stderr.write(`[harness-mem][warn] fact LLM call failed (${provider}): ${reason}; falling back to heuristic\n`);
+}
+
+function toPromptFact(f: ExistingFact): ExistingFact {
+  return {
+    fact_id: f.fact_id,
+    fact_type: f.fact_type,
+    fact_key: f.fact_key,
+    fact_value: f.fact_value.slice(0, 200),
+  };
+}
+
+/**
+ * 差分比較に使う既存ファクトを、新しい順に件数上限と文字予算の範囲で選ぶ。
+ * 呼び出し元はプロジェクトの有効ファクトを作成順 (古い順) で渡すため、末尾から取る。
+ * 全件を渡すとプロンプトが数十万トークンに達し、ローカル LLM がタイムアウトする。
+ */
+export function selectExistingFactsForPrompt(existingFacts: ExistingFact[]): ExistingFact[] {
+  const maxFacts = readPositiveIntEnv("HARNESS_MEM_FACT_DIFF_MAX_EXISTING", DEFAULT_DIFF_MAX_EXISTING_FACTS);
+  const charBudget = readPositiveIntEnv("HARNESS_MEM_FACT_DIFF_EXISTING_CHAR_BUDGET", DEFAULT_DIFF_EXISTING_CHAR_BUDGET);
+  const selected: ExistingFact[] = [];
+  // 実際に送る JSON 配列の長さで予算を数える。"[" と "]" の 2 文字、2 件目以降は区切りのカンマ 1 文字。
+  let used = 2;
+  for (let i = existingFacts.length - 1; i >= 0 && selected.length < maxFacts; i--) {
+    const f = existingFacts[i];
+    const size = JSON.stringify(toPromptFact(f)).length + (selected.length > 0 ? 1 : 0);
+    if (used + size > charBudget) break;
+    used += size;
+    selected.push(f);
+  }
+  return selected.reverse();
+}
+
 function makeEgress(
   provider: string,
   model: string,
@@ -310,31 +354,38 @@ async function callOpenAI(
 }
 
 /** Ollama API を呼び出してファクトを抽出する */
-async function callOllama(
-  prompt: string,
-  systemPrompt: string,
-  model: string
-): Promise<string | null> {
+/** ループバックの Ollama ホストだけを返す。それ以外は外部送信の遮断として null。 */
+function resolveOllamaHost(): string | null {
   const host = (process.env.HARNESS_MEM_OLLAMA_HOST || "http://127.0.0.1:11434").trim();
   if (!/^https?:\/\//i.test(host)) {
     process.stderr.write(`[harness-mem][warn] HARNESS_MEM_OLLAMA_HOST must use http or https scheme, got: ${host}\n`);
     return null;
   }
-  if (!isLoopbackHost(host)) {
-    return null;
-  }
+  return isLoopbackHost(host) ? host : null;
+}
+
+async function callOllama(
+  host: string,
+  prompt: string,
+  systemPrompt: string,
+  model: string
+): Promise<string | null> {
+  // think:false — thinking models (qwen3.5 など) は既定で長い思考を生成し、タイムアウトに届く。
   const body = JSON.stringify({
     model,
     stream: false,
     format: "json",
+    think: false,
+    options: { num_predict: OLLAMA_NUM_PREDICT },
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: prompt },
     ],
   });
 
+  const timeoutMs = readPositiveIntEnv("HARNESS_MEM_FACT_LLM_TIMEOUT_MS", DEFAULT_OLLAMA_TIMEOUT_MS);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15_000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(`${host}/api/chat`, {
@@ -347,13 +398,19 @@ async function callOllama(
     });
 
     if (!response.ok) {
+      warnLlmFailure("ollama", `HTTP ${response.status}`);
       return null;
     }
 
     const parsed = await response.json() as { message?: { content?: unknown } };
     const content = parsed?.message?.content;
-    return typeof content === "string" ? content : null;
-  } catch {
+    if (typeof content !== "string" || content.length === 0) {
+      warnLlmFailure("ollama", "response has no message content");
+      return null;
+    }
+    return content;
+  } catch (error) {
+    warnLlmFailure("ollama", controller.signal.aborted ? `timeout after ${timeoutMs}ms` : String(error));
     return null;
   } finally {
     clearTimeout(timeoutId);
@@ -464,8 +521,12 @@ async function llmExtract(input: ExtractFactInput): Promise<FactCandidate[]> {
   let content: string | null = null;
 
   if (provider === "ollama") {
+    const host = resolveOllamaHost();
+    if (!host) {
+      return [];
+    }
     const model = (process.env.HARNESS_MEM_FACT_LLM_MODEL || "llama3.2").trim();
-    content = await callOllama(prompt, systemPrompt, model);
+    content = await callOllama(host, prompt, systemPrompt, model);
   } else if (provider === "anthropic") {
     const apiKey = (process.env.HARNESS_MEM_ANTHROPIC_API_KEY || "").trim();
     if (!apiKey) {
@@ -518,17 +579,10 @@ export async function llmExtractWithDiff(
     return { new_facts: [], supersedes: [], deleted_fact_ids: [] };
   }
 
+  // LLM が置き換え・削除を判定できるのはプロンプトで見せたファクトだけに限る。
+  const promptFacts = selectExistingFactsForPrompt(existingFacts);
   const existingFactsJson =
-    existingFacts.length > 0
-      ? JSON.stringify(
-          existingFacts.map((f) => ({
-            fact_id: f.fact_id,
-            fact_type: f.fact_type,
-            fact_key: f.fact_key,
-            fact_value: f.fact_value.slice(0, 200),
-          }))
-        )
-      : "[]";
+    promptFacts.length > 0 ? JSON.stringify(promptFacts.map(toPromptFact)) : "[]";
 
   const systemPrompt = [
     "You are a memory fact extractor. Return JSON object only.",
@@ -555,8 +609,12 @@ export async function llmExtractWithDiff(
   let egress: LlmEgress | undefined;
 
   if (provider === "ollama") {
+    const host = resolveOllamaHost();
+    if (!host) {
+      return { new_facts: [], supersedes: [], deleted_fact_ids: [] };
+    }
     const model = (process.env.HARNESS_MEM_FACT_LLM_MODEL || "llama3.2").trim();
-    content = await callOllama(prompt, systemPrompt, model);
+    content = await callOllama(host, prompt, systemPrompt, model);
     // ollama is local (127.0.0.1) — not external egress, no audit.
   } else if (provider === "anthropic") {
     const apiKey = (process.env.HARNESS_MEM_ANTHROPIC_API_KEY || "").trim();
@@ -587,16 +645,35 @@ export async function llmExtractWithDiff(
     return { new_facts: [], supersedes: [], deleted_fact_ids: [] };
   }
 
+  // 呼び出しが失敗した、または応答が解釈できないときは、観測を事実 0 件のまま残さず heuristic へ退避する。
+  const heuristicFallback = (): FactDiffResult => {
+    const newFacts = heuristicExtract(input);
+    return { new_facts: newFacts, supersedes: newFacts.map(() => undefined), deleted_fact_ids: [], egress };
+  };
+
   if (!content) {
-    return { new_facts: [], supersedes: [], deleted_fact_ids: [], egress };
+    return heuristicFallback();
   }
 
   try {
+    // facts 配列を持たない応答（{"error": ...} など）を正常な 0 件として扱わない。
+    const json = JSON.parse(content);
+    const rawFacts: unknown[] | null = Array.isArray(json?.facts) ? json.facts : Array.isArray(json) ? json : null;
+    if (rawFacts === null) {
+      warnLlmFailure(provider, "response has no facts array");
+      return heuristicFallback();
+    }
     const newFacts = parseFactsFromContent(content);
-    const { supersedes, deleted_fact_ids } = parseDiffFromContent(content, newFacts, existingFacts);
+    // 要素はあるのに有効な事実が 1 件も読めない応答も失敗として扱う。明示的な facts: [] だけが正常な 0 件。
+    if (rawFacts.length > 0 && newFacts.length === 0) {
+      warnLlmFailure(provider, "response facts are all invalid");
+      return heuristicFallback();
+    }
+    const { supersedes, deleted_fact_ids } = parseDiffFromContent(content, newFacts, promptFacts);
     return { new_facts: newFacts, supersedes, deleted_fact_ids, egress };
   } catch {
-    return { new_facts: [], supersedes: [], deleted_fact_ids: [], egress };
+    warnLlmFailure(provider, "unparseable response");
+    return heuristicFallback();
   }
 }
 
