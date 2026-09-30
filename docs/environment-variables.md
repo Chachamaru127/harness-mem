@@ -73,6 +73,9 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_FACT_LLM_PROVIDER` | `ollama` | No | 事実抽出に使用するプロバイダー（`HARNESS_MEM_FACT_EXTRACTOR_MODE=llm` のときのみ有効）。`openai` / `anthropic` / `gemini` / `ollama` から選択。未設定時は `ollama` | `consolidation/extractor.ts` |
 | `HARNESS_MEM_FACT_LLM_MODEL` | プロバイダー依存 | No | 事実抽出に使用するモデル名。デフォルト: openai=`gpt-4o-mini`, anthropic=`claude-haiku-4-5-20251001`, gemini=`gemini-2.0-flash`, ollama=`llama3.2` | `consolidation/extractor.ts`, `llm/ollama-provider.ts` |
 | `HARNESS_MEM_FACT_EXTRACTOR_MODE` | `heuristic` | No | 事実抽出モード。`heuristic`（ルールベース）または `llm`（LLM使用） | `consolidation/worker.ts`, `consolidation/extractor.ts` |
+| `HARNESS_MEM_FACT_LLM_TIMEOUT_MS` | `15000` | No | 事実抽出の Ollama 呼び出しのタイムアウト（ミリ秒）。超えると理由を stderr に記録し heuristic へフォールバック | `consolidation/extractor.ts` |
+| `HARNESS_MEM_FACT_DIFF_MAX_EXISTING` | `50` | No | LLM 差分抽出でプロンプトに入れる既存ファクトの最大件数（新しい順）。置き換え・削除はここで見せたファクトからだけ受け付ける | `consolidation/extractor.ts` |
+| `HARNESS_MEM_FACT_DIFF_EXISTING_CHAR_BUDGET` | `12000` | No | LLM 差分抽出でプロンプトに入れる既存ファクト JSON 配列の最大文字数 | `consolidation/extractor.ts` |
 | `HARNESS_MEM_ALLOW_EXTERNAL_LLM` | 未設定（空） | No | 外部クラウド LLM への事実抽出 egress を opt-in するゲート。trim 後が正確に `1` のときのみ `openai` / `anthropic` / `gemini` が許可される（各 provider の credential も必須）。`true` やその他の値は opt-in にならない。remote Ollama を許可しない | `consolidation/extractor.ts` |
 | `HARNESS_MEM_OPENAI_API_KEY` | `""` | No* | OpenAI API キー（`OPENAI_API_KEY` より優先される）。LLM または embedding に openai を使う場合は必須 | `llm/registry.ts`, `llm/openai-provider.ts`, `core/core-utils.ts`, `consolidation/extractor.ts` |
 | `OPENAI_API_KEY` | `""` | No* | OpenAI API キー（`HARNESS_MEM_OPENAI_API_KEY` のフォールバック） | `llm/registry.ts`, `llm/openai-provider.ts`, `ingest/audio-ingester.ts` |
@@ -315,9 +318,12 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_ENABLE_INJECTION` | Core |
 | `HARNESS_MEM_ENABLE_OPENCODE_INGEST` | Ingestion |
 | `HARNESS_MEM_ENABLE_RETRIEVAL` | Core |
+| `HARNESS_MEM_FACT_DIFF_EXISTING_CHAR_BUDGET` | LLM |
+| `HARNESS_MEM_FACT_DIFF_MAX_EXISTING` | LLM |
 | `HARNESS_MEM_FACT_EXTRACTOR_MODE` | LLM |
 | `HARNESS_MEM_FACT_LLM_MODEL` | LLM |
 | `HARNESS_MEM_FACT_LLM_PROVIDER` | LLM |
+| `HARNESS_MEM_FACT_LLM_TIMEOUT_MS` | LLM |
 | `HARNESS_MEM_GEMINI_API_KEY` | LLM |
 | `HARNESS_MEM_GEMINI_BACKFILL_HOURS` | Ingestion |
 | `HARNESS_MEM_GEMINI_EVENTS_PATH` | Ingestion |

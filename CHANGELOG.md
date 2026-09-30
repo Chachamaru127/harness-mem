@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+- Bound LLM fact-diff prompts: send only the newest active facts under a count cap (`HARNESS_MEM_FACT_DIFF_MAX_EXISTING`, default 50) and a serialized size budget (`HARNESS_MEM_FACT_DIFF_EXISTING_CHAR_BUDGET`, default 12000), and accept supersede/delete targets only from facts the model was shown. Previously every active fact of the project was sent (up to ~1.46M tokens), so most local Ollama calls hit the 15s timeout. Ollama calls now send `think: false` and `num_predict`, the timeout is configurable (`HARNESS_MEM_FACT_LLM_TIMEOUT_MS`), and failed or unusable responses log a reason and fall back to heuristic extraction instead of silently leaving the observation with zero facts.
+
 - Remove the unused `ReindexVectorsScheduler`. Since 0.31.1 the vector backfill worker owns recurring repair and the scheduler was constructed and stopped but never started; `HARNESS_MEM_REINDEX_VECTORS_*` still tunes the worker.
 
 - Reject `admin-vector-backfill start --model` values other than the active vector model; the backfill always embedded with the active model, so a different label reported coverage for vectors that were never written. Reorder the Granite migration guide and notice to switch the model and reload the LaunchAgent before the backfill.
