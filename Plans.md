@@ -1,3 +1,20 @@
+## 2026-09-30 単体試験から実 Ollama への問い合わせを止める
+
+- 状態: cc:完了（未コミット）。本人「このタスクをここで実行してください」（2026-09-30）。Local。試験だけを直し、製品コードは変えない。
+- 観測: 11434 番宛ての fetch を記録する一時 preload で tests/unit と tests/core-split を走らせ、検出は `audn-consolidation.test.ts` の「APIキーなし」試験 1 件。プロバイダー未指定で既定の ollama になり、実 Ollama へ `/api/chat` を送っていた（既定モデルが無く 404）。同ファイルの `setLlmMode` も同じ問題で、Q9 でプロバイダーを openai に固定済み。
+- 対応: 「APIキーなし」試験のプロバイダーを openai に固定し、終了時に戻す。
+- 検証: 同ファイル 9 pass / 0 fail、終了コード 0。再検出で tests/unit と tests/core-split は 0 件。tests/integration の `deep-freshness-bench.test.ts` は 3 件届くが、S154-310 で意図した実 Ollama の計測（届かなければ skip）なので対象外。既定の試験から外すかは本人判断。
+- 範囲外: 一括実行でだけ落ちる `telemetry-otel.test.ts`（単独では成功）。
+
+## 2026-09-30 事実抽出のLLM呼び出しの失敗（Q9）
+
+- 状態: cc:完了（PR 作成まで。main 取り込みと daemon 再起動は本人承認待ち）。本人「推奨で進めて」（2026-09-30）。Local。routecli の引継ぎ route-job 20260930-120853-p7gc。
+- 検証: 関連 5 ファイル 98 pass / 0 fail（終了コード 0）、tsc 0。新規試験は修正前の版で 7/8 fail を確認。Codex gpt-6-sol の読み取り判定は FAIL 3 回（予算の数え方、facts 不正応答、空の content など計 6 件を修正）の後 PASS。
+- 調査（team-research）: Codex、Grok、Ask Pro の 3 者とも、比較相手の既定は「意味の近さ＋fact_key 一致」で 1 件あたり 5〜10 件と回答。新しい順 50 件は応急処置の扱い。切り替えは別作業として本人判断。
+- 原因（実測）: Ollama の /api/chat の 500 は 8,276 件中 7,955 件が所要 14〜15 秒で、`callOllama` の 15 秒 abort による切断。`loadExistingFacts` が有効な事実を上限なしで返し、`llmExtractWithDiff` が全件をプロンプトに入れる（harness-mem プロジェクトで 18,747 件、最大約146万トークン）。qwen3.5:9b は thinking が既定で有効で、`think` と `num_predict` を送っていない。失敗は null で握りつぶされ、差分経路では事実が 0 件のまま残る。
+- 対応: 比較に渡す既存の事実を新しい順に上限件数と文字予算で絞り、置き換えと削除の判定は見せた事実だけから受け付ける。Ollama へ `think:false` と `num_predict` を送る。タイムアウトと上限を環境変数化。呼び出し失敗は理由を stderr に残し、差分経路でも heuristic へ退避する。外部送信を止めた経路と未知のプロバイダーの空返しは変えない。
+- 完了条件: 対象の単体試験と consolidation 周辺の試験が成功。daemon の再起動と実環境での成功率の確認は本人承認後の別工程。比較相手の選び方（新しい順か類似度か）は調査結果を受けて見直す。
+
 ## 2026-09-18 v0.31.0 npm公開
 
 - 状態: cc:WIP。本人の「npmへの公開」に基づき対話導入改善とmain上の依存更新を公開する。新しい導入機能のためminor版0.31.0。非対話setupはplatform明示が必要な点を変更履歴で明示。

@@ -105,8 +105,16 @@ function restoreFetch(): void {
   }
 }
 
+// mockLlmResponse は OpenAI 形式の応答を返すので、プロバイダーも openai に固定する。
+// 未指定だと既定の ollama になり、localhost 宛てとしてモックを素通りして実 Ollama へ届く。
+const PROVIDER_ENV_KEYS = ["HARNESS_MEM_FACT_LLM_PROVIDER", "HARNESS_MEM_ALLOW_EXTERNAL_LLM"] as const;
+let prevProviderEnv: Record<string, string | undefined> = {};
+
 function setLlmMode(): void {
+  prevProviderEnv = Object.fromEntries(PROVIDER_ENV_KEYS.map((k) => [k, process.env[k]]));
   process.env.HARNESS_MEM_FACT_EXTRACTOR_MODE = "llm";
+  process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "openai";
+  process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM = "1";
   process.env.HARNESS_MEM_OPENAI_API_KEY = "test-api-key";
   process.env.HARNESS_MEM_FACT_LLM_MODEL = "gpt-4o-mini";
 }
@@ -116,6 +124,11 @@ function resetLlmMode(
   prevKey: string | undefined,
   prevModel: string | undefined
 ): void {
+  for (const key of PROVIDER_ENV_KEYS) {
+    if (prevProviderEnv[key] === undefined) delete process.env[key];
+    else process.env[key] = prevProviderEnv[key];
+  }
+
   if (prevMode === undefined) delete process.env.HARNESS_MEM_FACT_EXTRACTOR_MODE;
   else process.env.HARNESS_MEM_FACT_EXTRACTOR_MODE = prevMode;
 
@@ -502,8 +515,11 @@ describe("IMP-001b: LLM コンソリデーション 回帰確認", () => {
   test("LLM モード: APIキーなしの場合 graceful に空ファクトを返す", async () => {
     const prevMode = process.env.HARNESS_MEM_FACT_EXTRACTOR_MODE;
     const prevKey = process.env.HARNESS_MEM_OPENAI_API_KEY;
+    const prevProvider = process.env.HARNESS_MEM_FACT_LLM_PROVIDER;
 
     process.env.HARNESS_MEM_FACT_EXTRACTOR_MODE = "llm";
+    // 未指定だと既定の ollama になり、実 Ollama (127.0.0.1:11434) へ問い合わせてしまう。
+    process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "openai";
     delete process.env.HARNESS_MEM_OPENAI_API_KEY; // APIキーなし
 
     const core = new HarnessMemCore(createConfig("no-apikey"));
@@ -526,6 +542,8 @@ describe("IMP-001b: LLM コンソリデーション 回帰確認", () => {
       else process.env.HARNESS_MEM_FACT_EXTRACTOR_MODE = prevMode;
       if (prevKey === undefined) delete process.env.HARNESS_MEM_OPENAI_API_KEY;
       else process.env.HARNESS_MEM_OPENAI_API_KEY = prevKey;
+      if (prevProvider === undefined) delete process.env.HARNESS_MEM_FACT_LLM_PROVIDER;
+      else process.env.HARNESS_MEM_FACT_LLM_PROVIDER = prevProvider;
     }
   });
 });
