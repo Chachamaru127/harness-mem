@@ -19,6 +19,8 @@ export interface ConsolidationRunStats {
   facts_extracted: number;
   facts_merged: number;
   pending_jobs: number;
+  /** Q9: LLM 差分抽出が失敗し heuristic へ退避した観測の数（子プロセスの stderr は親へ届かないため集計で残す） */
+  fact_llm_failures?: number;
   /** IMP-011: derives リンクとして生成されたリンク数 */
   derives_links_created?: number;
   /** S154-303: append-only tense rewrite observations created by dreaming. */
@@ -469,7 +471,7 @@ async function upsertFactsForSession(
   project: string,
   sessionId: string,
   options: { onlyWithoutFacts?: boolean } = {},
-): Promise<{ inserted: number; observations_scanned: number; existing_facts_scanned: number }> {
+): Promise<{ inserted: number; observations_scanned: number; existing_facts_scanned: number; fact_llm_failures: number }> {
   const missingFactsFilter = options.onlyWithoutFacts === true
     ? `AND NOT EXISTS (SELECT 1 FROM mem_facts existing WHERE existing.observation_id = o.id)`
     : "";
@@ -509,9 +511,10 @@ async function upsertFactsForSession(
 
   let inserted = 0;
   let existingFactsScanned = 0;
+  let factLlmFailures = 0;
 
   if (observations.length === 0) {
-    return { inserted: 0, observations_scanned: 0, existing_facts_scanned: 0 };
+    return { inserted: 0, observations_scanned: 0, existing_facts_scanned: 0, fact_llm_failures: 0 };
   }
 
   if (isLlmModeEnabled()) {
@@ -528,6 +531,7 @@ async function upsertFactsForSession(
         },
         existingFacts
       );
+      if (diffResult.llm_failed) factLlmFailures += 1;
 
       // S154-110: an external (off-machine) provider call is auditable egress.
       // Record metrics only (provider/model/bytes/obs) — never the prompt/response
@@ -744,6 +748,7 @@ async function upsertFactsForSession(
     inserted,
     observations_scanned: observations.length,
     existing_facts_scanned: existingFactsScanned,
+    fact_llm_failures: factLlmFailures,
   };
 }
 
@@ -1194,6 +1199,7 @@ export async function runConsolidationOnce(
   let factsExtracted = 0;
   let observationsScanned = 0;
   let existingFactsScanned = 0;
+  let factLlmFailures = 0;
   let factsMerged = 0;
   let derivesLinksTotal = 0;
   let dreamingRewritesTotal = 0;
@@ -1217,6 +1223,7 @@ export async function runConsolidationOnce(
     const extracted = extraction.inserted;
     observationsScanned += extraction.observations_scanned;
     existingFactsScanned += extraction.existing_facts_scanned;
+    factLlmFailures += extraction.fact_llm_failures;
     const stateChanged = extracted > 0 || dreamingRewrites > 0;
     const runExplicitMaintenance = (options.reason || "manual") !== "scheduler";
     const merged = stateChanged || runExplicitMaintenance
@@ -1288,6 +1295,7 @@ export async function runConsolidationOnce(
     jobs_processed: jobsProcessed,
     observations_scanned: observationsScanned,
     existing_facts_scanned: existingFactsScanned,
+    fact_llm_failures: factLlmFailures,
     facts_extracted: factsExtracted,
     facts_merged: factsMerged,
     pending_jobs: Number(pendingRow?.count ?? 0),

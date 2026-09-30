@@ -144,6 +144,7 @@ describe("llmExtractWithDiff with ollama", () => {
     captureOllama(null, 500);
     const result = await llmExtractWithDiff(SAMPLE_INPUT, makeFacts(3));
     expect(result.new_facts.length).toBeGreaterThan(0);
+    expect(result.llm_failed).toBe(true);
     expect(result.supersedes).toHaveLength(result.new_facts.length);
     expect(result.deleted_fact_ids).toEqual([]);
   });
@@ -199,5 +200,6 @@ describe("llmExtractWithDiff with ollama", () => {
     captureOllama(JSON.stringify({ facts: [], supersedes: {}, deleted: [] }));
     const result = await llmExtractWithDiff(SAMPLE_INPUT, makeFacts(3));
     expect(result.new_facts).toEqual([]);
+    expect(result.llm_failed).toBeUndefined();
   });
 });

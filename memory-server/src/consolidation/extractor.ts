@@ -44,6 +44,8 @@ export interface FactDiffResult {
   deleted_fact_ids: string[];
   /** S154-110: set only when an external provider made a network call. */
   egress?: LlmEgress;
+  /** LLM 呼び出しが失敗した、または応答が使えず heuristic へ退避したとき true。 */
+  llm_failed?: boolean;
 }
 
 /** S154-110: which fact-LLM providers leave the machine (network egress). */
@@ -648,7 +650,7 @@ export async function llmExtractWithDiff(
   // 呼び出しが失敗した、または応答が解釈できないときは、観測を事実 0 件のまま残さず heuristic へ退避する。
   const heuristicFallback = (): FactDiffResult => {
     const newFacts = heuristicExtract(input);
-    return { new_facts: newFacts, supersedes: newFacts.map(() => undefined), deleted_fact_ids: [], egress };
+    return { new_facts: newFacts, supersedes: newFacts.map(() => undefined), deleted_fact_ids: [], egress, llm_failed: true };
   };
 
   if (!content) {

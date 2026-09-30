@@ -1,3 +1,10 @@
+## 2026-09-30 事実抽出の失敗件数を consolidation の記録に残す（Q9 の続き）
+
+- 状態: cc:完了（PR 作成まで）。本人「両方OK」（2026-09-30、PR #188 の取り込みと daemon 再起動）の後の稼働確認で発見。Local。
+- 観測: 再起動後（pid 27983）に harness-mem の閉じ済みセッション 1 件を手動 consolidation。Ollama は 200 が 2 件（5.1 秒、10.6 秒）、500 が 1 件（15.07 秒、9b の読み込み直後）。事実は 3 件抽出。ところが警告は daemon のログに 0 件。consolidation は子プロセスで動き、`background-maintenance-worker-client.ts` が子の stderr を転送しないため。
+- 対応: `llmExtractWithDiff` が退避時に `llm_failed` を返し、consolidation の集計に `fact_llm_failures` を足す。子プロセスの完了記録で親へ渡す項目の許可リストに加え、`[maintenance-worker]` の行で見えるようにする。
+- 完了条件: 対象試験が成功、型検査成功、独立判定 PASS。
+
 ## 2026-09-30 単体試験から実 Ollama への問い合わせを止める
 
 - 状態: cc:完了（未コミット）。本人「このタスクをここで実行してください」（2026-09-30）。Local。試験だけを直し、製品コードは変えない。
