@@ -336,7 +336,11 @@ const server = Bun.serve({
       return proxyJson("/v1/admin/metrics", "GET");
     }
     if (url.pathname === "/api/environment") {
-      return proxyJson("/v1/admin/environment", "GET");
+      // 環境の一覧は RouteCLI の画面へ移した（2026-10-02）
+      return new Response(
+        JSON.stringify({ ok: false, error: "environment_moved", moved_to: "http://127.0.0.1:8765/" }),
+        { status: 410, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }
+      );
     }
     if (url.pathname === "/api/feed") {
       return proxyJson(withDefaultProjectScope(`/v1/feed${url.search || ""}`), "GET");

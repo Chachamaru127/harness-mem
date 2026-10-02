@@ -2,7 +2,7 @@
  * IMP-004a: 設定管理モジュール境界テスト
  *
  * 分割後の config-manager.ts が担当する API を TDD で定義する。
- * getConfig / health / metrics / environmentSnapshot /
+ * getConfig / health / metrics /
  * getConsolidationStatus / getAuditLog / projectsStats /
  * backup / reindexVectors / getManagedStatus / shutdown を対象とする。
  *
@@ -56,7 +56,6 @@ function createDeps(db: Database, config: Config, overrides: Partial<ConfigManag
     canonicalizeProject: (project: string) => project,
     doHealth: () => okResponse([{ status: "ok" }]),
     doMetrics: () => okResponse([{ total_events: 0 }]),
-    doEnvironmentSnapshot: () => okResponse([{ version: "test" }]),
     doRunConsolidation: async () => okResponse([{ triggered: true }]),
     doGetManagedStatus: () => null,
     doShutdown: () => {},
@@ -248,28 +247,6 @@ describe("config-manager: metrics", () => {
       doMetrics: () => okResponse([{ total_events: 42 }]),
     });
     const res = manager.metrics();
-    expect(Array.isArray(res.items)).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// environmentSnapshot テスト
-// ---------------------------------------------------------------------------
-
-describe("config-manager: environmentSnapshot", () => {
-  test("environmentSnapshot() が ok=true を返す", () => {
-    const { manager } = createManager({
-      doEnvironmentSnapshot: () => okResponse([{ version: "1.0.0" }]),
-    });
-    const res = manager.environmentSnapshot();
-    expect(res.ok).toBe(true);
-  });
-
-  test("environmentSnapshot() レスポンスに items が含まれる", () => {
-    const { manager } = createManager({
-      doEnvironmentSnapshot: () => okResponse([{ version: "1.0.0", platform: "darwin" }]),
-    });
-    const res = manager.environmentSnapshot();
     expect(Array.isArray(res.items)).toBe(true);
   });
 });

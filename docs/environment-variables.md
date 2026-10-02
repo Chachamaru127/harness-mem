@@ -31,7 +31,7 @@ harness-mem で使用する全環境変数の一覧です。
 | `HARNESS_MEM_PORT` | `37888` | No | memory-server がリッスンするポート番号 | `core/core-utils.ts`, `mcp-server/src/tools/memory.ts` |
 | `HARNESS_MEM_UI_PORT` | `37901` | No | Web UI（ダッシュボード）用ポート番号 | `core/harness-mem-core.ts` |
 | `HARNESS_MEM_UI_HOST` | `127.0.0.1` | No | Web UI の待ち受けアドレス。LAN に公開するときだけ `0.0.0.0` などを指定する | `harness-mem-ui/src/server.ts` |
-| `HARNESS_MEM_HOME` | `~/.harness-mem` | No | harness-mem のデータディレクトリルート。state_dir の基準パスとして使用される | `core/harness-mem-core.ts`, `system-environment/collector.ts` |
+| `HARNESS_MEM_HOME` | `~/.harness-mem` | No | harness-mem のデータディレクトリルート。state_dir の基準パスとして使用される | `core/harness-mem-core.ts` |
 | `HARNESS_MEM_CONFIG_PATH` | `~/.harness-mem/config.json` | No | 設定 JSON ファイルのパス | `server.ts` |
 | `HARNESS_MEM_REMOTE_URL` | `""` (空文字) | No | リモートモードで使用する memory-server の URL（設定すると MCP はリモート接続する） | `mcp-server/src/tools/memory.ts` |
 | `HARNESS_MEM_HEALTH_TIMEOUT_MS` | `2500` | No | MCP proxy が daemon の `/health/ready` / `/health` / `/v1/health` を待つ時間（ミリ秒）。大規模 DB で full health 応答が詰まる場合も、軽量 ready probe を先に使う | `mcp-server/src/tools/memory.ts`, `mcp-server-go/internal/proxy/httpclient.go` |
@@ -39,7 +39,7 @@ harness-mem で使用する全環境変数の一覧です。
 | `HARNESS_MEM_ENABLE_CAPTURE` | `true` | No | 観察情報のキャプチャ（記録）を有効にするか | `core/core-utils.ts` |
 | `HARNESS_MEM_ENABLE_RETRIEVAL` | `true` | No | 検索・取得機能を有効にするか | `core/core-utils.ts` |
 | `HARNESS_MEM_ENABLE_INJECTION` | `true` | No | システムプロンプトへの自動インジェクションを有効にするか | `core/core-utils.ts` |
-| `HOME` | OS依存 | No | ホームディレクトリ。デフォルトパス解決に使用 | `core/core-utils.ts`, `system-environment/collector.ts`, `mcp-server/src/tools/memory.ts` |
+| `HOME` | OS依存 | No | ホームディレクトリ。デフォルトパス解決に使用 | `core/core-utils.ts`, `mcp-server/src/tools/memory.ts` |
 | `USERPROFILE` | OS依存 | No | Windows 環境でのホームディレクトリ（`HOME` のフォールバック） | `core/core-utils.ts`, `system-environment/collector.ts` |
 | `NODE_ENV` | `""` | No | `test` に設定するとバックグラウンドワーカーが起動しない | `core/harness-mem-core.ts` |
 

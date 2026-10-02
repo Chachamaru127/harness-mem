@@ -2378,19 +2378,25 @@ paths:
 
   /v1/admin/environment:
     get:
-      summary: Server environment
-      description: Returns environment configuration. Requires admin token.
+      summary: Server environment (moved)
+      description: "The environment list moved to the RouteCLI dashboard (http://127.0.0.1:8765/). Always returns 410 with error environment_moved and moved_to. Requires admin token."
       operationId: adminEnvironment
       tags: [Admin]
+      deprecated: true
       security:
         - harnessMemToken: []
       responses:
-        "200":
-          description: Environment info
+        "410":
+          description: Moved to the RouteCLI dashboard
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ApiResponse"
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  error: { type: string }
+                  moved_to: { type: string }
+                  message: { type: string }
         "401":
           description: Unauthorized
           content:

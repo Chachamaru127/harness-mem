@@ -1,7 +1,6 @@
 import type {
   ApiResponse,
   AuditLogItem,
-  EnvironmentSnapshot,
   FeedItem,
   ProjectsStatsItem,
   SubgraphResult,
@@ -60,10 +59,6 @@ export async function fetchHealth(): Promise<ApiResponse<Record<string, unknown>
 
 export async function fetchMetrics(): Promise<ApiResponse<Record<string, unknown>>> {
   return request<ApiResponse<Record<string, unknown>>>("/api/metrics");
-}
-
-export async function fetchEnvironment(): Promise<ApiResponse<EnvironmentSnapshot>> {
-  return request<ApiResponse<EnvironmentSnapshot>>("/api/environment");
 }
 
 export async function fetchUiContext(): Promise<UiContext> {

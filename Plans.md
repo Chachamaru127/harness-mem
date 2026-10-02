@@ -1,3 +1,12 @@
+## 2026-10-02 環境の一覧を RouteCLI へ案内する（RouteCLI 計画 v2.1 の仕事5）
+
+- 状態: cc:完了（手元の枝 `claude/environment-moved-to-routecli` のコミットまで。push と本番の入れ直しは本人承認（H4）の後）。routecli の会話「routecli ：挙動確認」からの依頼。Local。
+- 本人判断: H3b（2026-10-02）で「環境の一覧だけ移す。上流の版との比較と作業一覧（WorkGraph）は harness-mem に残す」。
+- 変更: Environment タブを RouteCLI の画面（`http://127.0.0.1:8765/`）への案内に替えた。`/v1/admin/environment` と UI の `/api/environment` は 410 と `moved_to` を返す。`system-environment/collector.ts` と `cache.ts`、core の `environmentSnapshot` を削除。
+- 依存の確認: snapshot は `tool-versions.json` を読む側で、`harness-mem versions`（`scripts/harness-mem` の `versions_impl`）は snapshot に依存しない。WorkGraph は `/api/work/query` で別経路。
+- 注意: 上流の版との比較を画面で見られる場所は、Environment タブの AI ツールの節だけだった。替えた後は `harness-mem versions` とファイルで確かめる。
+- 検証: memory-server の型検査、`environment-api.test.ts` と `config-manager.test.ts`、UI の型検査、vitest 全件、Playwright の `environment.e2e.ts`。
+
 ## 2026-10-02 画面（Web UI）を既定で 127.0.0.1 だけで待ち受ける
 
 - 状態: cc:完了（ローカルのコミットまで。push は本人承認待ち）。routecli の会話「routecli ：挙動確認」からの引継ぎ（本人「Mem修理ってスレッドにやらせて」2026-10-02）。Local。

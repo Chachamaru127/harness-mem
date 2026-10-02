@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+- Move the environment list to the RouteCLI dashboard. The Mem UI `Environment` tab now links to `http://127.0.0.1:8765/`, and `GET /v1/admin/environment` and the UI `GET /api/environment` return `410` with `error: "environment_moved"` and `moved_to`. The environment collector was removed. Upstream version tracking (`harness-mem versions`, `tool-versions.json`, history) and the WorkGraph tab are unchanged.
+
 - The Web UI server now listens on `127.0.0.1` by default instead of all interfaces. Set `HARNESS_MEM_UI_HOST` (for example `0.0.0.0`) to expose it on the LAN. Previously `doctor --fix`, `setup`, and update repair restarted the UI through `harness-memd` on port 37901 bound to every interface.
 
 - Report `fact_llm_failures` in consolidation stats and the `[maintenance-worker]` progress line. Consolidation runs in a child process whose stderr is not forwarded, so the per-call warnings added for failed LLM fact extraction were not visible in the daemon log.

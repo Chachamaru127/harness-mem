@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { HarnessMemCore, type Config } from "../../src/core/harness-mem-core";
@@ -46,132 +46,27 @@ function createRuntime(name: string): {
 }
 
 describe("environment API integration", () => {
-  test("requires admin token and returns masked environment payload", async () => {
+  test("requires admin token and points to the RouteCLI dashboard", async () => {
     const prevToken = process.env.HARNESS_MEM_ADMIN_TOKEN;
-    const prevHome = process.env.HARNESS_MEM_HOME;
-    const stateDir = mkdtempSync(join(tmpdir(), "harness-mem-env-state-"));
-
-    // 環境変数を先に設定してからサーバーを起動することで
-    // 並列実行時に他テストのサーバーへの影響を最小化する
     process.env.HARNESS_MEM_ADMIN_TOKEN = "test-admin-token";
-    process.env.HARNESS_MEM_HOME = stateDir;
 
-    const runtime = createRuntime("auth");
+    const runtime = createRuntime("moved");
     try {
-      mkdirSync(join(stateDir, "versions"), { recursive: true });
-      mkdirSync(join(stateDir, "runtime"), { recursive: true });
-
-      writeFileSync(
-        join(stateDir, "versions", "tool-versions.json"),
-        JSON.stringify(
-          {
-            local: {
-              codex: { installed: "codex-cli token=sk-abcdefghijklmnopqrstuvwxyz123456" },
-            },
-            upstream: {
-              codex: { latest_stable: "rust-v0.104.0" },
-            },
-            status: {
-              codex: "up_to_date",
-            },
-          },
-          null,
-          2
-        )
-      );
-
-      writeFileSync(
-        join(stateDir, "runtime", "doctor-last.json"),
-        JSON.stringify(
-          {
-            all_green: true,
-            checks: [{ name: "codex_wiring", status: "ok", fix: null }],
-          },
-          null,
-          2
-        )
-      );
-
       const withoutToken = await fetch(`${runtime.baseUrl}/v1/admin/environment`);
       expect(withoutToken.status).toBe(401);
 
       const withToken = await fetch(`${runtime.baseUrl}/v1/admin/environment`, {
-        headers: {
-          "x-harness-mem-token": "test-admin-token",
-        },
+        headers: { "x-harness-mem-token": "test-admin-token" },
       });
-      expect(withToken.status).toBe(200);
-
+      expect(withToken.status).toBe(410);
       const payload = (await withToken.json()) as Record<string, unknown>;
-      expect(payload.ok).toBe(true);
-      const item = ((payload.items as Array<Record<string, unknown>>) || [])[0] || {};
-      expect(item.summary).toBeDefined();
-      expect(item.servers).toBeDefined();
-      expect(item.languages).toBeDefined();
-      expect(item.cli_tools).toBeDefined();
-      expect(item.ai_tools).toBeDefined();
-
-      const serialized = JSON.stringify(item);
-      expect(serialized.includes("sk-abcdefghijklmnopqrstuvwxyz123456")).toBe(false);
-      expect(serialized.includes("[REDACTED_SECRET]")).toBe(true);
+      expect(payload.ok).toBe(false);
+      expect(payload.error).toBe("environment_moved");
+      expect(payload.moved_to).toBe("http://127.0.0.1:8765/");
     } finally {
-      if (prevToken === undefined) {
-        delete process.env.HARNESS_MEM_ADMIN_TOKEN;
-      } else {
-        process.env.HARNESS_MEM_ADMIN_TOKEN = prevToken;
-      }
-      if (prevHome === undefined) {
-        delete process.env.HARNESS_MEM_HOME;
-      } else {
-        process.env.HARNESS_MEM_HOME = prevHome;
-      }
       runtime.stop();
-      rmSync(stateDir, { recursive: true, force: true });
-    }
-    // コールド CI ランナーでは初回の環境スナップショット収集が bun test の
-    // 既定 5s を超えることがある (v0.28.6 run 28828289193 で実測 5000.10ms)。
-  }, 20_000);
-
-  test("returns degraded ai_tools data when snapshots are missing", async () => {
-    const prevToken = process.env.HARNESS_MEM_ADMIN_TOKEN;
-    const prevHome = process.env.HARNESS_MEM_HOME;
-    const stateDir = mkdtempSync(join(tmpdir(), "harness-mem-env-empty-"));
-
-    process.env.HARNESS_MEM_ADMIN_TOKEN = "test-admin-token";
-    process.env.HARNESS_MEM_HOME = stateDir;
-
-    const runtime = createRuntime("degraded");
-    try {
-
-      const response = await fetch(`${runtime.baseUrl}/v1/admin/environment`, {
-        headers: {
-          authorization: "Bearer test-admin-token",
-        },
-      });
-      expect(response.status).toBe(200);
-      const payload = (await response.json()) as Record<string, unknown>;
-      expect(payload.ok).toBe(true);
-
-      const item = ((payload.items as Array<Record<string, unknown>>) || [])[0] || {};
-      const aiTools = (item.ai_tools || []) as Array<Record<string, unknown>>;
-      const errors = (item.errors || []) as Array<Record<string, unknown>>;
-
-      expect(aiTools.length).toBeGreaterThan(0);
-      expect(aiTools.some((entry) => entry.status === "missing" || entry.status === "warning")).toBe(true);
-      expect(errors.length).toBeGreaterThan(0);
-    } finally {
-      if (prevToken === undefined) {
-        delete process.env.HARNESS_MEM_ADMIN_TOKEN;
-      } else {
-        process.env.HARNESS_MEM_ADMIN_TOKEN = prevToken;
-      }
-      if (prevHome === undefined) {
-        delete process.env.HARNESS_MEM_HOME;
-      } else {
-        process.env.HARNESS_MEM_HOME = prevHome;
-      }
-      runtime.stop();
-      rmSync(stateDir, { recursive: true, force: true });
+      if (prevToken === undefined) delete process.env.HARNESS_MEM_ADMIN_TOKEN;
+      else process.env.HARNESS_MEM_ADMIN_TOKEN = prevToken;
     }
   });
 });

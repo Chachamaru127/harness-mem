@@ -68,8 +68,6 @@ import { recordContradictionEnvelopes } from "../inject/contradiction-envelope";
 import { createClaudeProviderAsync, createLLMProvider } from "../llm/registry";
 import { ManagedBackend, type ManagedBackendStatus } from "../projector/managed-backend";
 import { buildEmbeddingShadowManifest, type EmbeddingShadowManifest } from "../projector/shadow-sync";
-import { collectEnvironmentSnapshot, type EnvironmentSnapshot } from "../system-environment/collector";
-import { TtlCache } from "../system-environment/cache";
 import { getTelemetryStatus, hashTelemetryValue, recordRecallTelemetry } from "../telemetry/otel";
 import { SessionManager, buildCheckpointEvent } from "./session-manager";
 import { EventRecorder } from "./event-recorder";
@@ -238,7 +236,6 @@ import {
 
 const VECTOR_MODEL_VERSION = "local-hash-v3";
 const HEARTBEAT_FILE = "~/.harness-mem/daemon.heartbeat";
-const DEFAULT_ENVIRONMENT_CACHE_TTL_MS = 20_000;
 const DEFAULT_SEARCH_CHILD_TIMEOUT_MS = 20_000;
 const DEFAULT_SEARCH_CHILD_QUEUE_MAX = 1;
 const DEFAULT_SEARCH_WORKER_TIMEOUT_MS = 3_000;
@@ -1858,7 +1855,6 @@ export class HarnessMemCore {
   private projectResolver!: ProjectPathResolver;
   private readonly projectWaiters = new Map<string, Array<() => void>>();
   private readonly projectResolverWaitMs: number;
-  private readonly environmentSnapshotCache = new TtlCache<EnvironmentSnapshot>(DEFAULT_ENVIRONMENT_CACHE_TTL_MS);
   private readonly repeatRecallCache = new Map<string, RepeatRecallCacheEntry>();
   private readonly searchSideEffectSpool: SearchSideEffectSpool | null;
   private searchPhaseProgressObserver: ((event: {
@@ -2082,7 +2078,6 @@ export class HarnessMemCore {
       canonicalizeProject: (project) => this.getCanonicalProjectName(project),
       doHealth: () => this.health(),
       doMetrics: () => this.metrics(),
-      doEnvironmentSnapshot: () => this.environmentSnapshot(),
       doRunConsolidation: (req) => this.runConsolidation(req),
       doGetManagedStatus: () => this.getManagedStatus(),
       doShutdown: (signal) => this.shutdown(signal),
@@ -9294,49 +9289,6 @@ export class HarnessMemCore {
       ],
       {},
       { ranking: "metrics_v1" }
-    );
-  }
-
-  environmentSnapshot(): ApiResponse {
-    const startedAt = performance.now();
-    const uiPortRaw = Number(process.env.HARNESS_MEM_UI_PORT || 37901);
-    const uiPort = Number.isFinite(uiPortRaw) ? Math.trunc(uiPortRaw) : 37901;
-    const healthPayload = this.health();
-    const healthItem = (healthPayload.items[0] || {}) as Record<string, unknown>;
-    const managedStatus = this.managedBackend ? (this.managedBackend.getStatus() as unknown as Record<string, unknown>) : null;
-
-    const cache = this.environmentSnapshotCache.getOrCreate(() =>
-      collectEnvironmentSnapshot({
-        state_dir: process.env.HARNESS_MEM_HOME,
-        mem_host: this.config.bindHost,
-        mem_port: this.config.bindPort,
-        ui_port: uiPort,
-        health_item: healthItem,
-        managed_backend: managedStatus,
-      })
-    );
-
-    try {
-      this.writeAuditLog("read.environment", "system", cache.value.snapshot_id, {
-        cache_hit: cache.cache_hit,
-        cache_age_ms: cache.age_ms,
-        cache_ttl_ms: cache.ttl_ms,
-      });
-    } catch {
-      // best effort
-    }
-
-    return makeResponse(
-      startedAt,
-      [cache.value],
-      {},
-      {
-        ranking: "environment_v1",
-        cache_hit: cache.cache_hit,
-        cache_age_ms: cache.age_ms,
-        cache_ttl_ms: cache.ttl_ms,
-        snapshot_id: cache.value.snapshot_id,
-      }
     );
   }
 

@@ -538,23 +538,12 @@ After a real Cursor chat, verify project-scoped recall with `harness_mem_search`
 - `HARNESS_MEM_OPENCODE_INGEST_INTERVAL_MS` (default: `60000`)
 - `HARNESS_MEM_OPENCODE_BACKFILL_HOURS` (default: `24`)
 
-## 6. Environment Tab (read-only)
+## 6. Environment Tab (moved to RouteCLI)
 
-Mem UI now includes an `Environment` tab for non-specialists.
+The environment list (internal servers, languages/runtimes, CLI tools, AI/MCP tools) moved to the environment section of the RouteCLI dashboard (`http://127.0.0.1:8765/`) on 2026-10-02. The `Environment` tab now links there.
 
-- Purpose:
-  - Show current internal servers
-  - Show installed languages/runtimes
-  - Show installed CLI tools
-  - Show AI/MCP tool status
-- API:
-  - daemon: `GET /v1/admin/environment` (admin token required)
-  - UI proxy: `GET /api/environment`
-- Safety:
-  - V1 is read-only
-  - API masks sensitive values (`token`, `api_key`, `secret`, etc.)
-
-Contract details: `plans/environment-tab-v1-contract.md`
+- `GET /v1/admin/environment` (daemon) and `GET /api/environment` (UI) return `410` with `error: "environment_moved"` and `moved_to`.
+- Upstream version tracking stays in harness-mem: `harness-mem versions` writes `~/.harness-mem/versions/tool-versions.json` and `tool-versions-history.jsonl`.
 
 ## 7. Troubleshooting
 

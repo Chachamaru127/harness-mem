@@ -498,23 +498,12 @@ harness-mem doctor --platform cursor --read-only --strict-exit
 - `HARNESS_MEM_OPENCODE_INGEST_INTERVAL_MS` (default: `60000`)
 - `HARNESS_MEM_OPENCODE_BACKFILL_HOURS` (default: `24`)
 
-## 6. Environment タブ (read-only)
+## 6. Environment タブ（RouteCLI へ移転）
 
-Mem UI には non-specialist 向けの `Environment` タブがあります。
+環境の一覧（常駐サーバ、言語とランタイム、CLI、AI と MCP）は、2026-10-02 に RouteCLI の画面（`http://127.0.0.1:8765/`）の環境の節へ移りました。`Environment` タブは、そこへの案内です。
 
-- Purpose:
-  - 現在の internal servers を表示する
-  - installed されている languages/runtimes を表示する
-  - installed CLI tools を表示する
-  - AI / MCP tool status を表示する
-- API:
-  - daemon: `GET /v1/admin/environment` (admin token required)
-  - UI proxy: `GET /api/environment`
-- Safety:
-  - V1 は read-only
-  - API は sensitive values (`token`, `api_key`, `secret` など) を mask する
-
-Contract details: `plans/environment-tab-v1-contract.md`
+- `GET /v1/admin/environment`（daemon）と `GET /api/environment`（UI）は、`410` と `error: "environment_moved"`、`moved_to` を返します。
+- 上流の版との比較は harness-mem に残ります。`harness-mem versions` が `~/.harness-mem/versions/tool-versions.json` と `tool-versions-history.jsonl` を書きます。
 
 ## 7. Troubleshooting
 
