@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+- Web UI のサーバーが、既定で全インターフェースではなく `127.0.0.1` だけで待ち受けるようにしました。LAN に公開するときは `HARNESS_MEM_UI_HOST`（例: `0.0.0.0`）を指定します。以前は `doctor --fix`、`setup`、更新後の修復が `harness-memd` 経由で、ポート 37901 の画面を全インターフェースで立て直していました。
+
 - consolidation の集計と `[maintenance-worker]` の進捗の行に `fact_llm_failures`（LLM 事実抽出が失敗して heuristic へ退避した観測の数）を載せました。consolidation は stderr を親へ転送しない子プロセスで動くため、失敗ごとの警告が daemon のログに出ていませんでした。
 
 - LLM 差分抽出のプロンプトに上限を付けました。既存ファクトは新しい順に件数（`HARNESS_MEM_FACT_DIFF_MAX_EXISTING`、既定 50）と文字数（`HARNESS_MEM_FACT_DIFF_EXISTING_CHAR_BUDGET`、既定 12000）の範囲だけ入れ、置き換え・削除は見せたファクトからだけ受け付けます。以前はプロジェクトの有効ファクトを全件（最大約146万トークン）入れており、ローカル Ollama の呼び出しの多くが 15 秒で打ち切られていました。Ollama へ `think: false` と `num_predict` を送り、タイムアウトを `HARNESS_MEM_FACT_LLM_TIMEOUT_MS` で変えられるようにしました。失敗や使えない応答は理由を記録して heuristic 抽出へ退避し、事実 0 件のまま黙って残さなくなりました。
