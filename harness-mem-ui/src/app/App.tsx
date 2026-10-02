@@ -10,9 +10,9 @@ import { WorkGraphPanel } from "../components/WorkGraphPanel";
 import { useFeedPagination } from "../hooks/useFeedPagination";
 import { useSSE } from "../hooks/useSSE";
 import { useSettings } from "../hooks/useSettings";
-import { fetchEnvironment, fetchHealth, fetchProjectsStats, fetchUiContext } from "../lib/api";
+import { fetchHealth, fetchProjectsStats, fetchUiContext } from "../lib/api";
 import { getUiCopy } from "../lib/i18n";
-import type { EnvironmentSnapshot, FeedItem, ProjectsStatsItem, SseUiEvent } from "../lib/types";
+import type { FeedItem, ProjectsStatsItem, SseUiEvent } from "../lib/types";
 
 function normalizeFeedItem(raw: Record<string, unknown>): FeedItem {
   return {
@@ -54,9 +54,6 @@ export default function App() {
   const [contextReady, setContextReady] = useState(false);
   const [defaultProject, setDefaultProject] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [environmentSnapshot, setEnvironmentSnapshot] = useState<EnvironmentSnapshot | null>(null);
-  const [environmentLoading, setEnvironmentLoading] = useState(false);
-  const [environmentError, setEnvironmentError] = useState("");
   const [liveEnabled, setLiveEnabled] = useState(false);
   const bootstrapStartedRef = useRef(false);
   const projectsReloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,20 +144,6 @@ export default function App() {
       const message = errorInput instanceof Error ? errorInput.message : String(errorInput);
       setHealthLabel(`daemon unreachable (${message})`);
       setHealthDegraded(true);
-    }
-  }, []);
-
-  const loadEnvironment = useCallback(async () => {
-    setEnvironmentLoading(true);
-    setEnvironmentError("");
-    try {
-      const payload = await fetchEnvironment();
-      setEnvironmentSnapshot(payload.items[0] || null);
-    } catch (errorInput) {
-      const message = errorInput instanceof Error ? errorInput.message : String(errorInput);
-      setEnvironmentError(message);
-    } finally {
-      setEnvironmentLoading(false);
     }
   }, []);
 
@@ -276,17 +259,6 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (settings.activeTab !== "environment") {
-      return;
-    }
-    void loadEnvironment();
-    const timer = setInterval(() => {
-      void loadEnvironment();
-    }, 60_000);
-    return () => clearInterval(timer);
-  }, [settings.activeTab, loadEnvironment]);
-
   const handleStreamEvent = useCallback(
     (event: SseUiEvent) => {
       if (event.event === "observation.created") {
@@ -332,9 +304,6 @@ export default function App() {
           refresh();
           void runProjectsLoad();
           void refreshStatus();
-          if (settings.activeTab === "environment") {
-            void loadEnvironment();
-          }
         }}
         onOpenSettings={() => setSettingsOpen(true)}
       />
@@ -409,15 +378,7 @@ export default function App() {
 
           {settings.activeTab === "environment" ? (
             <div role="tabpanel" id="panel-environment" aria-labelledby="tab-environment">
-              <EnvironmentPanel
-                snapshot={environmentSnapshot}
-                loading={environmentLoading}
-                error={environmentError}
-                language={settings.language}
-                onRefresh={() => {
-                  void loadEnvironment();
-                }}
-              />
+              <EnvironmentPanel language={settings.language} />
             </div>
           ) : settings.activeTab === "graph" ? (
             <div role="tabpanel" id="panel-graph" aria-labelledby="tab-graph" style={{ padding: "16px 0" }}>
@@ -465,9 +426,6 @@ export default function App() {
           setSettingsOpen(false);
           refresh();
           void runProjectsLoad();
-          if (next.activeTab === "environment") {
-            void loadEnvironment();
-          }
         }}
       />
     </div>

@@ -188,7 +188,7 @@ bun test memory-server/tests/unit/postgres-adapter.test.ts
 | `consolidation.test.ts` | 統合処理 E2E |
 | `consolidation-admin-api.test.ts` | 統合管理 API |
 | `embedding-provider.test.ts` | 埋め込みプロバイダー統合 |
-| `environment-api.test.ts` | 環境 API |
+| `environment-api.test.ts` | 環境 API（RouteCLI への移転を返す） |
 | `feed-stream.test.ts` | フィード・ストリーム |
 | `import-claude-mem.test.ts` | claude-mem インポート |
 | `managed-mode-wiring.test.ts` | マネージドモード |

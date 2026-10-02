@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+- 環境の一覧を RouteCLI の画面へ移しました。Mem UI の `Environment` タブは `http://127.0.0.1:8765/` への案内になり、`GET /v1/admin/environment` と UI の `GET /api/environment` は `410` と `error: "environment_moved"`、`moved_to` を返します。環境の収集のコードは削除しました。上流の版との比較（`harness-mem versions`、`tool-versions.json`、履歴）と WorkGraph タブは変わりません。
+
 - Web UI のサーバーが、既定で全インターフェースではなく `127.0.0.1` だけで待ち受けるようにしました。LAN に公開するときは `HARNESS_MEM_UI_HOST`（例: `0.0.0.0`）を指定します。以前は `doctor --fix`、`setup`、更新後の修復が `harness-memd` 経由で、ポート 37901 の画面を全インターフェースで立て直していました。
 
 - consolidation の集計と `[maintenance-worker]` の進捗の行に `fact_llm_failures`（LLM 事実抽出が失敗して heuristic へ退避した観測の数）を載せました。consolidation は stderr を親へ転送しない子プロセスで動くため、失敗ごとの警告が daemon のログに出ていませんでした。

@@ -57,6 +57,14 @@ function jsonResponse(body: ApiResponse, status = 200): Response {
   });
 }
 
+// 環境の一覧は RouteCLI の画面へ移した（2026-10-02）。上流の版との比較は `harness-mem versions` に残る。
+const ENVIRONMENT_MOVED_BODY = {
+  ok: false,
+  error: "environment_moved",
+  moved_to: "http://127.0.0.1:8765/",
+  message: "The environment list moved to the RouteCLI dashboard (environment section). Upstream version tracking remains in `harness-mem versions`.",
+};
+
 function rawJsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -513,7 +521,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         }
 
         if (request.method === "GET" && url.pathname === "/v1/admin/environment") {
-          return jsonResponse(core.environmentSnapshot());
+          return rawJsonResponse(ENVIRONMENT_MOVED_BODY, 410);
         }
 
         if (request.method === "GET" && url.pathname === "/v1/admin/shadow-metrics") {

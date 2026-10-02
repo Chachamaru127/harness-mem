@@ -7,7 +7,6 @@
  * 担当 API:
  *   - health (委譲)
  *   - metrics (委譲)
- *   - environmentSnapshot (委譲)
  *   - getConsolidationStatus
  *   - getAuditLog
  *   - projectsStats
@@ -132,8 +131,6 @@ export interface ConfigManagerDeps {
   doHealth: () => ApiResponse;
   /** metrics() の実装委譲 */
   doMetrics: () => ApiResponse;
-  /** environmentSnapshot() の実装委譲 */
-  doEnvironmentSnapshot: () => ApiResponse;
   /** runConsolidation() の実装委譲 */
   doRunConsolidation: (request: ConsolidationRunRequest) => Promise<ApiResponse>;
   /** getManagedStatus() の実装委譲 */
@@ -539,10 +536,6 @@ export class ConfigManager {
 
   metrics(): ApiResponse {
     return this.deps.doMetrics();
-  }
-
-  environmentSnapshot(): ApiResponse {
-    return this.deps.doEnvironmentSnapshot();
   }
 
   async runConsolidation(request: ConsolidationRunRequest = {}): Promise<ApiResponse> {
