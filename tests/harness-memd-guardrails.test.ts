@@ -518,7 +518,7 @@ describe("harness-memd guardrails", () => {
       env.HARNESS_MEM_LOG_MAX_BYTES = "1024";
       env.HARNESS_MEM_LOG_ROTATE_KEEP = "2";
 
-      const result = await runHarnessMemd(["status"], env);
+      const result = await runHarnessMemd(["doctor"], env);
       expect(result.code).toBe(1);
 
       expect(existsSync(`${daemonLog}.1`)).toBe(true);
@@ -526,6 +526,44 @@ describe("harness-memd guardrails", () => {
       expect(statSync(daemonLog).size).toBeLessThan(1024);
       expect(statSync(uiLog).size).toBeLessThan(1024);
     } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  test("doctor probes the UI on its own listen host, not HARNESS_MEM_HOST", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-guard-ui-host-"));
+    const daemonPort = randomPort();
+    const uiPort = randomPort(45000, 1000);
+
+    const uiProc = Bun.spawn([process.execPath, "run", UI_SERVER], {
+      stdout: "pipe",
+      stderr: "pipe",
+      env: {
+        ...process.env,
+        HARNESS_MEM_UI_HOST: "",
+        HARNESS_MEM_HOST: "127.0.0.1",
+        HARNESS_MEM_PORT: String(daemonPort),
+        HARNESS_MEM_UI_PORT: String(uiPort),
+      },
+    });
+
+    try {
+      await waitUntil(async () => {
+        try {
+          const response = await fetch(`http://127.0.0.1:${uiPort}/api/context`);
+          return response.ok;
+        } catch {
+          return false;
+        }
+      });
+
+      const env = { ...makeEnv(tmpHome, daemonPort, uiPort), HARNESS_MEM_HOST: "192.0.2.1" };
+      delete env.HARNESS_MEM_UI_HOST;
+      const result = await runHarnessMemd(["doctor"], env);
+      expect(result.stdout).toContain(`[ok] ui endpoint reachable: http://127.0.0.1:${uiPort}`);
+    } finally {
+      uiProc.kill();
+      await uiProc.exited;
       rmSync(tmpHome, { recursive: true, force: true });
     }
   });

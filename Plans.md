@@ -1,3 +1,11 @@
+## 2026-10-02 画面（Web UI）を既定で 127.0.0.1 だけで待ち受ける
+
+- 状態: cc:完了（ローカルのコミットまで。push は本人承認待ち）。routecli の会話「routecli ：挙動確認」からの引継ぎ（本人「Mem修理ってスレッドにやらせて」2026-10-02）。Local。
+- 原因: `harness-mem-ui/src/server.ts` の `Bun.serve` に hostname がなく、全インターフェース（`*:37901`）で待ち受けていた。`doctor --fix`、`setup`、更新後の修復は `harness-memd` の `start_ui` 経由でこの画面を立て直すため、利用者の launchd 側で loopback に絞っても LAN 公開へ戻った（根拠: routecli の `specs/2026-09-local-env/evidence/ac19-recur.md`）。
+- 直し: `HARNESS_MEM_UI_HOST`（既定 `127.0.0.1`）を足して `Bun.serve` の hostname に渡す。`start_ui` は環境変数を引き継ぐので変更なし。
+- 検証: `tests/harness-mem-ui-bind.test.ts`（既定は 127.0.0.1、上書きで `*`）。旧コードでは既定の試験が `*:<port>` で落ちることを確認。
+- 範囲外: 37901（harness-memd）と 37903（利用者の UI plist）の二重起動。リポジトリは UI の plist を作らないので、利用者の設定側で揃える。
+
 ## 2026-09-30 事実抽出の失敗件数を consolidation の記録に残す（Q9 の続き）
 
 - 状態: cc:完了（PR 作成まで）。本人「両方OK」（2026-09-30、PR #188 の取り込みと daemon 再起動）の後の稼働確認で発見。Local。

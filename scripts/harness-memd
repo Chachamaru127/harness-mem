@@ -43,7 +43,13 @@ DEFAULT_PORT="37888"
 UI_PORT="${HARNESS_MEM_UI_PORT:-37901}"
 HEALTH_URL="http://${HOST}:${PORT}/health"
 READY_URL="http://${HOST}:${PORT}/health/ready"
-UI_CONTEXT_URL="http://${HOST}:${UI_PORT}/api/context"
+UI_HOST="${HARNESS_MEM_UI_HOST:-127.0.0.1}"
+case "$UI_HOST" in
+  0.0.0.0|::) UI_URL_HOST="127.0.0.1" ;;
+  *:*) UI_URL_HOST="[${UI_HOST}]" ;;
+  *) UI_URL_HOST="$UI_HOST" ;;
+esac
+UI_CONTEXT_URL="http://${UI_URL_HOST}:${UI_PORT}/api/context"
 HEALTH_PROBE_TIMEOUT_SEC="${HARNESS_MEM_HEALTH_PROBE_TIMEOUT_SEC:-3}"
 START_TIMEOUT_SEC="${HARNESS_MEM_START_TIMEOUT_SEC:-20}"
 STOP_TIMEOUT_SEC="${HARNESS_MEM_STOP_TIMEOUT_SEC:-5}"
@@ -809,6 +815,7 @@ start_ui() {
     spawn_detached_command "$UI_PID_FILE" "$UI_LOG_FILE" env \
       HARNESS_MEM_HOST="$HOST" \
       HARNESS_MEM_PORT="$PORT" \
+      HARNESS_MEM_UI_HOST="$UI_HOST" \
       HARNESS_MEM_UI_PORT="$UI_PORT" \
       bun run "$UI_ENTRY"
   )
@@ -821,7 +828,7 @@ start_ui() {
   fi
 
   if wait_for_ui; then
-    log "harness-mem-ui started (pid=${new_ui_pid}, url=http://${HOST}:${UI_PORT})"
+    log "harness-mem-ui started (pid=${new_ui_pid}, url=http://${UI_URL_HOST}:${UI_PORT})"
     return 0
   fi
 
@@ -1298,9 +1305,9 @@ doctor_daemon() {
 
   if is_ui_enabled; then
     if is_ui_reachable; then
-      echo "[ok] ui endpoint reachable: http://${HOST}:${UI_PORT}"
+      echo "[ok] ui endpoint reachable: http://${UI_URL_HOST}:${UI_PORT}"
     else
-      echo "[warn] ui endpoint not reachable: http://${HOST}:${UI_PORT}"
+      echo "[warn] ui endpoint not reachable: http://${UI_URL_HOST}:${UI_PORT}"
       ok=1
     fi
 

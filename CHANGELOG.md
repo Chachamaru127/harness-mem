@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+- The Web UI server now listens on `127.0.0.1` by default instead of all interfaces. Set `HARNESS_MEM_UI_HOST` (for example `0.0.0.0`) to expose it on the LAN. Previously `doctor --fix`, `setup`, and update repair restarted the UI through `harness-memd` on port 37901 bound to every interface.
+
 - Report `fact_llm_failures` in consolidation stats and the `[maintenance-worker]` progress line. Consolidation runs in a child process whose stderr is not forwarded, so the per-call warnings added for failed LLM fact extraction were not visible in the daemon log.
 
 - Bound LLM fact-diff prompts: send only the newest active facts under a count cap (`HARNESS_MEM_FACT_DIFF_MAX_EXISTING`, default 50) and a serialized size budget (`HARNESS_MEM_FACT_DIFF_EXISTING_CHAR_BUDGET`, default 12000), and accept supersede/delete targets only from facts the model was shown. Previously every active fact of the project was sent (up to ~1.46M tokens), so most local Ollama calls hit the 15s timeout. Ollama calls now send `think: false` and `num_predict`, the timeout is configurable (`HARNESS_MEM_FACT_LLM_TIMEOUT_MS`), and failed or unusable responses log a reason and fall back to heuristic extraction instead of silently leaving the observation with zero facts.
