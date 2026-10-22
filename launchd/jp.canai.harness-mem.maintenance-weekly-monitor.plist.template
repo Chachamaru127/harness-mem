@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>jp.canai.harness-mem.maintenance-weekly-monitor</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__BUN__</string>
+    <string>run</string>
+    <string>__REPO_ROOT__/scripts/maintenance-run.ts</string>
+    <string>--job</string>
+    <string>weekly-monitor</string>
+    <string>--retention-days</string>
+    <string>7</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__REPO_ROOT__</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>1</integer>
+    <key>Hour</key>
+    <integer>8</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/launchd-weekly-monitor.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/launchd-weekly-monitor.log</string>
+</dict>
+</plist>

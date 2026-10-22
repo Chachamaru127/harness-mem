@@ -16,6 +16,7 @@ type Args = {
   execute: boolean;
   archiveFirst: boolean;
   archiveOnly: boolean;
+  vacuumOnly: boolean;
   pruneStaleVectors: boolean;
   compact: boolean;
   batchSize: number;
@@ -40,6 +41,7 @@ function parseArgs(argv: string[]): Args {
     execute: false,
     archiveFirst: false,
     archiveOnly: false,
+    vacuumOnly: false,
     pruneStaleVectors: false,
     compact: false,
     batchSize: 100,
@@ -94,6 +96,8 @@ function parseArgs(argv: string[]): Args {
       args.archiveFirst = true;
     } else if (arg === "--archive-only") {
       args.archiveOnly = true;
+    } else if (arg === "--vacuum-only") {
+      args.vacuumOnly = true;
     } else if (arg === "--prune-stale-vectors") {
       args.pruneStaleVectors = true;
     } else if (arg === "--compact" || arg === "--vacuum") {
@@ -149,6 +153,15 @@ function parseArgs(argv: string[]): Args {
   if (args.archiveOnly && args.compact) {
     throw new Error("--compact cannot be combined with --archive-only; compact after hard purge");
   }
+  if (args.vacuumOnly) {
+    if (!args.execute) throw new Error("--vacuum-only requires --execute");
+    if (args.archiveOnly || args.archiveFirst || args.pruneStaleVectors) {
+      throw new Error("--vacuum-only cannot be combined with archive or vector-prune modes");
+    }
+    if (args.compact) {
+      throw new Error("--vacuum-only already compacts; drop --compact");
+    }
+  }
   if (args.compact && !args.execute) {
     throw new Error("--compact requires --execute");
   }
@@ -176,6 +189,8 @@ function usage(code: number): never {
     "  --prune-stale-vectors",
     "                   Delete non-current vector cache rows only when the current vector already exists.",
     "  --compact        Run VACUUM after execute to reclaim file size. Requires --execute.",
+    "  --vacuum-only    Run restore drill and VACUUM only, with no archive or purge.",
+    "                   Requires --execute plus backup evidence. Run with the daemon stopped.",
     "  --batch-size <n> Process execute modes in small batches. Default 100.",
     "  --time-budget-ms <n>",
     "                   Stop after this many milliseconds and write checkpoint progress.",
@@ -229,7 +244,7 @@ function stringArray(value: unknown): string[] {
 }
 
 function executeTouchesVec0Sidecar(args: Args): boolean {
-  return args.execute && !args.archiveOnly && !args.pruneStaleVectors;
+  return args.execute && !args.archiveOnly && !args.pruneStaleVectors && !args.vacuumOnly;
 }
 
 function buildOfflineConfig(args: Args): Config {
@@ -664,6 +679,36 @@ async function main(): Promise<void> {
       archive_archived: count(core, `SELECT COUNT(*) AS count FROM mem_archive_stubs WHERE archive_state = 'archived'`),
       archive_purged: count(core, `SELECT COUNT(*) AS count FROM mem_archive_stubs WHERE archive_state = 'purged'`),
     };
+    if (args.vacuumOnly) {
+      // VACUUM only. The restore drill runs against the supplied backup first so
+      // that a compacted database is never the only copy of anything.
+      const restoreDrill = backupRestoreDrill(args.backupPath);
+      if (restoreDrill?.ok !== true) {
+        hardFail(`restore drill failed before vacuum: ${String(restoreDrill?.error ?? "unknown")}`);
+      }
+      const compact = compactDatabase(core, config.dbPath, {
+        mode: "offline_vacuum_only",
+        backup_path: args.backupPath,
+        backup_sha256: expectedSha,
+        restore_drill: restoreDrill,
+        reason: args.reason,
+      });
+      console.log(JSON.stringify({
+        ok: true,
+        mode: "offline_vacuum_only",
+        execute: true,
+        daemon_guard: daemonGuard,
+        before,
+        restore_drill: restoreDrill,
+        compact,
+        backup: {
+          path: args.backupPath,
+          sha256: expectedSha,
+          size_bytes: backupStat!.size,
+        },
+      }, null, 2));
+      return;
+    }
     if (args.archiveOnly) {
       const plan = core.adminForgetArchive(archiveRequest(args));
       if (!plan.ok) {
