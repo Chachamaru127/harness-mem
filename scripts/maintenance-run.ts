@@ -40,6 +40,8 @@ type Args = {
   batchSize: number;
   backupPath?: string;
   backupSha256?: string;
+  notify: "off" | "alerts" | "always";
+  healthUrl: string;
   repoRoot: string;
 };
 
@@ -67,6 +69,10 @@ function usage(code: number): never {
     "  --batch-size <n>          Purge transaction size (1..1000, default 100).",
     "  --backup-path <path>      Required with --execute for purge and vacuum.",
     "  --backup-sha256 <hex>     Required with --execute for purge and vacuum.",
+    "  --health-url <url|off>    Health endpoint to probe (default local daemon).",
+    "                            'off' skips the probe, for monitoring another DB.",
+    "  --notify <mode>           off | alerts | always (default alerts). A macOS",
+    "                            notification is posted through osascript.",
     "  --help                    Show this help.",
     "",
     "Env:",
@@ -93,6 +99,8 @@ function parseArgs(argv: string[]): Args {
     limit: 500,
     retentionDays: 7,
     batchSize: 100,
+    notify: "alerts",
+    healthUrl: "",  // empty means http://127.0.0.1:<port>/health/ready
     repoRoot: repoRootFromScript(),
   };
   let jobGiven = false;
@@ -119,6 +127,14 @@ function parseArgs(argv: string[]): Args {
       args.retentionDays = Number(argv[++i]);
     } else if (arg === "--batch-size") {
       args.batchSize = Number(argv[++i]);
+    } else if (arg === "--health-url") {
+      args.healthUrl = (argv[++i] || "").trim();
+    } else if (arg === "--notify") {
+      const value = (argv[++i] || "").trim();
+      if (value !== "off" && value !== "alerts" && value !== "always") {
+        throw new Error("--notify must be off, alerts, or always");
+      }
+      args.notify = value;
     } else if (arg === "--backup-path") {
       args.backupPath = argv[++i];
     } else if (arg === "--backup-sha256") {
@@ -203,12 +219,28 @@ function parseLastJsonObject(text: string): Record<string, unknown> | null {
   }
 }
 
-async function probeHealth(port: number, timeoutMs = 5000): Promise<{ ready: boolean; status: number | null; elapsed_ms: number }> {
+type HealthProbe =
+  | { checked: false; ready: null; status: null; elapsed_ms: 0 }
+  | { checked: true; ready: boolean; status: number | null; elapsed_ms: number };
+
+async function probeHealthUrl(url: string, timeoutMs = 5000): Promise<HealthProbe> {
+  if (url === "off") {
+    return { checked: false, ready: null, status: null, elapsed_ms: 0 };
+  }
+  return { checked: true, ...(await fetchHealth(url, timeoutMs)) };
+}
+
+function healthTarget(args: Args): string {
+  if (args.healthUrl) return args.healthUrl;
+  return `http://127.0.0.1:${daemonPort()}/health/ready`;
+}
+
+async function fetchHealth(url: string, timeoutMs = 5000): Promise<{ ready: boolean; status: number | null; elapsed_ms: number }> {
   const startedAt = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/health/ready`, { signal: controller.signal });
+    const response = await fetch(url, { signal: controller.signal });
     await response.text();
     return { ready: response.ok, status: response.status, elapsed_ms: Date.now() - startedAt };
   } catch {
@@ -454,11 +486,11 @@ async function jobHourlyArchive(args: Args): Promise<{ report: Record<string, un
 
 async function jobWeeklyMonitor(args: Args): Promise<{ report: Record<string, unknown>; exitCode: number }> {
   const metrics = readMetrics(args.dbPath);
-  const health = await probeHealth(daemonPort());
+  const health = await probeHealthUrl(healthTarget(args));
   const dbMax = envBytes("HARNESS_MEM_MAINTENANCE_DB_MAX_BYTES", 24 * GiB);
   const freelistMax = envBytes("HARNESS_MEM_MAINTENANCE_FREELIST_MAX_BYTES", 4 * GiB);
   const alerts: Array<{ code: string; detail: Record<string, unknown> }> = [];
-  if (!health.ready) {
+  if (health.checked && !health.ready) {
     alerts.push({ code: "daemon_not_ready", detail: { ...health } });
   }
   if (metrics.archived_missing_payload > 0) {
@@ -495,7 +527,7 @@ async function jobWeeklyMonitor(args: Args): Promise<{ report: Record<string, un
 
 async function jobWeeklyPurge(args: Args): Promise<{ report: Record<string, unknown>; exitCode: number }> {
   const metrics = readMetrics(args.dbPath);
-  const health = await probeHealth(daemonPort());
+  const health = await probeHealthUrl(healthTarget(args));
   const eligible = countEligible(metrics, args.retentionDays);
   const plan = {
     job: args.job,
@@ -571,7 +603,7 @@ function countEligible(metrics: MonitorMetrics, retentionDays: number): number {
 
 async function jobMonthlyVacuum(args: Args): Promise<{ report: Record<string, unknown>; exitCode: number }> {
   const metrics = readMetrics(args.dbPath);
-  const health = await probeHealth(daemonPort());
+  const health = await probeHealthUrl(healthTarget(args));
   const vacuumCommand = [
     "bun run scripts/forget-maintenance-offline.ts",
     `--backup-path ${args.backupPath ?? "<backup-path>"}`,
@@ -605,7 +637,7 @@ async function jobMonthlyVacuum(args: Args): Promise<{ report: Record<string, un
   const stop = await runJsonCommand(join(args.repoRoot, "scripts/harness-memd"), ["offline-stop", "--quiet"], args.repoRoot);
   let vacuum: Awaited<ReturnType<typeof runJsonCommand>> | null = null;
   let start: Awaited<ReturnType<typeof runJsonCommand>> | null = null;
-  let postHealth: Awaited<ReturnType<typeof probeHealth>> | null = null;
+  let postHealth: HealthProbe | null = null;
   try {
     if (stop.exitCode !== 0) {
       throw new Error(`offline-stop failed: ${stop.stderr.trim() || stop.stdout.trim() || stop.exitCode}`);
@@ -630,7 +662,7 @@ async function jobMonthlyVacuum(args: Args): Promise<{ report: Record<string, un
     );
   } finally {
     start = await runJsonCommand(join(args.repoRoot, "scripts/harness-memd"), ["start", "--quiet"], args.repoRoot);
-    postHealth = await probeHealth(daemonPort(), 30000);
+    postHealth = await probeHealthUrl(healthTarget(args), 30000);
   }
   const report = {
     ...plan,
@@ -645,6 +677,59 @@ async function jobMonthlyVacuum(args: Args): Promise<{ report: Record<string, un
   };
   const path = writeReport(args, args.job, report);
   return { report: { ...report, report_path: path }, exitCode: vacuum?.exitCode === 0 ? 0 : 1 };
+}
+
+function writeLatest(args: Args, job: Job, report: Record<string, unknown>): { json: string; text: string } {
+  const dir = join(maintenanceDir(args), "reports");
+  mkdirSync(dir, { recursive: true });
+  const json = join(dir, `latest-${job}.json`);
+  const text = join(dir, `latest-${job}.txt`);
+  writeFileSync(json, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  writeFileSync(text, `${summaryLine(job, report)}\n`, "utf8");
+  return { json, text };
+}
+
+function summaryLine(job: Job, report: Record<string, unknown>): string {
+  const stamp = String(report.generated_at ?? new Date().toISOString());
+  if (job === "hourly-archive") {
+    return `${stamp} hourly-archive ${report.started ? `started pid ${report.pid}` : String(report.skipped ?? "no-op")}`;
+  }
+  const m = report.metrics as MonitorMetrics | undefined;
+  const parts = [`${stamp} ${job}`];
+  if (m) {
+    parts.push(`DB ${(m.db_bytes / GiB).toFixed(2)}GiB`);
+    parts.push(`archive ${m.archive_stubs_archived}`);
+    parts.push(`payload欠落 ${m.archived_missing_payload}`);
+    parts.push(`回収可能 ${(m.reclaimable_bytes / GiB).toFixed(2)}GiB`);
+  }
+  if (typeof report.eligible_archived_rows === "number") {
+    parts.push(`purge可能 ${report.eligible_archived_rows}`);
+  }
+  if (typeof report.reclaimable_bytes === "number" && !m) {
+    parts.push(`回収可能 ${(Number(report.reclaimable_bytes) / GiB).toFixed(2)}GiB`);
+  }
+  const alerts = Array.isArray(report.alerts) ? report.alerts.length : 0;
+  parts.push(alerts > 0 ? `異常 ${alerts}件` : "異常なし");
+  return parts.join(" / ");
+}
+
+function sendNotification(title: string, body: string): { sent: boolean; error: string | null } {
+  const script = [
+    "on run argv",
+    "display notification (item 1 of argv) with title (item 2 of argv)",
+    "end run",
+  ];
+  const args: string[] = [];
+  for (const line of script) {
+    args.push("-e", line);
+  }
+  args.push(body, title);
+  const result = Bun.spawnSync(["osascript", ...args]);
+  if (result.exitCode === 0) return { sent: true, error: null };
+  return {
+    sent: false,
+    error: (result.stderr.toString().trim() || `osascript exit ${result.exitCode}`).slice(0, 300),
+  };
 }
 
 function printHuman(job: Job, report: Record<string, unknown>): void {
@@ -670,6 +755,7 @@ function printHuman(job: Job, report: Record<string, unknown>): void {
     }
   }
   if (report.report_path) lines.push(`report: ${report.report_path}`);
+  if (report.latest_text) lines.push(`latest: ${report.latest_text}`);
   process.stdout.write(`${lines.join("\n")}\n`);
 }
 
@@ -688,7 +774,17 @@ async function main(): Promise<void> {
           ? jobWeeklyPurge
           : jobMonthlyVacuum;
   const { report, exitCode } = await runner(args);
-  const finished = { ...report, duration_ms: Date.now() - startedAt };
+  const withTiming: Record<string, unknown> = { ...report, duration_ms: Date.now() - startedAt };
+  const latest = writeLatest(args, args.job, withTiming);
+  const alerts = Array.isArray(withTiming.alerts) ? withTiming.alerts.length : 0;
+  const shouldNotify = args.notify === "always" || (args.notify === "alerts" && alerts > 0);
+  const notification = shouldNotify
+    ? sendNotification(
+        alerts > 0 ? `harness-mem: 異常 ${alerts}件` : "harness-mem 週次レポート",
+        summaryLine(args.job, withTiming),
+      )
+    : null;
+  const finished = { ...withTiming, latest_json: latest.json, latest_text: latest.text, notification };
   if (args.json) {
     process.stdout.write(`${JSON.stringify(finished, null, 2)}\n`);
   } else {

@@ -35,6 +35,16 @@ plist は `launchd/*.plist.template` を `bun` の絶対パスと repo パスで
 
 ログ: `~/.harness-mem/maintenance/launchd-*.log`
 レポート JSON: `~/.harness-mem/maintenance/reports/`
+毎回の要約（1行、常に最新）: `~/.harness-mem/maintenance/reports/latest-<job>.txt`
+
+## 通知はどこに届くか
+
+`weekly-monitor` は月曜 08:30 に **macOS の通知**を出し、同時に `latest-weekly-monitor.txt` を書き換える。通知が出ない設定の Mac でも、この 1 行ファイルを見れば同じ内容が分かる。
+
+- 正常時: タイトル「harness-mem 週次レポート」、本文に DB サイズ、archive 行数、payload 欠落、回収可能量、purge 可能行数。
+- 異常時: タイトル「harness-mem: 異常 N件」。通知が許可されていない場合は本文が空になるので、ファイルを見る。
+
+通知の許可は macOS の「システム設定 > 通知」で `osascript` または「スクリプトエディタ」に対して行う。許可が無いと通知は出ない（スクリプトは成功扱いで終わる）。
 
 ## 手で回す
 

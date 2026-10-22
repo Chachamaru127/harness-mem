@@ -13,6 +13,8 @@
     <string>weekly-monitor</string>
     <string>--retention-days</string>
     <string>7</string>
+    <string>--notify</string>
+    <string>always</string>
   </array>
   <key>WorkingDirectory</key>
   <string>__REPO_ROOT__</string>

@@ -59,7 +59,7 @@ describe("maintenance runner", () => {
   test("monitor is read-only and writes a report", () => {
     const box = sandbox();
     bootstrapDatabase(box.env, box.dbPath);
-    const result = run([RUNNER, "--job", "weekly-monitor", "--json", "--db-path", box.dbPath, "--state-dir", box.stateDir], box.env);
+    const result = run([RUNNER, "--job", "weekly-monitor", "--json", "--db-path", box.dbPath, "--state-dir", box.stateDir, "--health-url", "off"], box.env);
     expect(result.status).toBe(0);
     const report = parseJson(result.stdout);
     const metrics = report.metrics as Record<string, number>;
@@ -69,6 +69,12 @@ describe("maintenance runner", () => {
     const reportPath = String(report.report_path);
     expect(reportPath.startsWith(join(box.stateDir, "maintenance", "reports"))).toBe(true);
     expect(existsSync(reportPath)).toBe(true);
+    const latestText = String(report.latest_text);
+    expect(existsSync(latestText)).toBe(true);
+    const summary = readFileSync(latestText, "utf8");
+    expect(summary).toContain("weekly-monitor");
+    expect(summary).toContain("異常なし");
+    expect(existsSync(String(report.latest_json))).toBe(true);
   });
 
   test("purge and vacuum jobs are report-only without --execute", () => {
