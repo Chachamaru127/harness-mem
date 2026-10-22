@@ -6,10 +6,12 @@
 
 | 頻度 | 仕事 | 自動 | 内容 |
 |---|---|---|---|
-| 毎時 :05 | `hourly-archive` | する | triage が `compact` と判定した行を archive し、vector を削る。既にループが動いていれば何もしない。 |
+| 毎時 :05 | `hourly-archive` | する | triage が `compact` と判定した行を archive し、vector を削る。既にループが動いていれば何もしない。1 回 50 行、最大 120 バッチ、55 分で打ち切る。 |
 | 週次 月 08:30 | `weekly-monitor` | する（読取のみ） | DB/WAL サイズ、archive 残、payload 欠落、freelist、health、purge 可能行数。閾値超えは exit 2。 |
 | 月初 03:30 | `monthly-vacuum` | しない（計画のみ） | 回収可能バイト数と実行コマンドを出す。実行は人が backup を渡す。 |
 | 随時 | `weekly-purge` | しない（計画のみ） | retention を満たす archive 済み行数と実行コマンドを出す。実行は不可逆なので承認後。 |
+
+バッチ数 120 は 2026-10-22 に下げた値。240 で回すと archive 直後に daemon が再起動した（`record_write_failed` と 13 秒の ingest tick を伴う）。速さより daemon の安定を取る。
 
 purge と VACUUM が自動で走らないのは設計。どちらも戻せない、またはサービスを止めるため、backup evidence を人が渡したときだけ実行する。
 
