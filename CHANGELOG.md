@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-10-29
+
 - Add an opt-in Living Memory pipeline that triages, summarizes and archives older captures. **Off by default.** Nothing runs unless the loops are invoked (`scripts/triage-loop.ts`, `scripts/summary-loop.ts`, `scripts/triage-compact-loop.ts`) or `HARNESS_MEM_TRIAGE_ENABLED` / `HARNESS_MEM_SUMMARY_ENABLED` are set. Every remote model call (Jev triage through Cloudflare, Clairic facts, Claude/Codex summary backends, and Ollama `:cloud` models) additionally requires `HARNESS_MEM_CLOUD_LLM=1`. A local secret scanner runs before any send and on summary output; matching sessions are held, not sent. Archiving only takes rows that a completed summary actually covers, so rows truncated out of the summary prompt stay in the primary layer. New tables: `mem_triage_decisions`, `mem_summary_jobs`.
 
 - Hard purge (`scripts/forget-maintenance-offline.ts`) never selects pipeline summary observations; they are the only copy of the rows they replaced.
@@ -3301,7 +3303,11 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.4...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.31.2...v0.32.0
+[0.31.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.31.1...v0.31.2
+[0.31.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.31.0...v0.31.1
+[0.31.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.4...v0.31.0
 [0.30.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.3...v0.30.4
 [0.30.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.2...v0.30.3
 [0.30.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.1...v0.30.2
