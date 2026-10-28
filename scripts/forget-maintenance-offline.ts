@@ -279,6 +279,18 @@ function selectArchivedCandidateIds(core: HarnessMemCore, limit: number): string
   return rows.map((row) => row.observation_id);
 }
 
+// Pipeline summaries are the compressed record of purged rows; purging them loses the only copy (2026-10-27 Set B).
+function excludeSummaryObservations(core: HarnessMemCore, ids: string[]): { kept: string[]; excluded: number } {
+  const db = core.getRawDb();
+  const hasJobs = db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mem_summary_jobs'").get();
+  if (!hasJobs || ids.length === 0) return { kept: ids, excluded: 0 };
+  const isSummary = db.query<{ hit: number }, [string]>(
+    "SELECT 1 AS hit FROM mem_summary_jobs WHERE summary_observation_id = ? LIMIT 1",
+  );
+  const kept = ids.filter((id) => !isSummary.get(id));
+  return { kept, excluded: ids.length - kept.length };
+}
+
 function count(core: HarnessMemCore, sql: string): number {
   const row = core.getRawDb().query<{ count: number }, []>(sql).get();
   return Number(row?.count ?? 0);
@@ -1029,6 +1041,11 @@ async function main(): Promise<void> {
       }
       archiveExecutedItem = firstItem(executed);
       candidateIds = stringArray(archiveExecutedItem.archived_ids);
+    }
+    const summaryFilter = excludeSummaryObservations(core, candidateIds);
+    candidateIds = summaryFilter.kept;
+    if (summaryFilter.excluded > 0) {
+      process.stderr.write(`[forget-maintenance] excluded ${summaryFilter.excluded} pipeline summary rows from hard purge\n`);
     }
     if (candidateIds.length === 0) {
       const autonomy = autonomyReport(core, args, {
