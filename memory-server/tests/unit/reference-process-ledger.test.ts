@@ -24,8 +24,26 @@ test("reservations survive owner replacement and release only after proven disap
   status = "absent";
   expect(restarted.status()).toEqual({ reserved: 1, unconfirmed: 1 });
   expect(restarted.reserve(2)).toBeTruthy();
-  // No PID reservation remains reserved even when its original parent is gone.
+  // No PID reservation remains reserved while its child may still hold the token.
   expect(restarted.reserve(2)).toBeNull();
+  db.close();
+});
+
+test("an unattached reservation is freed only when its owner and token process are both gone", () => {
+  const db = database();
+  db.query("INSERT INTO mem_meta(key,value,updated_at) VALUES(?,?,?)").run(
+    "reference_process:v1:source-reader:t1",
+    JSON.stringify({ token: "t1", parent_pid: 424242, pid: null, created_at: "2026-10-12T10:25:33.437Z" }), "x");
+  let parent: "present" | "unknown" | "absent" = "present";
+  let child: "present" | "unknown" | "absent" = "absent";
+  const ledger = new ReferenceProcessLedger(db, "source-reader", () => parent, () => child);
+  expect(ledger.reserve(1)).toBeNull();
+  parent = "absent"; child = "present";
+  expect(ledger.reserve(1)).toBeNull();
+  child = "unknown";
+  expect(ledger.reserve(1)).toBeNull();
+  child = "absent";
+  expect(ledger.reserve(1)).toBeTruthy();
   db.close();
 });
 
