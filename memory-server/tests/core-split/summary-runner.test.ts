@@ -232,6 +232,35 @@ describe("runSummaryBatch", () => {
     expect(summaryRows(db)).toHaveLength(0);
   });
 
+  test("a non-loopback summary endpoint needs the cloud opt-in", async () => {
+    const db = createTestDb();
+    insertTestObservation(db, { id: "obs-a", session_id: "s1", content: "決定: BLOB で持つ。" });
+    decide(db, "obs-a");
+    const result = await runSummaryBatch(db, config({ cloudLlmEnabled: false, summaryModel: "local-model", summaryEndpoint: "https://external.example.test" }), okDeps);
+    expect(result.skipped).toBe("disabled");
+    const local = await runSummaryBatch(db, config({ cloudLlmEnabled: false, summaryModel: "local-model", summaryEndpoint: "http://127.0.0.1:11434" }), okDeps);
+    expect(local.summarized).toBe(1);
+  });
+
+  test("a retry rewrites a partial summary and replaces its links", async () => {
+    const db = createTestDb();
+    insertTestObservation(db, { id: "obs-a", session_id: "s1", content: "決定: A。", created_at: "2026-01-01T00:00:00.000Z" });
+    decide(db, "obs-a");
+    db.exec(`CREATE TRIGGER fail_link BEFORE INSERT ON mem_links WHEN NEW.relation = 'summarizes' BEGIN SELECT RAISE(ABORT, 'link failure'); END`);
+    const first = await runSummaryBatch(db, config(), { ...okDeps, summary: { summarize: async () => ({ ok: true, summary: "決定: A。" }) } });
+    expect(first.failed).toBe(1);
+    expect(summaryRows(db)).toHaveLength(0);
+    db.exec("DROP TRIGGER fail_link");
+    insertTestObservation(db, { id: "obs-b", session_id: "s1", content: "決定: B。", created_at: "2026-01-01T00:00:01.000Z" });
+    decide(db, "obs-b");
+    const second = await runSummaryBatch(db, config(), { ...okDeps, summary: { summarize: async () => ({ ok: true, summary: "決定: A と B。" }) } });
+    expect(second.summarized).toBe(1);
+    expect(summaryRows(db)[0]?.content).toBe("決定: A と B。");
+    const linked = db.query<{ to_observation_id: string }, []>(
+      "SELECT to_observation_id FROM mem_links WHERE relation = 'summarizes' ORDER BY to_observation_id").all().map((r) => r.to_observation_id);
+    expect(linked).toEqual(["obs-a", "obs-b"]);
+  });
+
   test("cloud models and Clairic stay off without HARNESS_MEM_CLOUD_LLM", async () => {
     const db = createTestDb();
     insertTestObservation(db, { id: "obs-a", session_id: "s1", content: "決定: BLOB で持つ。" });

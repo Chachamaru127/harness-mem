@@ -55,6 +55,16 @@ function emptyResult(skipped?: SummaryRunResult["skipped"]): SummaryRunResult {
   return { scanned: 0, summarized: 0, blocked: 0, failed: 0, skipped };
 }
 
+function isLoopbackEndpoint(endpoint: string | undefined): boolean {
+  if (!endpoint) return true;
+  try {
+    const host = new URL(endpoint).hostname.replace(/^\[|\]$/g, "");
+    return host === "localhost" || host === "::1" || /^127\./.test(host);
+  } catch {
+    return false;
+  }
+}
+
 function summaryIdFor(sessionId: string, model: string): string {
   return `obs_summary_${createHash("sha256").update(`${sessionId}:${model}`).digest("hex").slice(0, 24)}`;
 }
@@ -75,7 +85,7 @@ export async function runSummaryBatch(
   const model = config.summaryModel || "glm-5.3-flash:cloud";
   // Every remote path needs the explicit cloud opt-in: Claude/Codex backends, Ollama ":cloud" models, and Clairic.
   const remoteSummary = config.summaryBackend === "codex-app-server" || config.summaryBackend === "claude-code"
-    || model.endsWith(":cloud");
+    || model.endsWith(":cloud") || !isLoopbackEndpoint(config.summaryEndpoint);
   if (remoteSummary && config.cloudLlmEnabled !== true) return emptyResult("disabled");
   const clairicAllowed = config.clairicEnabled !== false && config.cloudLlmEnabled === true;
   const now = nowIso();
@@ -227,22 +237,31 @@ export async function runSummaryBatch(
       }
 
       const summaryId = summaryIdFor(session.session_id, model);
-      if (!summaryExists.get(summaryId)) {
-        insertSummaryObservation(db, {
-          id: summaryId,
-          project: session.project,
-          sessionId: session.session_id,
-          title: `要約: ${session.session_id}`,
-          content: generated.summary,
-          tags: [
-            "summary",
-            `session:${session.session_id}`,
-            ...(facts.version ? [`version:${facts.version}`] : []),
-          ],
-        });
-      }
-      linkSummaryToSources(db, summaryId, covered.map((source) => source.id), nowIso());
-      completeSummaryJob(db, key, summaryId);
+      // Content, coverage links and completion commit together. A summary row left by an
+      // earlier partial run is rewritten and its links replaced, so links never point at
+      // rows the stored content does not describe.
+      db.transaction(() => {
+        if (summaryExists.get(summaryId)) {
+          db.query("UPDATE mem_observations SET content = ?, content_redacted = ?, updated_at = ? WHERE id = ?")
+            .run(generated.summary, generated.summary, nowIso(), summaryId);
+          db.query("DELETE FROM mem_links WHERE from_observation_id = ? AND relation = 'summarizes'").run(summaryId);
+        } else {
+          insertSummaryObservation(db, {
+            id: summaryId,
+            project: session.project,
+            sessionId: session.session_id,
+            title: `要約: ${session.session_id}`,
+            content: generated.summary,
+            tags: [
+              "summary",
+              `session:${session.session_id}`,
+              ...(facts.version ? [`version:${facts.version}`] : []),
+            ],
+          });
+        }
+        linkSummaryToSources(db, summaryId, covered.map((source) => source.id), nowIso());
+        completeSummaryJob(db, key, summaryId);
+      })();
       result.summarized += 1;
     } catch (error) {
       const code = (error as { code?: unknown } | null)?.code;
