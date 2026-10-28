@@ -623,4 +623,45 @@ export interface Config {
    *  daemon 起動時に env / userConfig から一度だけ解決し、search hot path では
    *  config 経由で読む（per-search の process.env 読み取りを廃止）。 */
   temporalGraphEnabled?: boolean;
+  /** T1 (Living Memory): Stage 1 triage worker を有効にするか (既定 false = opt-in)。 */
+  triageEnabled?: boolean;
+  /** T1: triage に使うモデル ID (既定 typesafe/jev-1.14.0)。 */
+  triageModel?: string;
+  /** T1: keep と判定する閾値 (0〜1、既定 0.3)。 */
+  triageThreshold?: number;
+  /** T1: triage 呼び出しの同時実行数 (1〜8、既定 4)。 */
+  triageConcurrency?: number;
+  /** T1: triage 呼び出し 1 件あたりの timeout ms (1000〜120000、既定 30000)。 */
+  triageTimeoutMs?: number;
+  /** T5: triage の実行間隔 ms (60000〜3600000、既定 600000)。 */
+  triageIntervalMs?: number;
+  /** T5: 1 tick で判定する最大件数 (1〜500、既定 100)。 */
+  triageMaxPerTick?: number;
+  /** T5: durable な observation_type を Jev に送らず keep にする (既定 false = opt-in)。 */
+  triagePrefilterEnabled?: boolean;
+  /** T12: S 層の要約 worker を有効にするか (既定 false = opt-in)。 */
+  summaryEnabled?: boolean;
+  summaryBackend?: "ollama" | "codex-app-server" | "claude-code";
+  /** T12: 要約に使う生成モデル (既定 glm-5.3-flash:cloud)。 */
+  summaryModel?: string;
+  /** T12: 要約エンドポイント (既定 http://127.0.0.1:11434)。 */
+  summaryEndpoint?: string;
+  /** T12: 要約 worker の実行間隔 ms (60000〜3600000、既定 600000)。 */
+  summaryIntervalMs?: number;
+  /** T12: 1 tick で要約する最大セッション数 (1〜20、既定 5)。 */
+  summaryMaxSessions?: number;
+  /** T12: 1 セッションで読む最大観測数 (1〜200、既定 50)。 */
+  summaryMaxSources?: number;
+  /** T12: セッション要約の同時実行数 (1〜6、既定 2)。 */
+  summaryConcurrency?: number;
+  /** T12: Clairic 抽出を使うか (既定 true。資格情報が無ければ空の事実)。 */
+  clairicEnabled?: boolean;
+  /** T12: Clairic のモデル ID (既定 @cf/cloudflare/clairic)。 */
+  clairicModel?: string;
+  /** T1: クラウド LLM への egress を許可するゲート (既定 false)。 */
+  cloudLlmEnabled?: boolean;
+  /** T1: Cloudflare AI Gateway の account id。空なら undefined。 */
+  cloudflareAccountId?: string;
+  /** T1: Cloudflare AI Gateway の API token。空なら undefined。 */
+  cloudflareApiToken?: string;
 }

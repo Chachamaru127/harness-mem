@@ -9,7 +9,7 @@ type WorkerStdin = {
   end?: () => void;
 };
 
-export type MaintenanceTask = "consolidation" | "wal_checkpoint" | "search_audit_flush";
+export type MaintenanceTask = "consolidation" | "wal_checkpoint" | "search_audit_flush" | "triage" | "summary";
 type WorkerTask = MaintenanceTask | "recover_consolidation";
 
 interface WorkerReply {

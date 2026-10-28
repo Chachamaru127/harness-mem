@@ -1333,6 +1333,20 @@ export const DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS = 60000;
 export const DEFAULT_CLAUDE_CODE_BACKFILL_HOURS = 24;
 export const DEFAULT_SEARCH_RANKING = "hybrid_v3";
 export const DEFAULT_SEARCH_EXPAND_LINKS = true;
+// T1 (Living Memory): Stage 1 triage の既定値。仕様 §4.6 の operating point。
+export const DEFAULT_TRIAGE_MODEL = "typesafe/jev-1.14.0";
+export const DEFAULT_TRIAGE_THRESHOLD = 0.3;
+export const DEFAULT_TRIAGE_CONCURRENCY = 4;
+export const DEFAULT_TRIAGE_TIMEOUT_MS = 30000;
+export const DEFAULT_TRIAGE_INTERVAL_MS = 600000;
+export const DEFAULT_TRIAGE_MAX_PER_TICK = 100;
+export const DEFAULT_SUMMARY_MODEL = "glm-5.3-flash:cloud";
+export const DEFAULT_SUMMARY_ENDPOINT = "http://127.0.0.1:11434";
+export const DEFAULT_SUMMARY_INTERVAL_MS = 600000;
+export const DEFAULT_SUMMARY_MAX_SESSIONS = 5;
+export const DEFAULT_SUMMARY_MAX_SOURCES = 50;
+export const DEFAULT_SUMMARY_CONCURRENCY = 2;
+export const DEFAULT_CLAIRIC_MODEL = "@cf/cloudflare/clairic";
 export const DEFAULT_FORGET_MAINTENANCE_DB_BYTES_THRESHOLD = 10 * 1024 * 1024 * 1024;
 export const DEFAULT_FORGET_MAINTENANCE_WAL_BYTES_THRESHOLD = 512 * 1024 * 1024;
 export const DEFAULT_FORGET_MAINTENANCE_ACTIVE_OBSERVATIONS_THRESHOLD = 250_000;
@@ -1595,6 +1609,96 @@ export function getConfig(): Config {
     }
   }
 
+  // T1 (Living Memory): Stage 1 triage 設定。env のみを正本にする。
+  // triage は既定 off。cloud egress は明示 opt-in が無い限り起きない。
+  const triageEnabledRaw = process.env.HARNESS_MEM_TRIAGE_ENABLED;
+  const triageEnabled =
+    triageEnabledRaw === undefined || triageEnabledRaw.trim() === ""
+      ? false
+      : envFlag("HARNESS_MEM_TRIAGE_ENABLED", false);
+  const triageModel =
+    (process.env.HARNESS_MEM_TRIAGE_MODEL || "").trim() || DEFAULT_TRIAGE_MODEL;
+  const triageThresholdRaw = (process.env.HARNESS_MEM_TRIAGE_THRESHOLD || "").trim();
+  const triageThresholdValue = Number(triageThresholdRaw);
+  const triageThreshold =
+    triageThresholdRaw !== "" && Number.isFinite(triageThresholdValue)
+      ? Math.max(0, Math.min(1, triageThresholdValue))
+      : DEFAULT_TRIAGE_THRESHOLD;
+  const triageConcurrencyRaw = (process.env.HARNESS_MEM_TRIAGE_CONCURRENCY || "").trim();
+  const triageConcurrency = clampLimit(
+    triageConcurrencyRaw === "" ? undefined : triageConcurrencyRaw,
+    DEFAULT_TRIAGE_CONCURRENCY,
+    1,
+    8,
+  );
+  const triageTimeoutRaw = (process.env.HARNESS_MEM_TRIAGE_TIMEOUT_MS || "").trim();
+  const triageTimeoutMs = clampLimit(
+    triageTimeoutRaw === "" ? undefined : triageTimeoutRaw,
+    DEFAULT_TRIAGE_TIMEOUT_MS,
+    1000,
+    120000,
+  );
+  const triageIntervalRaw = (process.env.HARNESS_MEM_TRIAGE_INTERVAL_MS || "").trim();
+  const triageIntervalMs = clampLimit(
+    triageIntervalRaw === "" ? undefined : triageIntervalRaw,
+    DEFAULT_TRIAGE_INTERVAL_MS,
+    60000,
+    3600000,
+  );
+  const triageMaxPerTickRaw = (process.env.HARNESS_MEM_TRIAGE_MAX_PER_TICK || "").trim();
+  const triageMaxPerTick = clampLimit(
+    triageMaxPerTickRaw === "" ? undefined : triageMaxPerTickRaw,
+    DEFAULT_TRIAGE_MAX_PER_TICK,
+    1,
+    1000,
+  );
+  const triagePrefilterEnabled = envFlag("HARNESS_MEM_TRIAGE_PREFILTER", false);
+  // 完全一致のみ許可する。"true" / "01" などは opt-in にならない。
+  const cloudLlmEnabled = (process.env.HARNESS_MEM_CLOUD_LLM || "").trim() === "1";
+  const cloudflareAccountId = (process.env.CLOUDFLARE_ACCOUNT_ID || "").trim() || undefined;
+  const cloudflareApiToken = (process.env.CLOUDFLARE_API_TOKEN || "").trim() || undefined;
+  // T12 (Living Memory): Stage 2 summary worker. Off by default.
+  const summaryEnabled = envFlag("HARNESS_MEM_SUMMARY_ENABLED", false);
+  const summaryBackend = process.env.HARNESS_MEM_SUMMARY_BACKEND === "claude-code" ? "claude-code" : process.env.HARNESS_MEM_SUMMARY_BACKEND === "codex-app-server" ? "codex-app-server" : "ollama";
+  const summaryModel =
+    (process.env.HARNESS_MEM_SUMMARY_MODEL || "").trim() || (summaryBackend === "claude-code" ? "claude-haiku-5-5" : summaryBackend === "codex-app-server" ? "gpt-6-luna" : DEFAULT_SUMMARY_MODEL);
+  const summaryEndpoint =
+    (process.env.HARNESS_MEM_SUMMARY_ENDPOINT || "").trim() || DEFAULT_SUMMARY_ENDPOINT;
+  const summaryIntervalRaw = (process.env.HARNESS_MEM_SUMMARY_INTERVAL_MS || "").trim();
+  const summaryIntervalMs = clampLimit(
+    summaryIntervalRaw === "" ? undefined : summaryIntervalRaw,
+    DEFAULT_SUMMARY_INTERVAL_MS,
+    60000,
+    3600000,
+  );
+  const summaryMaxSessionsRaw = (process.env.HARNESS_MEM_SUMMARY_MAX_SESSIONS || "").trim();
+  const summaryMaxSessions = clampLimit(
+    summaryMaxSessionsRaw === "" ? undefined : summaryMaxSessionsRaw,
+    DEFAULT_SUMMARY_MAX_SESSIONS,
+    1,
+    200,
+  );
+  const summaryMaxSourcesRaw = (process.env.HARNESS_MEM_SUMMARY_MAX_SOURCES || "").trim();
+  const summaryMaxSources = clampLimit(
+    summaryMaxSourcesRaw === "" ? undefined : summaryMaxSourcesRaw,
+    DEFAULT_SUMMARY_MAX_SOURCES,
+    1,
+    200,
+  );
+  const summaryConcurrencyRaw = (process.env.HARNESS_MEM_SUMMARY_CONCURRENCY || "").trim();
+  const summaryConcurrency = clampLimit(
+    summaryConcurrencyRaw === "" ? undefined : summaryConcurrencyRaw,
+    DEFAULT_SUMMARY_CONCURRENCY,
+    1,
+    6,
+  );
+  const clairicEnabledRaw = (process.env.HARNESS_MEM_CLAIRIC_ENABLED || "").trim();
+  const clairicEnabled = clairicEnabledRaw === "0" || clairicEnabledRaw.toLowerCase() === "false"
+    ? false
+    : true;
+  const clairicModel =
+    (process.env.HARNESS_MEM_CLAIRIC_MODEL || "").trim() || DEFAULT_CLAIRIC_MODEL;
+
   return {
     partialFinalizeEnabled,
     partialFinalizeIntervalMs,
@@ -1667,6 +1771,27 @@ export function getConfig(): Config {
           : undefined,
     ttlPolicyByObservationType: ttlPolicyByObservationType ?? DEFAULT_TTL_POLICY_BY_OBSERVATION_TYPE,
     temporalGraphEnabled,
+    triageEnabled,
+    triageModel,
+    triageThreshold,
+    triageConcurrency,
+    triageTimeoutMs,
+    triageIntervalMs,
+    triageMaxPerTick,
+    triagePrefilterEnabled,
+    cloudLlmEnabled,
+    cloudflareAccountId,
+    cloudflareApiToken,
+    summaryEnabled,
+    summaryBackend,
+    summaryModel,
+    summaryEndpoint,
+    summaryIntervalMs,
+    summaryMaxSessions,
+    summaryMaxSources,
+    summaryConcurrency,
+    clairicEnabled,
+    clairicModel,
     dbPath,
     bindHost,
     bindPort: Number.isFinite(bindPort) ? bindPort : DEFAULT_BIND_PORT,

@@ -6,18 +6,6 @@ import { fileURLToPath } from "node:url";
 
 const config = getConfig();
 
-// A daemon killed with SIGKILL cannot reap its persistent children. Only a
-// worker whose script, orphan PPID, PID-start identity, canonical DB fingerprint,
-// and token all match is eligible; uncertain candidates are left alive.
-await recoverOrphanedSearchWorkers({
-  dbPath: config.dbPath,
-  scriptPath: fileURLToPath(new URL("./tools/search-worker.ts", import.meta.url)),
-});
-await recoverOrphanedSearchWorkers({
-  dbPath: config.dbPath,
-  scriptPath: fileURLToPath(new URL("./tools/background-maintenance-worker.ts", import.meta.url)),
-});
-
 // リモートバインド安全チェック: 127.0.0.1/localhost 以外でトークン未設定はエラー終了
 const remoteBindError = checkRemoteBindSafety(config.bindHost);
 if (remoteBindError) {
@@ -30,8 +18,41 @@ if (isRemote) {
   console.error(`[harness-memd] リモートモードで起動 host=${config.bindHost}:${config.bindPort} (Bearer Token 認証有効)`);
 }
 
-const core = new HarnessMemCore(config);
-const server = startHarnessMemServer(core, config);
+// The old plugin's `harness-memd start` treats "no listener" as "daemon dead"
+// and runs `launchctl kickstart -k` while this process is still initializing.
+// Hold the port with a 503 listener until the synchronous DB init finishes, so
+// the hook sees a listener and leaves the process alone.
+let startupListener: { stop: (force?: boolean) => void } | null = null;
+try {
+  startupListener = Bun.serve({
+    hostname: config.bindHost,
+    port: config.bindPort,
+    fetch: () => new Response("starting", { status: 503 }),
+  });
+} catch {
+  // Another process owns the port; the real server will report the conflict.
+}
+
+let core: HarnessMemCore;
+try {
+  // A daemon killed with SIGKILL cannot reap its persistent children. Only a
+  // worker whose script, orphan PPID, PID-start identity, canonical DB fingerprint,
+  // and token all match is eligible; uncertain candidates are left alive.
+  await recoverOrphanedSearchWorkers({
+    dbPath: config.dbPath,
+    scriptPath: fileURLToPath(new URL("./tools/search-worker.ts", import.meta.url)),
+  });
+  await recoverOrphanedSearchWorkers({
+    dbPath: config.dbPath,
+    scriptPath: fileURLToPath(new URL("./tools/background-maintenance-worker.ts", import.meta.url)),
+  });
+
+  core = new HarnessMemCore(config);
+} finally {
+  startupListener?.stop(true);
+}
+
+const server = startHarnessMemServer(core!, config);
 
 console.error(`[harness-memd] listening on http://${config.bindHost}:${config.bindPort}`);
 

@@ -15,6 +15,8 @@ import {
   rebuildContentDedupeClaimsProjection,
 } from "../db/schema";
 import { runSearchDbMaintenanceIfDue } from "../db/search-maintenance";
+import { runTriageBatch, type TriageRunResult } from "./triage-runner";
+import { runSummaryBatch, type SummaryRunResult } from "./summary-runner";
 import type { StorageAdapter } from "../db/storage-adapter";
 import { SqliteStorageAdapter } from "../db/sqlite-adapter";
 import { createStorageAdapter } from "../db/adapter-factory";
@@ -1836,7 +1838,8 @@ export function isLightweightChildProcess(): boolean {
     process.env.HARNESS_MEM_PROJECTS_STATS_CHILD_PROCESS === "1" ||
     process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD === "1" ||
     process.env.HARNESS_MEM_VECTOR_BACKFILL_CHILD === "1" ||
-    process.env.HARNESS_MEM_OBSERVATION_MATERIALIZE_CHILD === "1"
+    process.env.HARNESS_MEM_OBSERVATION_MATERIALIZE_CHILD === "1" ||
+    process.env.HARNESS_MEM_ARCHIVE_CHILD_PROCESS === "1"
   );
 }
 
@@ -1894,6 +1897,10 @@ export class HarnessMemCore {
   private cancelMetrics: (() => void) | null = null;
   /** S132: opt-in restore-capable archive maintenance scheduler */
   private forgetMaintenanceTimer: ReturnType<typeof setInterval> | null = null;
+  /** T5: Stage 1 triage scheduler (off unless triage and cloud egress are on). */
+  private triageTimer: ReturnType<typeof setInterval> | null = null;
+  /** T12: Stage 2 summary scheduler (off unless summaryEnabled). */
+  private summaryTimer: ReturnType<typeof setInterval> | null = null;
   private forgetMaintenanceRunning = false;
   private forgetMaintenanceBackoffUntilMs = 0;
   /** S127-002: warm persistent worker for normal vector search. */
@@ -3467,6 +3474,16 @@ export class HarnessMemCore {
       this.vectorBackfillWorker.monitor();
     }
     this.startForgetMaintenanceScheduler();
+    if (this.config.triageEnabled === true && this.config.cloudLlmEnabled === true) {
+      const intervalMs = clampLimit(this.config.triageIntervalMs, 600000, 60000, 3600000);
+      this.triageTimer = setInterval(() => this.scheduleMaintenance("triage"), intervalMs);
+      this.scheduleMaintenance("triage");
+    }
+    if (this.config.summaryEnabled === true) {
+      const intervalMs = clampLimit(this.config.summaryIntervalMs, 600000, 60000, 3600000);
+      this.summaryTimer = setInterval(() => this.scheduleMaintenance("summary"), intervalMs);
+      this.scheduleMaintenance("summary");
+    }
   }
 
   private getOrCreatePeriodicIngestWorker(): PeriodicIngestWorkerClient {
@@ -3547,6 +3564,11 @@ export class HarnessMemCore {
     if (task === "consolidation" && this.vectorBackfillWorker?.isRunning() === true) return;
     if (task === "wal_checkpoint" && !isWalRetry) this.resetWalCheckpointRetry();
     if (task === "search_audit_flush") {
+      this.getOrCreateBackgroundMaintenanceWorker().schedule(task);
+      return;
+    }
+    if (task === "triage" || task === "summary") {
+      if (!this.maintenanceWorkerConfigCompatible) return;
       this.getOrCreateBackgroundMaintenanceWorker().schedule(task);
       return;
     }
@@ -9521,6 +9543,16 @@ export class HarnessMemCore {
     return flushSearchSideEffectSpool(this.db, this.config.dbPath, batchLimit);
   }
 
+  /** T5: run one bounded Stage 1 triage batch. No-op unless explicitly enabled. */
+  async runMaintenanceTriage(): Promise<TriageRunResult> {
+    return runTriageBatch(this.db, this.config);
+  }
+
+  /** T12: run one bounded Stage 2 summary batch. No-op unless explicitly enabled. */
+  async runMaintenanceSummary(): Promise<SummaryRunResult> {
+    return runSummaryBatch(this.db, this.config);
+  }
+
   /**
    * S81-B03: build the LLM-backed adjudicator used by contradiction
    * detection. Attempts the Claude Agent SDK provider (S81-C02) first, then
@@ -10143,6 +10175,14 @@ export class HarnessMemCore {
     if (this.forgetMaintenanceTimer) {
       clearInterval(this.forgetMaintenanceTimer);
       this.forgetMaintenanceTimer = null;
+    }
+    if (this.triageTimer) {
+      clearInterval(this.triageTimer);
+      this.triageTimer = null;
+    }
+    if (this.summaryTimer) {
+      clearInterval(this.summaryTimer);
+      this.summaryTimer = null;
     }
     const hadVectorBackfill = !lightweightChild && this.vectorBackfillWorker.isTicking();
     const vectorBackfillStop = lightweightChild ? Promise.resolve() : this.vectorBackfillWorker.shutdown();
