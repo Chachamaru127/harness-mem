@@ -59,7 +59,10 @@ function isLoopbackEndpoint(endpoint: string | undefined): boolean {
   if (!endpoint) return true;
   try {
     const host = new URL(endpoint).hostname.replace(/^\[|\]$/g, "");
-    return host === "localhost" || host === "::1" || /^127\./.test(host);
+    // Only a literal IPv4 in 127.0.0.0/8: a DNS name such as 127.remote.example is remote.
+    const loopbackV4 = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+    return host === "localhost" || host === "::1"
+      || (loopbackV4 !== null && loopbackV4.slice(1).every((octet) => Number(octet) <= 255));
   } catch {
     return false;
   }

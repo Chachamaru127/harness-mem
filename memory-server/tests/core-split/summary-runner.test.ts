@@ -238,6 +238,9 @@ describe("runSummaryBatch", () => {
     decide(db, "obs-a");
     const result = await runSummaryBatch(db, config({ cloudLlmEnabled: false, summaryModel: "local-model", summaryEndpoint: "https://external.example.test" }), okDeps);
     expect(result.skipped).toBe("disabled");
+    for (const endpoint of ["https://127.remote.example", "http://127.0.0.1.example.test", "http://127.0.0.256"]) {
+      expect((await runSummaryBatch(db, config({ cloudLlmEnabled: false, summaryModel: "local-model", summaryEndpoint: endpoint }), okDeps)).skipped).toBe("disabled");
+    }
     const local = await runSummaryBatch(db, config({ cloudLlmEnabled: false, summaryModel: "local-model", summaryEndpoint: "http://127.0.0.1:11434" }), okDeps);
     expect(local.summarized).toBe(1);
   });
