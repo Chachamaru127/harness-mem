@@ -119,6 +119,31 @@ describe("maintenance runner", () => {
     }
   });
 
+  test("archive loop only selects rows a completed summary links", () => {
+    const box = sandbox();
+    bootstrapDatabase(box.env, box.dbPath);
+    const db = new Database(box.dbPath);
+    const now = "2026-10-27T00:00:00.000Z";
+    db.query("INSERT INTO mem_sessions(session_id, platform, project, started_at, created_at, updated_at) VALUES ('s1','claude','p',?,?,?)").run(now, now, now);
+    for (const id of ["obs-covered", "obs-uncovered", "obs-summary"]) {
+      db.query(`INSERT INTO mem_observations(id, platform, project, session_id, content, content_redacted, tags_json, privacy_tags_json, created_at, updated_at)
+                VALUES (?, 'claude', 'p', 's1', 'x', 'x', '[]', '[]', ?, ?)`).run(id, now, now);
+    }
+    for (const id of ["obs-covered", "obs-uncovered"]) {
+      db.query(`INSERT INTO mem_triage_decisions(observation_id, project, model, threshold, score, durable, decision, fallback, batch_id, created_at)
+                VALUES (?, 'p', 'm', 0.3, 0.1, 0.1, 'compact', 0, 'b', ?)`).run(id, now);
+    }
+    db.query(`INSERT INTO mem_summary_jobs(session_id, project, model, status, summary_observation_id, created_at, updated_at)
+              VALUES ('s1', 'p', 'm', 'completed', 'obs-summary', ?, ?)`).run(now, now);
+    db.query("INSERT INTO mem_links(from_observation_id, to_observation_id, relation, created_at) VALUES ('obs-summary', 'obs-covered', 'summarizes', ?)").run(now);
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    db.close();
+    const result = run([join(ROOT, "scripts/triage-compact-loop.ts"), "--db-path", box.dbPath, "--model", "m", "--max-batches", "1"], box.env);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/"mode": "plan"/);
+    expect(result.stdout.match(/"candidate_count": (\d+)/)?.[1]).toBe("1");
+  });
+
   test("hourly archive reports instead of spawning without --execute", () => {
     const box = sandbox();
     bootstrapDatabase(box.env, box.dbPath);
@@ -126,6 +151,7 @@ describe("maintenance runner", () => {
     expect(result.status).toBe(0);
     const report = parseJson(result.stdout);
     expect(report.started).toBe(false);
+    expect(String(report.command)).toContain(`--db-path ${box.dbPath}`);
     expect(readdirSync(box.stateDir)).not.toContain("hourly-archive.pid");
   });
 

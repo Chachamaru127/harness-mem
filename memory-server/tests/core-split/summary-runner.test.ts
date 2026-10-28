@@ -16,6 +16,7 @@ function config(overrides: Parameters<typeof createTestConfig>[0] = {}) {
     summaryMaxSessions: 5,
     summaryMaxSources: 50,
     clairicEnabled: true,
+    cloudLlmEnabled: true,
     ...overrides,
   });
 }
@@ -202,6 +203,41 @@ describe("runSummaryBatch", () => {
     expect(jobs(db)).toEqual([
       { status: "completed", summary_observation_id: summaries[0]!.id, error: null },
     ]);
+  });
+
+  test("only rows that fit in the prompt are linked as summarized", async () => {
+    const db = createTestDb();
+    insertTestObservation(db, { id: "obs-fit", session_id: "s1", content: "決定: 小さな行。 ".repeat(300), created_at: "2026-01-01T00:00:00.000Z" });
+    insertTestObservation(db, { id: "obs-cut", session_id: "s1", content: "理由: 長い行。 ".repeat(400), created_at: "2026-01-01T00:00:01.000Z" });
+    decide(db, "obs-fit");
+    decide(db, "obs-cut");
+    const result = await runSummaryBatch(db, config(), okDeps);
+    expect(result.summarized).toBe(1);
+    const linked = db.query<{ to_observation_id: string }, []>(
+      "SELECT to_observation_id FROM mem_links WHERE relation = 'summarizes'").all().map((r) => r.to_observation_id);
+    expect(linked).toEqual(["obs-fit"]);
+  });
+
+  test("cloud models and Clairic stay off without HARNESS_MEM_CLOUD_LLM", async () => {
+    const db = createTestDb();
+    insertTestObservation(db, { id: "obs-a", session_id: "s1", content: "決定: BLOB で持つ。" });
+    decide(db, "obs-a");
+    const originalFetch = globalThis.fetch;
+    let fetches = 0;
+    globalThis.fetch = (async () => { fetches += 1; throw new Error("network must not be used"); }) as unknown as typeof fetch;
+    try {
+      const cloudModel = await runSummaryBatch(db, config({ cloudLlmEnabled: false }));
+      expect(cloudModel.skipped).toBe("disabled");
+      let extracted = 0;
+      const local = await runSummaryBatch(db, config({ cloudLlmEnabled: false, summaryModel: "qwen3:8b" }), {
+        summary: { summarize: async ({ facts }) => { extracted += facts.decision ? 1 : 0; return { ok: true, summary: "決定: ローカル要約。" }; } },
+      });
+      expect(local.summarized).toBe(1);
+      expect(extracted).toBe(0);
+      expect(fetches).toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   test("a scanner-blocked session is marked blocked and writes no summary", async () => {

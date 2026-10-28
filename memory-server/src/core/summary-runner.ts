@@ -72,8 +72,12 @@ export async function runSummaryBatch(
   deps: SummaryDeps = {},
 ): Promise<SummaryRunResult> {
   if (config.summaryEnabled !== true) return emptyResult("disabled");
-  if ((config.summaryBackend === "codex-app-server" || config.summaryBackend === "claude-code") && config.cloudLlmEnabled !== true) return emptyResult("disabled");
   const model = config.summaryModel || "glm-5.3-flash:cloud";
+  // Every remote path needs the explicit cloud opt-in: Claude/Codex backends, Ollama ":cloud" models, and Clairic.
+  const remoteSummary = config.summaryBackend === "codex-app-server" || config.summaryBackend === "claude-code"
+    || model.endsWith(":cloud");
+  if (remoteSummary && config.cloudLlmEnabled !== true) return emptyResult("disabled");
+  const clairicAllowed = config.clairicEnabled !== false && config.cloudLlmEnabled === true;
   const now = nowIso();
   // A worker that died between start and completion leaves a 'running' row.
   // After an hour, treat it as failed so the retry path can pick it up.
@@ -91,7 +95,7 @@ export async function runSummaryBatch(
   }
   const maxSessions = clampLimit(config.summaryMaxSessions, 5, 1, 20);
   const maxSources = clampLimit(config.summaryMaxSources, 50, 1, 200);
-  const clairic = deps.clairic ?? (config.clairicEnabled === false
+  const clairic = deps.clairic ?? (!clairicAllowed
     ? { extract: async () => EMPTY_FACTS }
     : new ClairicClient({
         accountId: config.cloudflareAccountId,
@@ -176,10 +180,19 @@ export async function runSummaryBatch(
         return;
       }
 
-      const text = sources
-        .map((source) => source.content)
-        .join("\n---\n")
-        .slice(0, MAX_LOG_CHARS);
+      // Only rows whose whole content fits in the prompt are linked as summarized; the
+      // archive loop archives linked rows only, so truncated rows stay in the primary layer.
+      const covered: SourceRow[] = [];
+      let text = "";
+      for (const source of sources) {
+        const next = covered.length === 0 ? source.content : `${text}\n---\n${source.content}`;
+        if (next.length > MAX_LOG_CHARS) {
+          if (covered.length === 0) text = source.content.slice(0, MAX_LOG_CHARS);
+          break;
+        }
+        text = next;
+        covered.push(source);
+      }
       const facts = config.clairicEnabled === false ? EMPTY_FACTS : await clairic.extract(text);
       const generated = await summary.summarize({
         project: session.project,
@@ -219,7 +232,7 @@ export async function runSummaryBatch(
           ],
         });
       }
-      linkSummaryToSources(db, summaryId, sources.map((source) => source.id), nowIso());
+      linkSummaryToSources(db, summaryId, covered.map((source) => source.id), nowIso());
       completeSummaryJob(db, key, summaryId);
       result.summarized += 1;
     } catch (error) {

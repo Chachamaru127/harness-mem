@@ -7,6 +7,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+- Add an opt-in Living Memory pipeline that triages, summarizes and archives older captures. **Off by default.** Nothing runs unless the loops are invoked (`scripts/triage-loop.ts`, `scripts/summary-loop.ts`, `scripts/triage-compact-loop.ts`) or `HARNESS_MEM_TRIAGE_ENABLED` / `HARNESS_MEM_SUMMARY_ENABLED` are set. Every remote model call (Jev triage through Cloudflare, Clairic facts, Claude/Codex summary backends, and Ollama `:cloud` models) additionally requires `HARNESS_MEM_CLOUD_LLM=1`. A local secret scanner runs before any send and on summary output; matching sessions are held, not sent. Archiving only takes rows that a completed summary actually covers, so rows truncated out of the summary prompt stay in the primary layer. New tables: `mem_triage_decisions`, `mem_summary_jobs`.
+
+- Hard purge (`scripts/forget-maintenance-offline.ts`) never selects pipeline summary observations; they are the only copy of the rows they replaced.
+
+- Schedule forget maintenance outside the daemon with macOS LaunchAgents (`scripts/install-maintenance-jobs.sh`, templates in `launchd/`): hourly archive, weekly monitor with a Notification Center summary, monthly VACUUM. Purge and VACUUM stay report-only unless `--execute` and backup evidence are given. The hourly archive passes its `--db-path` to the archive loop.
+
+- Replace the persistent search worker after two consecutive request timeouts. Previously a worker that stopped answering stayed in place and every search waited 8s and fell back to lexical until a manual kill.
+
+- Free source-reader and project-resolver process reservations that were left without a child PID when their owner crashed, once the owner PID is gone and no process carries the reservation token. Two such rows blocked every periodic history ingest (`record_write_failed`) until now.
+
+- `harness-memd start` no longer runs `launchctl kickstart -k` while the LaunchAgent daemon is still starting, which killed it mid-startup.
+
 - Move the environment list to the RouteCLI dashboard. The Mem UI `Environment` tab now links to `http://127.0.0.1:8765/`, and `GET /v1/admin/environment` and the UI `GET /api/environment` return `410` with `error: "environment_moved"` and `moved_to`. The environment collector was removed. Upstream version tracking (`harness-mem versions`, `tool-versions.json`, history) and the WorkGraph tab are unchanged.
 
 - The Web UI server now listens on `127.0.0.1` by default instead of all interfaces. Set `HARNESS_MEM_UI_HOST` (for example `0.0.0.0`) to expose it on the LAN. Previously `doctor --fix`, `setup`, and update repair restarted the UI through `harness-memd` on port 37901 bound to every interface.
