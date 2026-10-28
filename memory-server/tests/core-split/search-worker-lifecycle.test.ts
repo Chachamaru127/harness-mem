@@ -196,6 +196,35 @@ describe("search worker lifecycle", () => {
     }
   }, 10_000);
 
+  test("a worker that stops answering is replaced after consecutive timeouts", async () => {
+    const root = mkdtempSync(join(tmpdir(), "harness-mem-search-hung-"));
+    tempPaths.push(root);
+    const script = join(root, "hung-worker.ts");
+    const pidLog = join(root, "pids");
+    writeFileSync(script, `import { appendFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(pidLog)}, process.pid + "\\n");\nsetInterval(() => {}, 1000);\n`);
+    const client = new PersistentSearchWorkerClient({
+      scriptPath: script,
+      cwd: root,
+      env: { PATH: process.env.PATH, HOME: process.env.HOME },
+      maxPending: 4,
+      dbPath: join(root, "memory.db"),
+    });
+    const pids = () => (readFileSafe(pidLog)).split("\n").filter(Boolean).map(Number);
+    const ask = () => client.request({ query: "q", limit: 1, vector_search: false }, 200).catch((error: Error) => error);
+    try {
+      expect(String(await ask())).toContain("timed out");
+      expect(String(await ask())).toContain("timed out");
+      await waitFor(() => pids().length === 1 && !isAlive(pids()[0]!));
+      await waitFor(() => !client.hasLiveProcess());
+      expect(String(await ask())).toContain("timed out");
+      await waitFor(() => pids().length === 2);
+      for (const pid of pids()) spawnedPids.add(pid);
+      expect(pids()[1]).not.toBe(pids()[0]);
+    } finally {
+      await client.stop("fixture-complete");
+    }
+  }, 10_000);
+
   test("full audit spool fails closed with fixed privacy-safe worker output", async () => {
     const root = mkdtempSync(join(tmpdir(), "harness-mem-search-spool-full-"));
     tempPaths.push(root);
@@ -562,3 +591,11 @@ describe("search worker lifecycle", () => {
     expect(warnings.join("\n")).not.toContain("memory.db");
   });
 });
+
+function readFileSafe(path: string): string {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return "";
+  }
+}

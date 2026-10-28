@@ -1157,6 +1157,8 @@ interface PendingSearchWorkerRequest {
   spoolPhaseReceivedAtMs: number | null;
 }
 
+const SEARCH_WORKER_MAX_CONSECUTIVE_TIMEOUTS = 2;
+
 class SearchWorkerRequestTimeoutError extends Error {
   constructor(timeoutMs: number, readonly phaseTiming: SearchWorkerPhaseTiming) {
     super(`search worker request timed out after ${timeoutMs}ms`);
@@ -1272,6 +1274,7 @@ export class PersistentSearchWorkerClient {
   private stoppingPromise: Promise<void> | null = null;
   private permanentlyStopped = false;
   private workerCleanupFailed = false;
+  private consecutiveTimeouts = 0;
 
   constructor(
     private readonly options: {
@@ -1367,6 +1370,11 @@ export class PersistentSearchWorkerClient {
           phaseTiming.spool_append_commit_ms = Number((performance.now() - timedOut.spoolPhaseReceivedAtMs).toFixed(2));
         }
         reject(new SearchWorkerRequestTimeoutError(timeoutMs, phaseTiming));
+        // A worker that answers nothing is replaced; the next request spawns a fresh one (2026-10-28: a worker spun at 100% CPU for 24h).
+        if (++this.consecutiveTimeouts >= SEARCH_WORKER_MAX_CONSECUTIVE_TIMEOUTS) {
+          this.consecutiveTimeouts = 0;
+          this.killCurrentWorker(`${SEARCH_WORKER_MAX_CONSECUTIVE_TIMEOUTS} consecutive request timeouts`);
+        }
       }, timeoutMs);
       this.pending.set(id, {
         resolve,
@@ -1517,6 +1525,7 @@ export class PersistentSearchWorkerClient {
     }
     this.pending.delete(message.id);
     clearTimeout(pending.timer);
+    this.consecutiveTimeouts = 0;
     if (message.ok === true && message.response) {
       pending.resolve({
         response: message.response,
