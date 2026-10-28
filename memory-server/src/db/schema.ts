@@ -1953,37 +1953,48 @@ export function initFtsIndex(db: Database): boolean {
 
     // §45: title_fts / content_fts カラムは migrateSchema で追加済み
 
-    // トリガー更新: title_fts / content_fts を優先し、未設定なら title / content_redacted にフォールバック
-    db.exec(`
-      DROP TRIGGER IF EXISTS mem_observations_ai;
-      DROP TRIGGER IF EXISTS mem_observations_ad;
-      DROP TRIGGER IF EXISTS mem_observations_au;
-
-      CREATE TRIGGER mem_observations_ai AFTER INSERT ON mem_observations BEGIN
+    const triggers = [
+      { name: "mem_observations_ai", sql: `CREATE TRIGGER mem_observations_ai AFTER INSERT ON mem_observations BEGIN
         INSERT INTO mem_observations_fts(rowid, observation_id, title, content)
         VALUES (new.rowid, new.id,
                 COALESCE(new.title_fts, new.title),
                 COALESCE(new.content_fts, new.content_redacted));
-      END;
-
-      CREATE TRIGGER mem_observations_ad AFTER DELETE ON mem_observations BEGIN
+      END;` },
+      { name: "mem_observations_ad", sql: `CREATE TRIGGER mem_observations_ad AFTER DELETE ON mem_observations BEGIN
         DELETE FROM mem_observations_fts WHERE rowid = old.rowid;
-      END;
-
-      CREATE TRIGGER mem_observations_au AFTER UPDATE ON mem_observations BEGIN
+      END;` },
+      { name: "mem_observations_au", sql: `CREATE TRIGGER mem_observations_au
+      AFTER UPDATE OF title, content_redacted, title_fts, content_fts ON mem_observations
+      WHEN old.title IS NOT new.title
+        OR old.content_redacted IS NOT new.content_redacted
+        OR old.title_fts IS NOT new.title_fts
+        OR old.content_fts IS NOT new.content_fts
+      BEGIN
         DELETE FROM mem_observations_fts WHERE rowid = old.rowid;
         INSERT INTO mem_observations_fts(rowid, observation_id, title, content)
         VALUES (new.rowid, new.id,
                 COALESCE(new.title_fts, new.title),
                 COALESCE(new.content_fts, new.content_redacted));
-      END;
-    `);
+      END;` }
+    ];
+    const actual = new Map(db.query<{ name: string; sql: string | null }, []>(`
+      SELECT name, sql FROM sqlite_master
+      WHERE type = 'trigger' AND name IN ('mem_observations_ai', 'mem_observations_ad', 'mem_observations_au')
+    `).all().map((row) => [row.name, row.sql]));
+    const current = triggers.every(({ name, sql }) => {
+      const installed = actual.get(name);
+      return typeof installed === "string" && normalizeSqlBody(installed) === normalizeSqlBody(sql);
+    });
+    if (!current) {
+      db.transaction(() => {
+        for (const { name } of triggers) db.exec(`DROP TRIGGER IF EXISTS ${name}`);
+        for (const { sql } of triggers) db.exec(sql);
+      })();
+    }
 
-    const row = db
-      .query(`SELECT COUNT(*) AS count FROM mem_observations_fts`)
-      .get() as { count?: number } | null;
-    const currentCount = Number(row?.count ?? 0);
-    if (currentCount === 0) {
+    // FTS5 COUNT(*) walks every document. Only emptiness is needed here.
+    const row = db.query(`SELECT rowid FROM mem_observations_fts LIMIT 1`).get();
+    if (!row) {
       db.exec(`
         INSERT INTO mem_observations_fts(rowid, observation_id, title, content)
         SELECT rowid, id,
