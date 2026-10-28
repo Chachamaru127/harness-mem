@@ -313,6 +313,9 @@ function migrateContentDedupeClaims(
     if (!forceRebuild) return;
   }
   if (readiness === "not_ready" && schemaVersion === DEDUPE_CLAIMS_VERSION && !forceRebuild) return;
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_live_dedupe_audit
+    ON mem_observations(content_dedupe_hash, id, project, expires_at, privacy_tags_json, tags_json)
+    WHERE archived_at IS NULL AND content_dedupe_hash IS NOT NULL`);
   const now = new Date().toISOString();
   db.exec("BEGIN IMMEDIATE");
   try {
