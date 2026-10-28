@@ -1,7 +1,7 @@
 # Harness-mem Product Spec
 
 Status: active SSOT
-Last updated: 2026-06-15
+Last updated: 2026-10-27
 Owner: harness-mem
 Companion plan: `Plans.md` §128 Recall Runtime Architecture / §130 Local Streamable HTTP MCP Default Migration / §138 Internal Memory Benchmark / §139 Benchmark Competency Mapping / §140 Real-Data Benchmark Pilot / §141 Real-Data Benchmark Scale / §142 Agentmemory Live Comparison Benchmark / §143 LoCoMo Common Benchmark / §145 Large DB Search Timeout Fix / §146 MCP Workflow Plans Scope Fix
 
@@ -1084,3 +1084,41 @@ The following are stop-ship regressions:
 - `docs/adr-001-auto-memory-coexistence.md`
 - BEADS / agentmemory research is incorporated through `docs/workgraph.md` and
   this spec; external local download paths are not canonical SSOT.
+
+## Optional Codex summary transport
+Explicit opt-in may use Codex App Server with gpt-6-luna for scanned summary input. Ollama remains default. Ephemeral isolated threads must not execute tools; failures must not persist summaries. Existing input/output secret checks remain mandatory.
+
+Codex summary egress additionally requires `HARNESS_MEM_CLOUD_LLM=1`. Login is shared using an auth.json symlink; refresh-token replacement semantics are not verified and remain an operational follow-up. Bounded restarts use up to four concurrent summaries per batch, at most 100 sessions per invocation, and stop scheduling further batches after any failure. In-flight summaries may finish. Archive runs separately to reduce SQLite write contention. Effort remains low.
+
+Operational recovery: triage-loop supports bounded --max-batches/--limit/--concurrency and --idle-exit. Model fallback stops the loop instead of indefinitely retrying the same rows. Legacy empty_summary holds may be explicitly requeued by an operator with prior state recorded; privacy holds are never reset by this recovery.
+
+Summary batch failures report content-free reason codes even if the job failure cannot be persisted. Raw exceptions, source text, and credentials are excluded from operational output.
+
+Stale-running recovery only writes when a stale job exists. Batch-setup failures must produce a safe failed result and nonzero loop exit so supervision cannot mistake them for success.
+
+FTS observation updates only rewrite indexed text when title/content_redacted/title_fts/content_fts change. Access counters, archival metadata, and other metadata-only updates preserve existing FTS rows.
+
+Compression catch-up may temporarily pause continuous vector repair through the existing operator stop API when contention is observed. Record the pause and restore prior maintenance settings without reset after both eligible summaries and archive-ready rows are drained. Pausing never deletes vectors.
+
+The bounded compression coordinator allows up to30min for the100-session summary stage at4 concurrency; archive stays capped at20 batches/15min. A supervisor timeout records partial successes and the fresh log offset, terminates its owned process group, and reports supervisor timeout separately from model/SQL failures.
+
+Jev fallback decisions expose a content-free failure reason; triage batch output aggregates these reasons without source identifiers or response bodies. Existing keep-on-failure and bounded stop behavior remain unchanged.
+
+HTTP400/413/422 input rejections are retained as keep/fallback with a distinct rejected-* batch marker and excluded from automatic retries. They are counted separately from privacy holds and may be explicitly retried after correcting the rejected input. No source content is deleted.
+
+Startup audits preserve an already-current live dedupe unique index. A partial covering index supports the exhaustive dedupe audit without reading observation content. FTS initialization checks whether any row exists, not total count. Online archive maintenance uses lightweight child schema checks only after a ready daemon is observed.
+
+Failure cooldown is derived from the latest cycle finished_at, including status=finished with nonzero triage/summary failure counts. A repeated failure remains blocked pending repair even after its30min cooldown expires.
+
+FTS startup preserves matching insert/delete/update triggers without schema writes. A missing or outdated definition is refreshed atomically; populated current FTS initialization must succeed while another connection holds the SQLite write lock.
+
+The isolated summary loop waits at most30s for a SQLite write lock, matching the shared database default. This is a bounded storage wait, not another model attempt; session count/concurrency, stop-after-failure, cooldown and supervisor limits remain unchanged.
+
+Restoration follow-up: the existing vector worker start API infers a progress reset when its persisted model differs from the active provider-prefixed model, even with reset:false. Do not claim a no-reset resume in that condition; preserve the paused job until a compatible resume path is verified.
+
+
+## 2026-10-27 Haiku summary backend switch
+
+本人の「Haikuに切り替えて」により、承認済みの要約対象をClaudeの既存サブスクリプション経由のHaikuへ切り替える。メインAIが直接実装する。最大100セッション/4並列、仕分け→要約→archiveの直列、監督1800秒、archive20バッチ/15分、10分T3確認と再試行制約を維持する。送信前後の秘密検査、ツール使用禁止、設定/認証/モデル不一致の停止、サブスクリプション認証のみを要件とする。APIキー課金へのフォールバックは不可。Jev、秘密保留、旧GLM停止、purge/VACUUM禁止は維持する。切替中は新規サイクルを一時保留。既存T3タスクだけを更新し、新規定期処理は作らない。検証: provider隔離/入力非永続化/モデル固定/失敗/timeout/4並列のテスト、実データ1サイクル、HTML更新。未確認: 実Claude経路の利用可能モデルと所要時間。
+
+反映済み: `claude-code` opt-in backendを追加し、当該ローカルT3運用をHaikuへ切替済み。既定のlocal-first/無効状態は変更しない。164テストと型検査、独立Opus5.5 AC1-5 PASS、Haiku実5件保存/61行archiveで検証。起動条件、秘密検査、上限、既存完了/保留の除外は維持。

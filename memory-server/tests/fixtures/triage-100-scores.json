@@ -1,0 +1,537 @@
+{
+ "model": "typesafe/jev-1.14.0",
+ "prompt": "ja",
+ "threshold": 0.3,
+ "captured": "2026-10-19",
+ "note": "recorded keep probabilities; no content stored",
+ "rows": [
+  {
+   "id": "obs_00moy726xna1adaee2c00c5f29",
+   "gold": "keep",
+   "score": 0.51,
+   "project": "project-01"
+  },
+  {
+   "id": "obs_00mnzwtqlz83e196036dd1f6b2",
+   "gold": "transient",
+   "score": 0.75,
+   "project": "project-02"
+  },
+  {
+   "id": "obs_00mniqxshtd26ed95a34e1fe2b",
+   "gold": "transient",
+   "score": 0.03,
+   "project": "project-01"
+  },
+  {
+   "id": "obs_00mp27rs3pa8d0ac3c825b8d17",
+   "gold": "transient",
+   "score": 0.24,
+   "project": "project-03"
+  },
+  {
+   "id": "obs_00mp27rwar60117d8cad1ca949",
+   "gold": "transient",
+   "score": 0.07,
+   "project": "project-04"
+  },
+  {
+   "id": "obs_00mmjdugsrf13d471802ea8b28",
+   "gold": "keep",
+   "score": 0.87,
+   "project": "project-05"
+  },
+  {
+   "id": "obs_00ms9ci80j02df5594594fc557",
+   "gold": "transient",
+   "score": 0.13,
+   "project": "project-06"
+  },
+  {
+   "id": "obs_00mpog3i1lbb25cb8555c148f5",
+   "gold": "keep",
+   "score": 0.91,
+   "project": "project-07"
+  },
+  {
+   "id": "obs_00mne4hr2mffd06b9c983f90bb",
+   "gold": "keep",
+   "score": 0.9,
+   "project": "project-08"
+  },
+  {
+   "id": "obs_00mn7oucdocd272e5f4393f7b0",
+   "gold": "transient",
+   "score": 0.48,
+   "project": "project-08"
+  },
+  {
+   "id": "obs_00mqklwywna5aa3d76a77b5f56",
+   "gold": "transient",
+   "score": 0.06,
+   "project": "project-01"
+  },
+  {
+   "id": "obs_00moy7fhwvcf9cd43e3245601f",
+   "gold": "transient",
+   "score": 0.27,
+   "project": "project-09"
+  },
+  {
+   "id": "obs_00mnyhqodlb4d2faeb83d390ca",
+   "gold": "transient",
+   "score": 0.1,
+   "project": "project-02"
+  },
+  {
+   "id": "obs_00mnhghfqn532f1c4b3c63bf41",
+   "gold": "keep",
+   "score": 0.97,
+   "project": "project-10"
+  },
+  {
+   "id": "obs_00mrlj31reb1a31bc9c4ecaebd",
+   "gold": "transient",
+   "score": 0,
+   "project": "project-08"
+  },
+  {
+   "id": "obs_00mq4w5agyc0899e0f08f0af15",
+   "gold": "transient",
+   "score": 0.03,
+   "project": "project-11"
+  },
+  {
+   "id": "obs_00mnjssj5rd0f037972348ad05",
+   "gold": "transient",
+   "score": 0.02,
+   "project": "project-12"
+  },
+  {
+   "id": "obs_00mopepwqk8bc29b94f820400d",
+   "gold": "transient",
+   "score": 0.04,
+   "project": "project-02"
+  },
+  {
+   "id": "obs_00mniqlrzv31213892f4569fbd",
+   "gold": "transient",
+   "score": 0.05,
+   "project": "project-11"
+  },
+  {
+   "id": "obs_00mp27fu7o4aeaae0578dd5902",
+   "gold": "transient",
+   "score": 0.75,
+   "project": "project-03"
+  },
+  {
+   "id": "obs_00mp27rs9p03789badbcc6a95b",
+   "gold": "transient",
+   "score": 0.02,
+   "project": "project-03"
+  },
+  {
+   "id": "obs_00mniq4ei99c98dbdfbeb01aed",
+   "gold": "transient",
+   "score": 0.25,
+   "project": "project-13"
+  },
+  {
+   "id": "obs_00mn7osb105e09a604eb70b256",
+   "gold": "transient",
+   "score": 0.25,
+   "project": "project-08"
+  },
+  {
+   "id": "obs_00mniryg1t0b389a43c597f454",
+   "gold": "transient",
+   "score": 0.04,
+   "project": "project-11"
+  },
+  {
+   "id": "obs_00mniqfr1z3080580f5cdd5c54",
+   "gold": "transient",
+   "score": 0.1,
+   "project": "project-08"
+  },
+  {
+   "id": "obs_00mna2nkyc39b8eb9ef702d0e5",
+   "gold": "transient",
+   "score": 0.41,
+   "project": "project-14"
+  },
+  {
+   "id": "obs_00mmk4l37x8574c3a7506e3014",
+   "gold": "keep",
+   "score": 0.68,
+   "project": "project-02"
+  },
+  {
+   "id": "obs_00mmtfp9lbcb2ad5fc330ea70c",
+   "gold": "transient",
+   "score": 0.02,
+   "project": "project-01"
+  },
+  {
+   "id": "obs_00mp9m658v8013a7af268716d1",
+   "gold": "keep",
+   "score": 0.36,
+   "project": "project-15"
+  },
+  {
+   "id": "obs_00mmobaw84a44c4262c237bb0c",
+   "gold": "transient",
+   "score": 0.81,
+   "project": "project-09"
+  },
+  {
+   "id": "obs_00mneb57m82646f11e38156319",
+   "gold": "transient",
+   "score": 0.18,
+   "project": "project-08"
+  },
+  {
+   "id": "obs_00mn9sjvlb3fe5087b030813d2",
+   "gold": "transient",
+   "score": 0.06,
+   "project": "project-08"
+  },
+  {
+   "id": "obs_00mp277vpa592c7a849c79de3c",
+   "gold": "transient",
+   "score": 0.28,
+   "project": "project-16"
+  },
+  {
+   "id": "obs_00mp29a1pwa827af7f12220930",
+   "gold": "transient",
+   "score": 0.49,
+   "project": "project-17"
+  },
+  {
+   "id": "obs_00mp24vsa14fec140f13040121",
+   "gold": "transient",
+   "score": 0.09,
+   "project": "project-09"
+  },
+  {
+   "id": "obs_00mqgeo3oyfae121dd48ab2787",
+   "gold": "keep",
+   "score": 0.92,
+   "project": "project-09"
+  },
+  {
+   "id": "obs_00mnw3czdc66cc9880e44e0634",
+   "gold": "transient",
+   "score": 0,
+   "project": "project-09"
+  },
+  {
+   "id": "obs_00mmk4huym164af0f644ea44ca",
+   "gold": "keep",
+   "score": 0.36,
+   "project": "project-02"
+  },
+  {
+   "id": "obs_00mp27gglx1d2021ff93e26af0",
+   "gold": "transient",
+   "score": 0.6,
+   "project": "project-18"
+  },
+  {
+   "id": "obs_00mnc2nzya952f5501b8c4f0f1",
+   "gold": "transient",
+   "score": 0.29,
+   "project": "project-01"
+  },
+  {
+   "id": "obs_00mopdp6i6064e7988259bc0e4",
+   "gold": "transient",
+   "score": 0.03,
+   "project": "project-01"
+  },
+  {
+   "id": "obs_00mp7gi1tt685a0c6dedf55657",
+   "gold": "transient",
+   "score": 0.1,
+   "project": "project-09"
+  },
+  {
+   "id": "obs_00mp4yp8mp890c33d9660d2c19",
+   "gold": "transient",
+   "score": 0.31,
+   "project": "project-09"
+  },
+  {
+   "id": "obs_00mnjwod1i90e4ca84e8549909",
+   "gold": "transient",
+   "score": 0.41,
+   "project": "project-11"
+  },
+  {
+   "id": "obs_00mnr7l3il5d40e05d742662ee",
+   "gold": "transient",
+   "score": 0.05,
+   "project": "project-19"
+  },
+  {
+   "id": "obs_00mp26u6513bddb7c5bd23835c",
+   "gold": "transient",
+   "score": 0.03,
+   "project": "project-16"
+  },
+  {
+   "id": "obs_00mo1q10ftcfb9c8da2978e2a0",
+   "gold": "transient",
+   "score": 0.22,
+   "project": "project-01"
+  },
+  {
+   "id": "obs_00mpqevvad5f66b88ed8484465",
+   "gold": "transient",
+   "score": 0.43,
+   "project": "project-07"
+  },
+  {
+   "id": "obs_00mnddz928267f7ffb6bec73c2",
+   "gold": "transient",
+   "score": 0.08,
+   "project": "project-11"
+  },
+  {
+   "id": "obs_00mop9aq1ye418dbe0011286dc",
+   "gold": "transient",
+   "score": 0.37,
+   "project": "project-07"
+  },
+  {
+   "id": "obs_00mveu77f4ee83ea92603b3958",
+   "gold": "keep",
+   "score": 0.79,
+   "project": "project-12"
+  },
+  {
+   "id": "obs_00mniqe5apad2a516de28ecf1a",
+   "gold": "transient",
+   "score": 0.01,
+   "project": "project-09"
+  },
+  {
+   "id": "obs_00mlqbtp4o07b5a973b2b1416b",
+   "gold": "transient",
+   "score": 0.61,
+   "project": "project-03"
+  },
+  {
+   "id": "obs_00mod4ia7h6c81d9befd6bf451",
+   "gold": "keep",
+   "score": 0.48,
+   "project": "project-09"
+  },
+  {
+   "id": "obs_00mn7cpq3vef6cbdf3dc1e6562",
+   "gold": "transient",
+   "score": 0.63,
+   "project": "project-08"
+  },
+  {
+   "id": "obs_00mn4doq1g7b4edbb6f9052895",
+   "gold": "transient",
+   "score": 0.27,
+   "project": "project-11"
+  },
+  {
+   "id": "obs_00mofhspk16ef04c1ca7c2e3e3",
+   "gold": "transient",
+   "score": 0.31,
+   "project": "project-12"
+  },
+  {
+   "id": "obs_00mor02mm5551f711732543b0d",
+   "gold": "transient",
+   "score": 0.01,
+   "project": "project-01"
+  },
+  {
+   "id": "obs_00mor0zjsj96d34fa16ac367ad",
+   "gold": "transient",
+   "score": 0.04,
+   "project": "project-20"
+  },
+  {
+   "id": "obs_00mutsjxx3b1b5cc0618cc54cd",
+   "gold": "transient",
+   "score": 0.27,
+   "project": "project-21"
+  },
+  {
+   "id": "obs_00mnfls0vlcb121ea02630a3c7",
+   "gold": "transient",
+   "score": 0.19,
+   "project": "project-08"
+  },
+  {
+   "id": "obs_00mo07eoa6f3ccdbf2cae6433c",
+   "gold": "transient",
+   "score": 0.17,
+   "project": "project-11"
+  },
+  {
+   "id": "obs_00mnv9fxanbc46e8dffdedeb55",
+   "gold": "transient",
+   "score": 0.16,
+   "project": "project-22"
+  },
+  {
+   "id": "obs_00mo4htnzm0ac297bbcbf178e0",
+   "gold": "keep",
+   "score": 0.84,
+   "project": "project-11"
+  },
+  {
+   "id": "obs_00mne4569m03fee203b1822702",
+   "gold": "transient",
+   "score": 0.15,
+   "project": "project-09"
+  },
+  {
+   "id": "obs_00mr1qez7f0e79be0bad662d97",
+   "gold": "transient",
+   "score": 0.52,
+   "project": "project-07"
+  },
+  {
+   "id": "obs_00mo0wku1sdf4bd1672fa4ea5e",
+   "gold": "transient",
+   "score": 0.06,
+   "project": "project-01"
+  },
+  {
+   "id": "obs_00mo07a2e998fcb591d1b9cf0e",
+   "gold": "transient",
+   "score": 0.01,
+   "project": "project-11"
+  },
+  {
+   "id": "obs_00mna2age5b5e2541d0356e81b",
+   "gold": "transient",
+   "score": 0.02,
+   "project": "project-14"
+  },
+  {
+   "id": "obs_00mmq7lo0r39491095545e2b1a",
+   "gold": "transient",
+   "score": 0,
+   "project": "project-23"
+  },
+  {
+   "id": "obs_00mopa3wve2f313975391adb9c",
+   "gold": "transient",
+   "score": 0.01,
+   "project": "project-24"
+  },
+  {
+   "id": "obs_00mniq4pwh4dd064248ae7939d",
+   "gold": "transient",
+   "score": 0.96,
+   "project": "project-11"
+  },
+  {
+   "id": "obs_00mpxxh9bzdac6391d7c7f03d0",
+   "gold": "transient",
+   "score": 0.18,
+   "project": "project-01"
+  },
+  {
+   "id": "obs_00mt8zkwjj10732a7b59fbf6d6",
+   "gold": "transient",
+   "score": 0.01,
+   "project": "project-25"
+  },
+  {
+   "id": "obs_00mvf3eofoec0955adca071774",
+   "gold": "transient",
+   "score": 0.04,
+   "project": "project-12"
+  },
+  {
+   "id": "obs_00mo0436u41cc81c51354e4d4e",
+   "gold": "transient",
+   "score": 0.02,
+   "project": "project-10"
+  },
+  {
+   "id": "obs_00mpcrvp7t14023ebce6e0fb9a",
+   "gold": "keep",
+   "score": 0.92,
+   "project": "project-09"
+  },
+  {
+   "id": "obs_00mpu5fgvkdf8143630724f563",
+   "gold": "transient",
+   "score": 0.14,
+   "project": "project-01"
+  },
+  {
+   "id": "obs_00mop7q6qj018c048054f2e762",
+   "gold": "keep",
+   "score": 0.78,
+   "project": "project-24"
+  },
+  {
+   "id": "obs_00mp27jceg6a3c8a10bd00d073",
+   "gold": "keep",
+   "score": 0.92,
+   "project": "project-03"
+  },
+  {
+   "id": "obs_00mn2xwhxaccb122dadae2ef38",
+   "gold": "transient",
+   "score": 0.16,
+   "project": "project-11"
+  },
+  {
+   "id": "obs_00mobkn3ml6cd6fbb0352b8ec1",
+   "gold": "transient",
+   "score": 0.35,
+   "project": "project-12"
+  },
+  {
+   "id": "obs_00mpc4juhp0feb2460c5a4a5c5",
+   "gold": "transient",
+   "score": 0.06,
+   "project": "project-12"
+  },
+  {
+   "id": "obs_00mnddspoc297af8d03a990812",
+   "gold": "transient",
+   "score": 0.28,
+   "project": "project-08"
+  },
+  {
+   "id": "obs_00mob3ix5fa47dc60dae14ecf2",
+   "gold": "transient",
+   "score": 0.22,
+   "project": "project-01"
+  },
+  {
+   "id": "obs_00mofirh3qcb8b069f41c364eb",
+   "gold": "transient",
+   "score": 0.2,
+   "project": "project-12"
+  },
+  {
+   "id": "obs_00mn4e3ffu2296e8227e3e80d6",
+   "gold": "keep",
+   "score": 0.97,
+   "project": "project-11"
+  },
+  {
+   "id": "obs_00mn2x8x2qe629e2f57b96b81e",
+   "gold": "keep",
+   "score": 0.99,
+   "project": "project-11"
+  }
+ ]
+}

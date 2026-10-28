@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test, spyOn } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -382,6 +382,36 @@ describe("content dedupe claims migration", () => {
     }
   });
 
+  test("restart preserves an already-current dedupe unique index", () => {
+    const db = createTempDb();
+    try {
+      initSchema(db);
+      migrateSchema(db);
+      const original = db.exec.bind(db);
+      const calls: string[] = [];
+      const spy = spyOn(db, "exec").mockImplementation((sql: string) => {
+        calls.push(sql);
+        return original(sql);
+      });
+      try {
+        migrateSchema(db);
+        expect(calls.some(sql => /DROP INDEX IF EXISTS idx_mem_obs_content_dedupe_hash/.test(sql))).toBe(false);
+      } finally { spy.mockRestore(); }
+    } finally { db.close(); }
+  });
+
+  test("authoritative dedupe audit uses its covering index", () => {
+    const db = createTempDb();
+    try {
+      initSchema(db);
+      seedObservation(db, "audit-index", "audit-index-hash");
+      migrateSchema(db);
+      const plan = db.query(`EXPLAIN QUERY PLAN SELECT id, project, expires_at, privacy_tags_json, tags_json
+        FROM mem_observations INDEXED BY idx_mem_obs_live_dedupe_audit WHERE archived_at IS NULL AND content_dedupe_hash IS NOT NULL`).all();
+      expect(JSON.stringify(plan)).toContain("idx_mem_obs_live_dedupe_audit");
+    } finally { db.close(); }
+  });
+
   test("marker-only child startup performs no exhaustive scan and fails closed on marker drift", () => {
     const db = createTempDb();
     let scans = 0;
@@ -434,6 +464,7 @@ describe("content dedupe claims migration", () => {
          const db = new Database(process.argv[1]);
          configureDatabase(db);
          db.exec("PRAGMA busy_timeout = 5000");
+         process.stdout.write("ready\\n");
          const started = Date.now();
          migrateSchema(db, { authoritativeContentDedupeMigration: false });
          const readiness = db.query("SELECT value FROM mem_meta WHERE key = 'dedupe_claims.readiness'").get()?.value;
@@ -442,13 +473,31 @@ describe("content dedupe claims migration", () => {
         dbPath,
       ], { stdout: "pipe", stderr: "pipe" });
 
+      const reader = child.stdout.getReader();
+      const decoder = new TextDecoder();
+      let ready = "";
+      while (!ready.includes("\n")) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        ready += decoder.decode(chunk.value, { stream: true });
+      }
+      expect(ready).toBe("ready\n");
       await Bun.sleep(100);
       expect(child.exitCode).toBeNull();
       db.exec("COMMIT");
       transactionOpen = false;
       const [exitCode, stdout, stderr] = await Promise.all([
         child.exited,
-        new Response(child.stdout).text(),
+        (async () => {
+          let output = "";
+          for (;;) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            output += decoder.decode(chunk.value, { stream: true });
+          }
+          reader.releaseLock();
+          return output + decoder.decode();
+        })(),
         new Response(child.stderr).text(),
       ]);
       expect(exitCode).toBe(0);

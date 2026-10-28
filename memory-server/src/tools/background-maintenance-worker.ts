@@ -20,7 +20,7 @@ function parseEnvelope(line: string): RequestEnvelope {
   const value = JSON.parse(line) as Record<string, unknown>;
   if (typeof value.id !== "string" || !value.id) throw new Error("invalid request id");
   if (value.task !== "consolidation" && value.task !== "wal_checkpoint" &&
-    value.task !== "search_audit_flush" && value.task !== "recover_consolidation") {
+    value.task !== "search_audit_flush" && value.task !== "triage" && value.task !== "summary" && value.task !== "recover_consolidation") {
     throw new Error("invalid maintenance task");
   }
   const request = value.request && typeof value.request === "object"
@@ -90,6 +90,16 @@ async function main(): Promise<void> {
         }
         if (request.task === "search_audit_flush") {
           const result = core.runMaintenanceSearchAuditFlush();
+          writeReply({ id, ok: true, result, progress: { ...result, elapsed_ms: Date.now() - startedAt } });
+          continue;
+        }
+        if (request.task === "triage") {
+          const result = await core.runMaintenanceTriage();
+          writeReply({ id, ok: true, result, progress: { ...result, elapsed_ms: Date.now() - startedAt } });
+          continue;
+        }
+        if (request.task === "summary") {
+          const result = await core.runMaintenanceSummary();
           writeReply({ id, ok: true, result, progress: { ...result, elapsed_ms: Date.now() - startedAt } });
           continue;
         }

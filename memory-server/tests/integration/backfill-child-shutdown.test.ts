@@ -12,6 +12,7 @@ const childFlags = [
   "HARNESS_MEM_RETRY_CHILD_PROCESS", "HARNESS_MEM_PROJECTS_STATS_CHILD_PROCESS",
   "HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD", "HARNESS_MEM_VECTOR_BACKFILL_CHILD",
   "HARNESS_MEM_OBSERVATION_MATERIALIZE_CHILD",
+  "HARNESS_MEM_ARCHIVE_CHILD_PROCESS",
 ];
 
 test("every lightweight child leaves the parent's backfill running; explicit stop and parent shutdown persist stop", async () => {

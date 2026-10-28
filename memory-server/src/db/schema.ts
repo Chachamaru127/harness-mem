@@ -313,26 +313,31 @@ function migrateContentDedupeClaims(
     if (!forceRebuild) return;
   }
   if (readiness === "not_ready" && schemaVersion === DEDUPE_CLAIMS_VERSION && !forceRebuild) return;
+  // Keep the authoritative audit exhaustive without fetching large content
+  // payloads through the archived_at index on every startup.
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_live_dedupe_audit
+    ON mem_observations(content_dedupe_hash, id, project, expires_at, privacy_tags_json, tags_json)
+    WHERE archived_at IS NULL AND content_dedupe_hash IS NOT NULL`);
   const now = new Date().toISOString();
   db.exec("BEGIN IMMEDIATE");
   try {
     let rebuildReady = false;
     contentDedupeMigrationTestHook?.("exhaustive_scan");
     const invalid = db.query<{ invalid: number }, []>(`
-      SELECT 1 AS invalid FROM mem_observations
+      SELECT 1 AS invalid FROM mem_observations INDEXED BY idx_mem_obs_live_dedupe_audit
       WHERE archived_at IS NULL AND content_dedupe_hash IS NOT NULL
         AND (${invalidProtectionMetadataSql("mem_observations")})
       LIMIT 1
     `).get();
     const ambiguous = db.query<{ invalid: number }, []>(`
-      SELECT 1 AS invalid FROM mem_observations
+      SELECT 1 AS invalid FROM mem_observations INDEXED BY idx_mem_obs_live_dedupe_audit
       WHERE archived_at IS NULL AND content_dedupe_hash IS NOT NULL
       GROUP BY content_dedupe_hash HAVING COUNT(*) <> 1 LIMIT 1
     `).get();
     const drift = !invalid && !ambiguous
       && readiness === "ready" && schemaVersion === DEDUPE_CLAIMS_VERSION
       ? db.query<{ invalid: number }, []>(`
-        SELECT 1 AS invalid FROM mem_observations o
+        SELECT 1 AS invalid FROM mem_observations o INDEXED BY idx_mem_obs_live_dedupe_audit
         LEFT JOIN mem_content_dedupe_claims c
           ON c.content_dedupe_hash = o.content_dedupe_hash
         WHERE o.archived_at IS NULL AND o.content_dedupe_hash IS NOT NULL
@@ -1027,6 +1032,52 @@ export function initSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_audit_log_target_created
       ON mem_audit_log(target_type, target_id, created_at DESC);
 
+    -- Living Memory §4.6 / T4: append-only Stage 1 triage verdicts. One row per
+    -- observation and model version, so a re-run with the same model is
+    -- idempotent under INSERT OR IGNORE and a model change adds a new row
+    -- instead of overwriting the old verdict. This is additive only;
+    -- mem_observations is unchanged.
+    CREATE TABLE IF NOT EXISTS mem_triage_decisions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      observation_id TEXT NOT NULL,
+      project TEXT NOT NULL,
+      model TEXT NOT NULL,
+      threshold REAL NOT NULL,
+      score REAL,
+      durable REAL,
+      decision TEXT NOT NULL CHECK(decision IN ('keep','compact')),
+      fallback INTEGER NOT NULL DEFAULT 0 CHECK(fallback IN (0,1)),
+      batch_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_triage_decisions_obs_model
+      ON mem_triage_decisions(observation_id, model);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_triage_decisions_project_created
+      ON mem_triage_decisions(project, created_at DESC);
+
+    -- Living Memory §4.1 / T11: S-row summary job bookkeeping. One row per
+    -- (session_id, model). claim inserts status='pending' under
+    -- INSERT OR IGNORE, start moves pending -> running, complete/fail record
+    -- the outcome. Additive only; mem_observations is unchanged.
+    CREATE TABLE IF NOT EXISTS mem_summary_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      project TEXT NOT NULL,
+      model TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','running','completed','failed','blocked')),
+      summary_observation_id TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(session_id, model)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_summary_jobs_status
+      ON mem_summary_jobs(status, created_at);
+
     CREATE TABLE IF NOT EXISTS mem_search_side_effect_claims (
       intent_id TEXT PRIMARY KEY,
       applied_at TEXT NOT NULL
@@ -1380,6 +1431,12 @@ export function migrateSchema(
   options: { authoritativeContentDedupeMigration?: boolean } = {},
 ): void {
   migrateMemVectorsPrimaryKey(db);
+
+  try {
+    db.exec(`ALTER TABLE mem_triage_decisions ADD COLUMN durable REAL`);
+  } catch {
+    // already exists
+  }
 
   try {
     db.exec(`ALTER TABLE mem_observations ADD COLUMN observation_type TEXT NOT NULL DEFAULT 'context'`);
@@ -1810,12 +1867,20 @@ export function migrateSchema(
       // already exists
     }
     try {
-      db.exec(`DROP INDEX IF EXISTS idx_mem_obs_content_dedupe_hash`);
-      db.exec(`
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_obs_content_dedupe_hash
-          ON mem_observations(content_dedupe_hash)
-          WHERE content_dedupe_hash IS NOT NULL AND archived_at IS NULL
-      `);
+      const indexSql = `CREATE UNIQUE INDEX idx_mem_obs_content_dedupe_hash
+        ON mem_observations(content_dedupe_hash)
+        WHERE content_dedupe_hash IS NOT NULL AND archived_at IS NULL`;
+      // Finalize instead of db.query: a cached sqlite_master statement made every later
+      // INSERT OR IGNORE through the repository ~10x slower on CI runners (bisected in #197-#201).
+      const lookup = db.prepare<{ sql: string }, []>(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_mem_obs_content_dedupe_hash'",
+      );
+      const existing = lookup.get();
+      lookup.finalize();
+      if (!existing || normalizeSqlBody(existing.sql) !== normalizeSqlBody(indexSql)) {
+        db.exec(`DROP INDEX IF EXISTS idx_mem_obs_content_dedupe_hash`);
+        db.exec(indexSql);
+      }
     } catch {
       // already exists
     }
@@ -1953,37 +2018,48 @@ export function initFtsIndex(db: Database): boolean {
 
     // §45: title_fts / content_fts カラムは migrateSchema で追加済み
 
-    // トリガー更新: title_fts / content_fts を優先し、未設定なら title / content_redacted にフォールバック
-    db.exec(`
-      DROP TRIGGER IF EXISTS mem_observations_ai;
-      DROP TRIGGER IF EXISTS mem_observations_ad;
-      DROP TRIGGER IF EXISTS mem_observations_au;
-
-      CREATE TRIGGER mem_observations_ai AFTER INSERT ON mem_observations BEGIN
+    const triggers = [
+      { name: "mem_observations_ai", sql: `CREATE TRIGGER mem_observations_ai AFTER INSERT ON mem_observations BEGIN
         INSERT INTO mem_observations_fts(rowid, observation_id, title, content)
         VALUES (new.rowid, new.id,
                 COALESCE(new.title_fts, new.title),
                 COALESCE(new.content_fts, new.content_redacted));
-      END;
-
-      CREATE TRIGGER mem_observations_ad AFTER DELETE ON mem_observations BEGIN
+      END;` },
+      { name: "mem_observations_ad", sql: `CREATE TRIGGER mem_observations_ad AFTER DELETE ON mem_observations BEGIN
         DELETE FROM mem_observations_fts WHERE rowid = old.rowid;
-      END;
-
-      CREATE TRIGGER mem_observations_au AFTER UPDATE ON mem_observations BEGIN
+      END;` },
+      { name: "mem_observations_au", sql: `CREATE TRIGGER mem_observations_au
+      AFTER UPDATE OF title, content_redacted, title_fts, content_fts ON mem_observations
+      WHEN old.title IS NOT new.title
+        OR old.content_redacted IS NOT new.content_redacted
+        OR old.title_fts IS NOT new.title_fts
+        OR old.content_fts IS NOT new.content_fts
+      BEGIN
         DELETE FROM mem_observations_fts WHERE rowid = old.rowid;
         INSERT INTO mem_observations_fts(rowid, observation_id, title, content)
         VALUES (new.rowid, new.id,
                 COALESCE(new.title_fts, new.title),
                 COALESCE(new.content_fts, new.content_redacted));
-      END;
-    `);
+      END;` }
+    ];
+    const actual = new Map(db.query<{ name: string; sql: string | null }, []>(`
+      SELECT name, sql FROM sqlite_master
+      WHERE type = 'trigger' AND name IN ('mem_observations_ai', 'mem_observations_ad', 'mem_observations_au')
+    `).all().map((row) => [row.name, row.sql]));
+    const current = triggers.every(({ name, sql }) => {
+      const installed = actual.get(name);
+      return typeof installed === "string" && normalizeSqlBody(installed) === normalizeSqlBody(sql);
+    });
+    if (!current) {
+      db.transaction(() => {
+        for (const { name } of triggers) db.exec(`DROP TRIGGER IF EXISTS ${name}`);
+        for (const { sql } of triggers) db.exec(sql);
+      })();
+    }
 
-    const row = db
-      .query(`SELECT COUNT(*) AS count FROM mem_observations_fts`)
-      .get() as { count?: number } | null;
-    const currentCount = Number(row?.count ?? 0);
-    if (currentCount === 0) {
+    // FTS5 COUNT(*) walks every document. Only emptiness is needed here.
+    const row = db.query(`SELECT rowid FROM mem_observations_fts LIMIT 1`).get();
+    if (!row) {
       db.exec(`
         INSERT INTO mem_observations_fts(rowid, observation_id, title, content)
         SELECT rowid, id,

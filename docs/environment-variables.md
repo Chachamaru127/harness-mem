@@ -2,7 +2,7 @@
 
 harness-mem で使用する全環境変数の一覧です。
 
-最終更新: 2026-07-12
+最終更新: 2026-10-20
 
 ---
 
@@ -85,6 +85,26 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_OLLAMA_HOST` | `http://127.0.0.1:11434` | No | 事実抽出 LLM 用 Ollama エンドポイント（`HARNESS_MEM_FACT_EXTRACTOR_MODE=llm` かつ provider=`ollama` のとき）。HTTP/HTTPS の loopback のみ許可（`localhost` / `127.0.0.1` / `::1`）。非 loopback は `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1` があっても hard reject され、memory 内容は送信されない | `consolidation/extractor.ts`, `llm/ollama-provider.ts` |
 | `HARNESS_MEM_CONSOLIDATION_ENABLED` | `true` | No | コンソリデーション（記憶の定期統合）を有効にするか | `core/core-utils.ts` |
 | `HARNESS_MEM_CONSOLIDATION_INTERVAL_MS` | `60000` | No | コンソリデーションの実行間隔（ミリ秒）。範囲: 5000〜600000 | `core/core-utils.ts` |
+| `HARNESS_MEM_TRIAGE_ENABLED` | `false` | No | Stage 1 triage（1 イベント 1 問の粗い必要性判定）を有効にするか。既定 off。off のときは worker が起動せず、クラウド呼び出しも起きない | `core/core-utils.ts` |
+| `HARNESS_MEM_TRIAGE_MODEL` | `typesafe/jev-1.14.0` | No | triage に使うモデル ID。Cloudflare の統合 AI カタログ（AI Gateway）経由で呼ぶ | `core/core-utils.ts` |
+| `HARNESS_MEM_TRIAGE_THRESHOLD` | `0.3` | No | keep（P 候補として残す）と判定する閾値。0〜1 に clamp し、NaN は既定に戻す。0.3 は durable 行の keep recall を優先した operating point で、0.5 に上げると durable 行の keep が減る | `core/core-utils.ts` |
+| `HARNESS_MEM_TRIAGE_CONCURRENCY` | `4` | No | triage リクエストの同時実行数。1〜8 に clamp | `core/core-utils.ts` |
+| `HARNESS_MEM_TRIAGE_TIMEOUT_MS` | `30000` | No | triage リクエスト 1 件の timeout（ミリ秒）。1000〜120000 に clamp。timeout した batch は P に残し、後で再試行する | `core/core-utils.ts` |
+| `HARNESS_MEM_TRIAGE_INTERVAL_MS` | `600000` | No | triage worker の実行間隔（ミリ秒）。60000〜3600000 に clamp。triage とクラウド egress の両方が有効なときだけ動く | `core/core-utils.ts` |
+| `HARNESS_MEM_TRIAGE_MAX_PER_TICK` | `100` | No | 1 tick で判定する最大件数。1〜500 に clamp。既定は 10 分ごとに 100 件 | `core/core-utils.ts` |
+| `HARNESS_MEM_TRIAGE_PREFILTER` | `false` | No | `decision` / `lesson` / `pattern` / `preference` / `summary` の observation_type を Jev に送らず keep にする。クラウド egress を減らす。既定 off | `core/core-utils.ts` |
+| `HARNESS_MEM_SUMMARY_ENABLED` | `false` | No | S 層の要約 worker を有効にするか。既定 off。off のときはセッション要約もクラウド呼び出しも起きない | `core/core-utils.ts` |
+| `HARNESS_MEM_SUMMARY_MODEL` | `glm-5.3-flash:cloud` | No | 要約に使う生成モデル。Ollama の `/api/chat` 経由 | `core/core-utils.ts` |
+| `HARNESS_MEM_SUMMARY_ENDPOINT` | `http://127.0.0.1:11434` | No | 要約モデルの Ollama エンドポイント | `core/core-utils.ts` |
+| `HARNESS_MEM_SUMMARY_INTERVAL_MS` | `600000` | No | 要約 worker の実行間隔。60000〜3600000 に clamp | `core/core-utils.ts` |
+| `HARNESS_MEM_SUMMARY_MAX_SESSIONS` | `5` | No | 1 tick で要約する最大セッション数。1〜20 に clamp | `core/core-utils.ts` |
+| `HARNESS_MEM_SUMMARY_MAX_SOURCES` | `50` | No | 1 セッションで読む最大観測数。1〜200 に clamp | `core/core-utils.ts` |
+| `HARNESS_MEM_SUMMARY_CONCURRENCY` | `2` | No | セッション要約の同時実行数。1〜6 に clamp | `core/core-utils.ts` |
+| `HARNESS_MEM_CLAIRIC_ENABLED` | `true` | No | Clairic の型付き抽出を要約の前段で使うか。`0` または `false` で無効 | `core/core-utils.ts` |
+| `HARNESS_MEM_CLAIRIC_MODEL` | `@cf/cloudflare/clairic` | No | Clairic のモデル ID | `core/core-utils.ts` |
+| `HARNESS_MEM_CLOUD_LLM` | 未設定（空） | No | クラウド LLM への egress を opt-in するゲート。trim 後が正確に `1` のときだけ有効。`true` や `01` では有効にならない。事実抽出の loopback ルールは緩めない | `core/core-utils.ts` |
+| `CLOUDFLARE_ACCOUNT_ID` | `""` (空文字) | No* | Cloudflare AI Gateway の account ID。triage をクラウドで実行する場合に必要。空文字は undefined として扱う | `core/core-utils.ts` |
+| `CLOUDFLARE_API_TOKEN` | `""` (空文字) | No* | Cloudflare AI Gateway にアクセスできる API token。triage をクラウドで実行する場合に必要。値はログに出力しない | `core/core-utils.ts` |
 
 > \* LLM プロバイダーを使用する場合は対応する API キーが必須です。
 
@@ -283,6 +303,8 @@ SQLite データベースの設定です。
 | 変数名 | カテゴリ |
 |--------|---------|
 | `COHERE_API_KEY` | Performance |
+| `CLOUDFLARE_ACCOUNT_ID` | LLM |
+| `CLOUDFLARE_API_TOKEN` | LLM |
 | `GDRIVE_SERVICE_ACCOUNT_KEY` | Sync |
 | `GITHUB_TOKEN` | Sync |
 | `HARNESS_CLIENT` | Session |
@@ -295,6 +317,7 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_ANTIGRAVITY_ROOTS` | Ingestion |
 | `HARNESS_MEM_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT` | Ingestion |
 | `HARNESS_MEM_BACKEND_MODE` | Managed Backend |
+| `HARNESS_MEM_CLOUD_LLM` | LLM |
 | `HARNESS_MEM_CODEX_BACKFILL_HOURS` | Ingestion |
 | `HARNESS_MEM_CODEX_INGEST_INTERVAL_MS` | Ingestion |
 | `HARNESS_MEM_CODEX_PROJECT_ROOT` | Ingestion |
@@ -364,6 +387,23 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_SQLITE_VEC_PATH` | Database |
 | `HARNESS_MEM_STARTUP_HEALTH_TIMEOUT_MS` | Core |
 | `HARNESS_MEM_TEAM_ID` | Session |
+| `HARNESS_MEM_TRIAGE_CONCURRENCY` | LLM |
+| `HARNESS_MEM_TRIAGE_ENABLED` | LLM |
+| `HARNESS_MEM_TRIAGE_MODEL` | LLM |
+| `HARNESS_MEM_TRIAGE_THRESHOLD` | LLM |
+| `HARNESS_MEM_TRIAGE_TIMEOUT_MS` | LLM |
+| `HARNESS_MEM_TRIAGE_INTERVAL_MS` | LLM |
+| `HARNESS_MEM_TRIAGE_MAX_PER_TICK` | LLM |
+| `HARNESS_MEM_TRIAGE_PREFILTER` | LLM |
+| `HARNESS_MEM_SUMMARY_ENABLED` | LLM |
+| `HARNESS_MEM_SUMMARY_MODEL` | LLM |
+| `HARNESS_MEM_SUMMARY_ENDPOINT` | LLM |
+| `HARNESS_MEM_SUMMARY_INTERVAL_MS` | LLM |
+| `HARNESS_MEM_SUMMARY_MAX_SESSIONS` | LLM |
+| `HARNESS_MEM_SUMMARY_MAX_SOURCES` | LLM |
+| `HARNESS_MEM_SUMMARY_CONCURRENCY` | LLM |
+| `HARNESS_MEM_CLAIRIC_ENABLED` | LLM |
+| `HARNESS_MEM_CLAIRIC_MODEL` | LLM |
 | `HARNESS_MEM_UI_HOST` | Core |
 | `HARNESS_MEM_UI_PORT` | Core |
 | `HARNESS_MEM_USER_ID` | Session |
@@ -382,3 +422,11 @@ SQLite データベースの設定です。
 | `WHISPER_LANGUAGE` | Ingestion |
 | `WHISPER_MODEL` | Ingestion |
 | `WHISPER_PROVIDER` | Ingestion |
+
+### Codex App Server summaries (opt-in)
+
+`HARNESS_MEM_SUMMARY_BACKEND=codex-app-server` selects the local `codex app-server` stdio transport. `HARNESS_MEM_SUMMARY_MODEL=gpt-6-luna` pins the summary model. Without the backend setting, Ollama remains the default. Codex uses an isolated temporary home sharing only the existing login file, an ephemeral read-only thread, and disabled shell/apps/hooks/skills/web search. The input and output scanners remain in the summary runner. Completed, running, and scanner-blocked sessions are not repeated when changing models.
+
+For a bounded four-worker run: set `HARNESS_MEM_CLOUD_LLM=1`, `HARNESS_MEM_DB_PATH`, `HARNESS_MEM_SUMMARY_ENABLED=true`, the backend/model above, then run `bun scripts/summary-loop.ts 1` (1..100 sessions total). The helper uses up to four sessions per batch and effort low. This helper disables optional Clairic extraction, stops on first failed batch, and never purges or vacuums.
+
+`HARNESS_MEM_SUMMARY_BACKEND=claude-code` with `HARNESS_MEM_SUMMARY_MODEL=claude-haiku-5-5` opts into the existing `claude-headless` subscription route. Cloud egress still requires `HARNESS_MEM_CLOUD_LLM=1`. Calls use safe mode, no tools/MCP, low effort, stdin input, an ephemeral working directory and no session persistence. API keys and provider overrides are not inherited. Model/configuration mismatch, tool use, account unavailability and protocol errors stop the batch without another backend fallback. Existing completed and privacy-blocked sessions remain excluded when switching models.
