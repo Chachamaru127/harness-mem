@@ -1027,6 +1027,52 @@ export function initSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_audit_log_target_created
       ON mem_audit_log(target_type, target_id, created_at DESC);
 
+    -- Living Memory §4.6 / T4: append-only Stage 1 triage verdicts. One row per
+    -- observation and model version, so a re-run with the same model is
+    -- idempotent under INSERT OR IGNORE and a model change adds a new row
+    -- instead of overwriting the old verdict. This is additive only;
+    -- mem_observations is unchanged.
+    CREATE TABLE IF NOT EXISTS mem_triage_decisions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      observation_id TEXT NOT NULL,
+      project TEXT NOT NULL,
+      model TEXT NOT NULL,
+      threshold REAL NOT NULL,
+      score REAL,
+      durable REAL,
+      decision TEXT NOT NULL CHECK(decision IN ('keep','compact')),
+      fallback INTEGER NOT NULL DEFAULT 0 CHECK(fallback IN (0,1)),
+      batch_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_triage_decisions_obs_model
+      ON mem_triage_decisions(observation_id, model);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_triage_decisions_project_created
+      ON mem_triage_decisions(project, created_at DESC);
+
+    -- Living Memory §4.1 / T11: S-row summary job bookkeeping. One row per
+    -- (session_id, model). claim inserts status='pending' under
+    -- INSERT OR IGNORE, start moves pending -> running, complete/fail record
+    -- the outcome. Additive only; mem_observations is unchanged.
+    CREATE TABLE IF NOT EXISTS mem_summary_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      project TEXT NOT NULL,
+      model TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','running','completed','failed','blocked')),
+      summary_observation_id TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(session_id, model)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_summary_jobs_status
+      ON mem_summary_jobs(status, created_at);
+
     CREATE TABLE IF NOT EXISTS mem_search_side_effect_claims (
       intent_id TEXT PRIMARY KEY,
       applied_at TEXT NOT NULL
