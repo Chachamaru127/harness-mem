@@ -3303,7 +3303,11 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.4...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.31.2...v0.32.0
+[0.31.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.31.1...v0.31.2
+[0.31.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.31.0...v0.31.1
+[0.31.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.4...v0.31.0
 [0.30.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.3...v0.30.4
 [0.30.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.2...v0.30.3
 [0.30.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.30.1...v0.30.2
