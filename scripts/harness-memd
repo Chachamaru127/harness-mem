@@ -229,6 +229,12 @@ is_launchctl_job_loaded() {
   launchctl print "$target" >/dev/null 2>&1
 }
 
+is_launchctl_job_running() {
+  local target
+  target="$(launchctl_target "${1:-}")" || return 1
+  launchctl print "$target" 2>/dev/null | grep -Eq '^[[:space:]]*pid = [0-9]+'
+}
+
 kickstart_launchctl_job() {
   local target
   target="$(launchctl_target "${1:-}")" || return 1
@@ -915,7 +921,8 @@ start_daemon() {
       return 1
     fi
 
-    if ! kickstart_launchctl_job "$DAEMON_LAUNCHD_LABEL"; then
+    # A running job without a listener is still starting; kickstart -k would kill it.
+    if ! is_launchctl_job_running "$DAEMON_LAUNCHD_LABEL" && ! kickstart_launchctl_job "$DAEMON_LAUNCHD_LABEL"; then
       warn "launchctl kickstart failed for ${DAEMON_LAUNCHD_LABEL}"
       return 1
     fi

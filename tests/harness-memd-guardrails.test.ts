@@ -94,6 +94,13 @@ describe("harness-memd guardrails", () => {
     expect(script).toContain('log "harness-memd started via launchctl');
   });
 
+  test("start does not kickstart -k a LaunchAgent job that is still starting", () => {
+    const script = readFileSync(SCRIPT, "utf8");
+
+    expect(script).toContain("is_launchctl_job_running() {");
+    expect(script).toContain('if ! is_launchctl_job_running "$DAEMON_LAUNCHD_LABEL" && ! kickstart_launchctl_job "$DAEMON_LAUNCHD_LABEL"; then');
+  });
+
   test("offline maintenance stop bootouts launchd and waits for DB handles", () => {
     const script = readFileSync(SCRIPT, "utf8");
 
