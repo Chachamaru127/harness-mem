@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.32.1] - 2026-10-29
+
+- Windows で daemon が起動できない不具合を直しました。起動中の LaunchAgent の daemon を古い `harness-memd start` が止めないための仮の待ち受けを、macOS だけで動かします。Windows ではポートの解放が間に合わず、本来のサーバーが `EADDRINUSE` で終了していました。
+
+0.32.0 に記載した変更を、npm で初めて配布する版です。v0.32.0 のタグと GitHub Release は作られましたが、上記の Windows の導入検査で npm への配布が止まり、npm の 0.32.0 は公開されていません。
+
 ## [0.32.0] - 2026-10-29
 
 - 古い記録を仕分け、要約し、保管庫へ移す Living Memory の仕組みを追加しました。**既定はオフ**です。ループ（`scripts/triage-loop.ts`、`scripts/summary-loop.ts`、`scripts/triage-compact-loop.ts`）を起動するか、`HARNESS_MEM_TRIAGE_ENABLED` / `HARNESS_MEM_SUMMARY_ENABLED` を設定しない限り動きません。外部モデルへの送信（Cloudflare 経由の Jev による仕分け、Clairic、Claude / Codex の要約、Ollama の `:cloud` モデル）には、さらに `HARNESS_MEM_CLOUD_LLM=1` が必要です。送る前と要約の出力には手元の秘密検査がかかり、当たったセッションは送らずに保留します。保管庫へ移すのは、完了した要約が実際に含んだ行だけです。新しい表は `mem_triage_decisions` と `mem_summary_jobs` です。

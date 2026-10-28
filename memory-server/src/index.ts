@@ -22,15 +22,19 @@ if (isRemote) {
 // and runs `launchctl kickstart -k` while this process is still initializing.
 // Hold the port with a 503 listener until the synchronous DB init finishes, so
 // the hook sees a listener and leaves the process alone.
+// launchd only exists on macOS. On Windows the port is not released in time
+// after stop(), so the real server failed with EADDRINUSE (v0.32.0 release smoke).
 let startupListener: { stop: (force?: boolean) => void } | null = null;
-try {
-  startupListener = Bun.serve({
-    hostname: config.bindHost,
-    port: config.bindPort,
-    fetch: () => new Response("starting", { status: 503 }),
-  });
-} catch {
-  // Another process owns the port; the real server will report the conflict.
+if (process.platform === "darwin") {
+  try {
+    startupListener = Bun.serve({
+      hostname: config.bindHost,
+      port: config.bindPort,
+      fetch: () => new Response("starting", { status: 503 }),
+    });
+  } catch {
+    // Another process owns the port; the real server will report the conflict.
+  }
 }
 
 let core: HarnessMemCore;
