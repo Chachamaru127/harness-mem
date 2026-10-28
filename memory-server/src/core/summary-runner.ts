@@ -55,6 +55,19 @@ function emptyResult(skipped?: SummaryRunResult["skipped"]): SummaryRunResult {
   return { scanned: 0, summarized: 0, blocked: 0, failed: 0, skipped };
 }
 
+function isLoopbackEndpoint(endpoint: string | undefined): boolean {
+  if (!endpoint) return true;
+  try {
+    const host = new URL(endpoint).hostname.replace(/^\[|\]$/g, "");
+    // Only a literal IPv4 in 127.0.0.0/8: a DNS name such as 127.remote.example is remote.
+    const loopbackV4 = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+    return host === "localhost" || host === "::1"
+      || (loopbackV4 !== null && loopbackV4.slice(1).every((octet) => Number(octet) <= 255));
+  } catch {
+    return false;
+  }
+}
+
 function summaryIdFor(sessionId: string, model: string): string {
   return `obs_summary_${createHash("sha256").update(`${sessionId}:${model}`).digest("hex").slice(0, 24)}`;
 }
@@ -72,8 +85,12 @@ export async function runSummaryBatch(
   deps: SummaryDeps = {},
 ): Promise<SummaryRunResult> {
   if (config.summaryEnabled !== true) return emptyResult("disabled");
-  if ((config.summaryBackend === "codex-app-server" || config.summaryBackend === "claude-code") && config.cloudLlmEnabled !== true) return emptyResult("disabled");
   const model = config.summaryModel || "glm-5.3-flash:cloud";
+  // Every remote path needs the explicit cloud opt-in: Claude/Codex backends, Ollama ":cloud" models, and Clairic.
+  const remoteSummary = config.summaryBackend === "codex-app-server" || config.summaryBackend === "claude-code"
+    || model.endsWith(":cloud") || !isLoopbackEndpoint(config.summaryEndpoint);
+  if (remoteSummary && config.cloudLlmEnabled !== true) return emptyResult("disabled");
+  const clairicAllowed = config.clairicEnabled !== false && config.cloudLlmEnabled === true;
   const now = nowIso();
   // A worker that died between start and completion leaves a 'running' row.
   // After an hour, treat it as failed so the retry path can pick it up.
@@ -91,7 +108,7 @@ export async function runSummaryBatch(
   }
   const maxSessions = clampLimit(config.summaryMaxSessions, 5, 1, 20);
   const maxSources = clampLimit(config.summaryMaxSources, 50, 1, 200);
-  const clairic = deps.clairic ?? (config.clairicEnabled === false
+  const clairic = deps.clairic ?? (!clairicAllowed
     ? { extract: async () => EMPTY_FACTS }
     : new ClairicClient({
         accountId: config.cloudflareAccountId,
@@ -176,11 +193,29 @@ export async function runSummaryBatch(
         return;
       }
 
-      const text = sources
-        .map((source) => source.content)
-        .join("\n---\n")
-        .slice(0, MAX_LOG_CHARS);
+      // Only rows whose whole content fits in the prompt are linked as summarized; the
+      // archive loop archives linked rows only, so truncated rows stay in the primary layer.
+      const covered: SourceRow[] = [];
+      let text = "";
+      for (const source of sources) {
+        const next = covered.length === 0 ? source.content : `${text}\n---\n${source.content}`;
+        if (next.length > MAX_LOG_CHARS) {
+          if (covered.length === 0) text = source.content.slice(0, MAX_LOG_CHARS);
+          break;
+        }
+        text = next;
+        covered.push(source);
+      }
       const facts = config.clairicEnabled === false ? EMPTY_FACTS : await clairic.extract(text);
+      // Scan everything the summary model will receive, including model-generated facts.
+      // Fact values are scanned raw: JSON escaping would hide quoted assignments from the scanner.
+      const factText = Object.values(facts).flat().filter((v): v is string => typeof v === "string").join("\n");
+      const promptScan = scanForEgress([text, factText, session.project, session.session_id].join("\n"), []);
+      if (promptScan.blocked) {
+        markBlocked.run(`prompt_scan:${promptScan.reasons.join(",")}`, nowIso(), key.sessionId, key.model);
+        result.blocked += 1;
+        return;
+      }
       const generated = await summary.summarize({
         project: session.project,
         sessionId: session.session_id,
@@ -205,22 +240,31 @@ export async function runSummaryBatch(
       }
 
       const summaryId = summaryIdFor(session.session_id, model);
-      if (!summaryExists.get(summaryId)) {
-        insertSummaryObservation(db, {
-          id: summaryId,
-          project: session.project,
-          sessionId: session.session_id,
-          title: `要約: ${session.session_id}`,
-          content: generated.summary,
-          tags: [
-            "summary",
-            `session:${session.session_id}`,
-            ...(facts.version ? [`version:${facts.version}`] : []),
-          ],
-        });
-      }
-      linkSummaryToSources(db, summaryId, sources.map((source) => source.id), nowIso());
-      completeSummaryJob(db, key, summaryId);
+      // Content, coverage links and completion commit together. A summary row left by an
+      // earlier partial run is rewritten and its links replaced, so links never point at
+      // rows the stored content does not describe.
+      db.transaction(() => {
+        if (summaryExists.get(summaryId)) {
+          db.query("UPDATE mem_observations SET content = ?, content_redacted = ?, updated_at = ? WHERE id = ?")
+            .run(generated.summary, generated.summary, nowIso(), summaryId);
+          db.query("DELETE FROM mem_links WHERE from_observation_id = ? AND relation = 'summarizes'").run(summaryId);
+        } else {
+          insertSummaryObservation(db, {
+            id: summaryId,
+            project: session.project,
+            sessionId: session.session_id,
+            title: `要約: ${session.session_id}`,
+            content: generated.summary,
+            tags: [
+              "summary",
+              `session:${session.session_id}`,
+              ...(facts.version ? [`version:${facts.version}`] : []),
+            ],
+          });
+        }
+        linkSummaryToSources(db, summaryId, covered.map((source) => source.id), nowIso());
+        completeSummaryJob(db, key, summaryId);
+      })();
       result.summarized += 1;
     } catch (error) {
       const code = (error as { code?: unknown } | null)?.code;

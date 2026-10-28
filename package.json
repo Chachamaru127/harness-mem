@@ -29,6 +29,7 @@
     "docs/release-process.md",
     "bin/",
     "scripts/",
+    "launchd/",
     "tests/test-memory-search-quality.sh",
     "memory-server/src/",
     "memory-server/tests/",

@@ -16,6 +16,7 @@ function config(overrides: Parameters<typeof createTestConfig>[0] = {}) {
     summaryMaxSessions: 5,
     summaryMaxSources: 50,
     clairicEnabled: true,
+    cloudLlmEnabled: true,
     ...overrides,
   });
 }
@@ -202,6 +203,87 @@ describe("runSummaryBatch", () => {
     expect(jobs(db)).toEqual([
       { status: "completed", summary_observation_id: summaries[0]!.id, error: null },
     ]);
+  });
+
+  test("only rows that fit in the prompt are linked as summarized", async () => {
+    const db = createTestDb();
+    insertTestObservation(db, { id: "obs-fit", session_id: "s1", content: "決定: 小さな行。 ".repeat(300), created_at: "2026-01-01T00:00:00.000Z" });
+    insertTestObservation(db, { id: "obs-cut", session_id: "s1", content: "理由: 長い行。 ".repeat(400), created_at: "2026-01-01T00:00:01.000Z" });
+    decide(db, "obs-fit");
+    decide(db, "obs-cut");
+    const result = await runSummaryBatch(db, config(), okDeps);
+    expect(result.summarized).toBe(1);
+    const linked = db.query<{ to_observation_id: string }, []>(
+      "SELECT to_observation_id FROM mem_links WHERE relation = 'summarizes'").all().map((r) => r.to_observation_id);
+    expect(linked).toEqual(["obs-fit"]);
+  });
+
+  test("facts that carry a credential block the session before the summary model", async () => {
+    const db = createTestDb();
+    insertTestObservation(db, { id: "obs-a", session_id: "s1", content: "決定: BLOB で持つ。" });
+    decide(db, "obs-a");
+    let summarizeCalls = 0;
+    const result = await runSummaryBatch(db, config(), {
+      clairic: { extract: async () => ({ ...facts, decision: 'api_key = "a1b2c3d4e5f6"' }) },
+      summary: { summarize: async () => { summarizeCalls += 1; return { ok: true, summary: "決定: x" }; } },
+    });
+    expect(result.blocked).toBe(1);
+    expect(summarizeCalls).toBe(0);
+    expect(summaryRows(db)).toHaveLength(0);
+  });
+
+  test("a non-loopback summary endpoint needs the cloud opt-in", async () => {
+    const db = createTestDb();
+    insertTestObservation(db, { id: "obs-a", session_id: "s1", content: "決定: BLOB で持つ。" });
+    decide(db, "obs-a");
+    const result = await runSummaryBatch(db, config({ cloudLlmEnabled: false, summaryModel: "local-model", summaryEndpoint: "https://external.example.test" }), okDeps);
+    expect(result.skipped).toBe("disabled");
+    for (const endpoint of ["https://127.remote.example", "http://127.0.0.1.example.test", "http://127.0.0.256"]) {
+      expect((await runSummaryBatch(db, config({ cloudLlmEnabled: false, summaryModel: "local-model", summaryEndpoint: endpoint }), okDeps)).skipped).toBe("disabled");
+    }
+    const local = await runSummaryBatch(db, config({ cloudLlmEnabled: false, summaryModel: "local-model", summaryEndpoint: "http://127.0.0.1:11434" }), okDeps);
+    expect(local.summarized).toBe(1);
+  });
+
+  test("a retry rewrites a partial summary and replaces its links", async () => {
+    const db = createTestDb();
+    insertTestObservation(db, { id: "obs-a", session_id: "s1", content: "決定: A。", created_at: "2026-01-01T00:00:00.000Z" });
+    decide(db, "obs-a");
+    db.exec(`CREATE TRIGGER fail_link BEFORE INSERT ON mem_links WHEN NEW.relation = 'summarizes' BEGIN SELECT RAISE(ABORT, 'link failure'); END`);
+    const first = await runSummaryBatch(db, config(), { ...okDeps, summary: { summarize: async () => ({ ok: true, summary: "決定: A。" }) } });
+    expect(first.failed).toBe(1);
+    expect(summaryRows(db)).toHaveLength(0);
+    db.exec("DROP TRIGGER fail_link");
+    insertTestObservation(db, { id: "obs-b", session_id: "s1", content: "決定: B。", created_at: "2026-01-01T00:00:01.000Z" });
+    decide(db, "obs-b");
+    const second = await runSummaryBatch(db, config(), { ...okDeps, summary: { summarize: async () => ({ ok: true, summary: "決定: A と B。" }) } });
+    expect(second.summarized).toBe(1);
+    expect(summaryRows(db)[0]?.content).toBe("決定: A と B。");
+    const linked = db.query<{ to_observation_id: string }, []>(
+      "SELECT to_observation_id FROM mem_links WHERE relation = 'summarizes' ORDER BY to_observation_id").all().map((r) => r.to_observation_id);
+    expect(linked).toEqual(["obs-a", "obs-b"]);
+  });
+
+  test("cloud models and Clairic stay off without HARNESS_MEM_CLOUD_LLM", async () => {
+    const db = createTestDb();
+    insertTestObservation(db, { id: "obs-a", session_id: "s1", content: "決定: BLOB で持つ。" });
+    decide(db, "obs-a");
+    const originalFetch = globalThis.fetch;
+    let fetches = 0;
+    globalThis.fetch = (async () => { fetches += 1; throw new Error("network must not be used"); }) as unknown as typeof fetch;
+    try {
+      const cloudModel = await runSummaryBatch(db, config({ cloudLlmEnabled: false }));
+      expect(cloudModel.skipped).toBe("disabled");
+      let extracted = 0;
+      const local = await runSummaryBatch(db, config({ cloudLlmEnabled: false, summaryModel: "qwen3:8b" }), {
+        summary: { summarize: async ({ facts }) => { extracted += facts.decision ? 1 : 0; return { ok: true, summary: "決定: ローカル要約。" }; } },
+      });
+      expect(local.summarized).toBe(1);
+      expect(extracted).toBe(0);
+      expect(fetches).toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   test("a scanner-blocked session is marked blocked and writes no summary", async () => {

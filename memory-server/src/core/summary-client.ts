@@ -66,6 +66,8 @@ export class SummaryClient {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(this.body(input)),
         signal: controller.signal,
+        // A loopback endpoint must not be redirected to a remote host behind the cloud gate.
+        redirect: "error",
       });
 
       if (response.status < 200 || response.status >= 300) {

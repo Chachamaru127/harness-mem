@@ -170,7 +170,7 @@ function main(): void {
     "UPDATE mem_summary_jobs SET status = 'pending', error = NULL, updated_at = ? WHERE session_id = ? AND model = ? AND status = 'failed'",
   );
 
-  const stats = { scanned: rows.length, inserted: 0, linked: 0, completed: 0, skipped: 0 };
+  const stats = { scanned: rows.length, inserted: 0, linked: 0, completed: 0, skipped: 0, truncated_unlinked: 0 };
   const started = Date.now();
 
   const apply = (row: Row): void => {
@@ -195,7 +195,9 @@ function main(): void {
       });
       stats.inserted += 1;
     }
-    stats.linked += linkSummaryToSources(db, summaryId, [row.id], now);
+    // A truncated extract does not cover the row, so it is not linked and stays out of archive.
+    if (row.content.length <= args.maxChars) stats.linked += linkSummaryToSources(db, summaryId, [row.id], now);
+    else stats.truncated_unlinked += 1;
     completeSummaryJob(db, key, summaryId);
     stats.completed += 1;
   };

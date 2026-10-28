@@ -37,9 +37,9 @@ const BEARER_TOKEN_RE = /(?<![A-Za-z0-9_])Bearer\s+[A-Za-z0-9._~+/-]{6,}=*/i;
 const KEY_PREFIX_RE =
   /(?<![A-Za-z0-9_])(?:sk-|rk_|pk_|gh[pousr]_|xox[baprs]-)[A-Za-z0-9_-]{6,}/;
 
-/** key/secret/password への代入。値は 6 文字以上。 */
+/** key/secret/password への代入。値は 6 文字以上。JSON / YAML の引用符付きキーも含む。 */
 const ASSIGNMENT_RE =
-  /(?<![A-Za-z0-9_])(?:api[-_]?key|access[-_]?token|secret|password|client[-_]?secret)\s*[:=]\s*["']?[^\s"',;]{6,}/i;
+  /(?<![A-Za-z0-9_])["']?(?:api[-_]?key|access[-_]?token|secret|password|client[-_]?secret)["']?\s*[:=]\s*["']?[^\s"',;]{6,}/i;
 
 /** メールアドレスの直後に区切りと資格情報らしき文字列（例: user@example.com / demo-pass）。 */
 const EMAIL_WITH_SECRET_RE =

@@ -119,6 +119,79 @@ describe("maintenance runner", () => {
     }
   });
 
+  test("archive loop only selects rows a completed summary links", () => {
+    const box = sandbox();
+    bootstrapDatabase(box.env, box.dbPath);
+    const db = new Database(box.dbPath);
+    const now = "2026-10-27T00:00:00.000Z";
+    db.query("INSERT INTO mem_sessions(session_id, platform, project, started_at, created_at, updated_at) VALUES ('s1','claude','p',?,?,?)").run(now, now, now);
+    for (const id of ["obs-covered", "obs-uncovered", "obs-summary"]) {
+      db.query(`INSERT INTO mem_observations(id, platform, project, session_id, content, content_redacted, tags_json, privacy_tags_json, created_at, updated_at)
+                VALUES (?, 'claude', 'p', 's1', 'x', 'x', '[]', '[]', ?, ?)`).run(id, now, now);
+    }
+    for (const id of ["obs-covered", "obs-uncovered"]) {
+      db.query(`INSERT INTO mem_triage_decisions(observation_id, project, model, threshold, score, durable, decision, fallback, batch_id, created_at)
+                VALUES (?, 'p', 'm', 0.3, 0.1, 0.1, 'compact', 0, 'b', ?)`).run(id, now);
+    }
+    db.query(`INSERT INTO mem_summary_jobs(session_id, project, model, status, summary_observation_id, created_at, updated_at)
+              VALUES ('s1', 'p', 'm', 'completed', 'obs-summary', ?, ?)`).run(now, now);
+    db.query("INSERT INTO mem_links(from_observation_id, to_observation_id, relation, created_at) VALUES ('obs-summary', 'obs-covered', 'summarizes', ?)").run(now);
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    db.close();
+    const result = run([join(ROOT, "scripts/triage-compact-loop.ts"), "--db-path", box.dbPath, "--model", "m", "--max-batches", "1"], box.env);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/"mode": "plan"/);
+    expect(result.stdout.match(/"candidate_count": (\d+)/)?.[1]).toBe("1");
+  });
+
+  test("triage-archive applies the same summary coverage and durable checks", () => {
+    const box = sandbox();
+    bootstrapDatabase(box.env, box.dbPath);
+    const db = new Database(box.dbPath);
+    const now = "2026-10-27T00:00:00.000Z";
+    db.query("INSERT INTO mem_sessions(session_id, platform, project, started_at, created_at, updated_at) VALUES ('s1','claude','p',?,?,?)").run(now, now, now);
+    for (const id of ["obs-covered", "obs-uncovered", "obs-durable", "obs-summary"]) {
+      db.query(`INSERT INTO mem_observations(id, platform, project, session_id, content, content_redacted, tags_json, privacy_tags_json, created_at, updated_at)
+                VALUES (?, 'claude', 'p', 's1', 'x', 'x', '[]', '[]', ?, ?)`).run(id, now, now);
+    }
+    for (const [id, durable] of [["obs-covered", 0.1], ["obs-uncovered", 0.1], ["obs-durable", 0.9]] as const) {
+      db.query(`INSERT INTO mem_triage_decisions(observation_id, project, model, threshold, score, durable, decision, fallback, batch_id, created_at)
+                VALUES (?, 'p', 'm', 0.3, 0.1, ?, 'compact', 0, 'b', ?)`).run(id, durable, now);
+    }
+    db.query(`INSERT INTO mem_summary_jobs(session_id, project, model, status, summary_observation_id, created_at, updated_at)
+              VALUES ('s1', 'p', 'm', 'completed', 'obs-summary', ?, ?)`).run(now, now);
+    for (const id of ["obs-covered", "obs-durable"]) {
+      db.query("INSERT INTO mem_links(from_observation_id, to_observation_id, relation, created_at) VALUES ('obs-summary', ?, 'summarizes', ?)").run(id, now);
+    }
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    db.close();
+    const result = run([join(ROOT, "scripts/triage-archive.ts"), "--db-path", box.dbPath, "--model", "m"], box.env);
+    expect(result.status).toBe(0);
+    expect(result.stdout.match(/"candidate_count": (\d+)/)?.[1]).toBe("1");
+  });
+
+  test("single-row backfill does not link a row its extract truncated", () => {
+    const box = sandbox();
+    bootstrapDatabase(box.env, box.dbPath);
+    const db = new Database(box.dbPath);
+    const now = "2026-10-27T00:00:00.000Z";
+    for (const [sid, id, content] of [["s-short", "obs-short", "決定: 短い。"], ["s-long", "obs-long", "理由: 長い。 ".repeat(200)]] as const) {
+      db.query("INSERT INTO mem_sessions(session_id, platform, project, started_at, created_at, updated_at) VALUES (?,'claude','p',?,?,?)").run(sid, now, now, now);
+      db.query(`INSERT INTO mem_observations(id, platform, project, session_id, content, content_redacted, tags_json, privacy_tags_json, created_at, updated_at)
+                VALUES (?, 'claude', 'p', ?, ?, ?, '[]', '[]', ?, ?)`).run(id, sid, content, content, now, now);
+      db.query(`INSERT INTO mem_triage_decisions(observation_id, project, model, threshold, score, durable, decision, fallback, batch_id, created_at)
+                VALUES (?, 'p', 'm', 0.3, 0.1, 0.1, 'compact', 0, 'b', ?)`).run(id, now);
+    }
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    db.close();
+    const result = run([join(ROOT, "scripts/backfill-single-row-summaries.ts"), "--db-path", box.dbPath, "--model", "m", "--execute", "--max-chars", "200"], box.env);
+    expect(result.status).toBe(0);
+    const check = new Database(box.dbPath, { readonly: true });
+    const linked = check.query<{ to_observation_id: string }, []>("SELECT to_observation_id FROM mem_links WHERE relation = 'summarizes'").all().map((r) => r.to_observation_id);
+    check.close();
+    expect(linked).toEqual(["obs-short"]);
+  });
+
   test("hourly archive reports instead of spawning without --execute", () => {
     const box = sandbox();
     bootstrapDatabase(box.env, box.dbPath);
@@ -126,6 +199,7 @@ describe("maintenance runner", () => {
     expect(result.status).toBe(0);
     const report = parseJson(result.stdout);
     expect(report.started).toBe(false);
+    expect(String(report.command)).toContain(`--db-path ${box.dbPath}`);
     expect(readdirSync(box.stateDir)).not.toContain("hourly-archive.pid");
   });
 

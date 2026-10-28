@@ -439,6 +439,8 @@ async function jobHourlyArchive(args: Args): Promise<{ report: Record<string, un
   const command = [
     "run",
     "scripts/triage-compact-loop.ts",
+    "--db-path",
+    args.dbPath,
     "--limit",
     "50",
     "--execute",

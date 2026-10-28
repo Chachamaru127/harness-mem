@@ -131,6 +131,14 @@ const SECRET_SAMPLES: Sample[] = [
     content: 'api_key = "a1b2c3d4e5f6"',
   },
   {
+    name: "JSON quoted password key",
+    content: '{"password":"ExampleCredential123"}',
+  },
+  {
+    name: "JSON quoted api_key key",
+    content: '{"api_key": "ExampleCredential123"}',
+  },
+  {
     name: "access_token assignment",
     content: "access_token: ya29.a0AfH6SMBxxxxxxxxxxxx",
   },
@@ -334,7 +342,7 @@ describe("scanForEgress: 契約", () => {
   });
 });
 
-describe("scanForEgress: 秘密 33 件を取りこぼさない", () => {
+describe("scanForEgress: 秘密 35 件を取りこぼさない", () => {
   for (const sample of SECRET_SAMPLES) {
     test(sample.name, () => {
       const result = scan(sample);
@@ -343,8 +351,8 @@ describe("scanForEgress: 秘密 33 件を取りこぼさない", () => {
     });
   }
 
-  test("秘密サンプルは 33 件ある", () => {
-    expect(SECRET_SAMPLES.length).toBe(33);
+  test("秘密サンプルは 35 件ある", () => {
+    expect(SECRET_SAMPLES.length).toBe(35);
   });
 });
 

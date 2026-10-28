@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+- 古い記録を仕分け、要約し、保管庫へ移す Living Memory の仕組みを追加しました。**既定はオフ**です。ループ（`scripts/triage-loop.ts`、`scripts/summary-loop.ts`、`scripts/triage-compact-loop.ts`）を起動するか、`HARNESS_MEM_TRIAGE_ENABLED` / `HARNESS_MEM_SUMMARY_ENABLED` を設定しない限り動きません。外部モデルへの送信（Cloudflare 経由の Jev による仕分け、Clairic、Claude / Codex の要約、Ollama の `:cloud` モデル）には、さらに `HARNESS_MEM_CLOUD_LLM=1` が必要です。送る前と要約の出力には手元の秘密検査がかかり、当たったセッションは送らずに保留します。保管庫へ移すのは、完了した要約が実際に含んだ行だけです。新しい表は `mem_triage_decisions` と `mem_summary_jobs` です。
+
+- 本文を消す処理（`scripts/forget-maintenance-offline.ts`）は、要約の行を対象にしません。要約は、置き換えた行の唯一の写しです。
+
+- 忘却の保守を daemon の外で、macOS の LaunchAgent として定期実行できるようにしました（`scripts/install-maintenance-jobs.sh`、雛形は `launchd/`）。毎時の保管庫移動、週次の監視と通知センターへの要約、月次の VACUUM です。purge と VACUUM は `--execute` とバックアップの証跡が無い限り報告だけです。毎時の処理は `--db-path` を保管庫移動のループへ渡します。
+
+- 検索ワーカーが 2 回続けて時間切れになったら入れ替えるようにしました。以前は応答しないワーカーが残り続け、手動で止めるまで全検索が 8 秒待ってからキーワード検索に切り替わっていました。
+
+- 親が落ちて子の PID が記録されないまま残った、取り込み用プロセスの予約を、親の PID が無く予約の印を持つプロセスも無いときに解放するようにしました。これまで、この残骸 2 件が過去ログの取り込みを毎回 `record_write_failed` で止めていました。
+
+- `harness-memd start` が、起動中の LaunchAgent の daemon に `launchctl kickstart -k` をかけて止めてしまうことがなくなりました。
+
 - 環境の一覧を RouteCLI の画面へ移しました。Mem UI の `Environment` タブは `http://127.0.0.1:8765/` への案内になり、`GET /v1/admin/environment` と UI の `GET /api/environment` は `410` と `error: "environment_moved"`、`moved_to` を返します。環境の収集のコードは削除しました。上流の版との比較（`harness-mem versions`、`tool-versions.json`、履歴）と WorkGraph タブは変わりません。
 
 - Web UI のサーバーが、既定で全インターフェースではなく `127.0.0.1` だけで待ち受けるようにしました。LAN に公開するときは `HARNESS_MEM_UI_HOST`（例: `0.0.0.0`）を指定します。以前は `doctor --fix`、`setup`、更新後の修復が `harness-memd` 経由で、ポート 37901 の画面を全インターフェースで立て直していました。

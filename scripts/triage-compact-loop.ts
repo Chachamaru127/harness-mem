@@ -99,7 +99,8 @@ function selectCompacts(args: Args): string[] {
       "o.archived_at IS NULL",
       "d.decision = 'compact'",
       "COALESCE(d.durable, 0) < 0.5",
-      "EXISTS (SELECT 1 FROM mem_summary_jobs j WHERE j.session_id = o.session_id AND j.status = 'completed')",
+      // A completed session job is not enough: only rows the summary actually covered are archived.
+      "EXISTS (SELECT 1 FROM mem_links l JOIN mem_summary_jobs j ON j.summary_observation_id = l.from_observation_id AND j.status = 'completed' WHERE l.to_observation_id = o.id AND l.relation = 'summarizes')",
       "NOT EXISTS (SELECT 1 FROM mem_archive_stubs s WHERE s.observation_id = o.id AND s.archive_state = 'archived')",
     ];
     const values: string[] = [];
