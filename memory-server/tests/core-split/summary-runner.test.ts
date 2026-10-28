@@ -218,6 +218,20 @@ describe("runSummaryBatch", () => {
     expect(linked).toEqual(["obs-fit"]);
   });
 
+  test("facts that carry a credential block the session before the summary model", async () => {
+    const db = createTestDb();
+    insertTestObservation(db, { id: "obs-a", session_id: "s1", content: "決定: BLOB で持つ。" });
+    decide(db, "obs-a");
+    let summarizeCalls = 0;
+    const result = await runSummaryBatch(db, config(), {
+      clairic: { extract: async () => ({ ...facts, decision: 'api_key = "a1b2c3d4e5f6"' }) },
+      summary: { summarize: async () => { summarizeCalls += 1; return { ok: true, summary: "決定: x" }; } },
+    });
+    expect(result.blocked).toBe(1);
+    expect(summarizeCalls).toBe(0);
+    expect(summaryRows(db)).toHaveLength(0);
+  });
+
   test("cloud models and Clairic stay off without HARNESS_MEM_CLOUD_LLM", async () => {
     const db = createTestDb();
     insertTestObservation(db, { id: "obs-a", session_id: "s1", content: "決定: BLOB で持つ。" });

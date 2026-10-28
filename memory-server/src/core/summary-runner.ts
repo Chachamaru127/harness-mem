@@ -194,6 +194,15 @@ export async function runSummaryBatch(
         covered.push(source);
       }
       const facts = config.clairicEnabled === false ? EMPTY_FACTS : await clairic.extract(text);
+      // Scan everything the summary model will receive, including model-generated facts.
+      // Fact values are scanned raw: JSON escaping would hide quoted assignments from the scanner.
+      const factText = Object.values(facts).flat().filter((v): v is string => typeof v === "string").join("\n");
+      const promptScan = scanForEgress([text, factText, session.project, session.session_id].join("\n"), []);
+      if (promptScan.blocked) {
+        markBlocked.run(`prompt_scan:${promptScan.reasons.join(",")}`, nowIso(), key.sessionId, key.model);
+        result.blocked += 1;
+        return;
+      }
       const generated = await summary.summarize({
         project: session.project,
         sessionId: session.session_id,
