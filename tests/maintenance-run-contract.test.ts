@@ -90,6 +90,9 @@ describe("maintenance runner", () => {
       db.query(`INSERT INTO mem_archive_stubs(archive_id, observation_id, project, session_id, user_id, archive_stub, archive_state, reason, content_sha256, manifest_sha256, created_at)
                 VALUES (?, ?, 'p', 's1', 'u', '{}', 'archived', 'test', 'h', 'h', ?)`).run(`a-${id}`, id, now);
     }
+    // The summary pipeline schema ships separately; create the columns this check reads when it is absent.
+    db.exec(`CREATE TABLE IF NOT EXISTS mem_summary_jobs(id INTEGER PRIMARY KEY, session_id TEXT NOT NULL, project TEXT NOT NULL,
+             model TEXT NOT NULL, status TEXT NOT NULL, summary_observation_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`);
     db.query(`INSERT INTO mem_summary_jobs(session_id, project, model, status, summary_observation_id, created_at, updated_at)
               VALUES ('s1', 'p', 'claude-haiku-5-5', 'completed', 'obs-summary', ?, ?)`).run(now, now);
     db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
