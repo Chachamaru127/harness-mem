@@ -18,6 +18,7 @@ export class ReferenceProcessLedger implements ReferenceProcessReservations {
     private readonly db: Database,
     namespace: "project-resolver" | "source-reader",
     private readonly inspect: (pid: number) => "absent" | "present" | "unknown" = inspectPid,
+    private readonly inspectToken: (token: string) => "absent" | "present" | "unknown" = inspectTokenProcess,
   ) {
     this.prefix = `reference_process:v1:${namespace}:`;
   }
@@ -32,9 +33,17 @@ export class ReferenceProcessLedger implements ReferenceProcessReservations {
     for (const row of this.rows()) {
       let value: Reservation;
       try { value = JSON.parse(row.value); } catch { continue; }
-      // No PID means the owner may have crashed between spawn and attach.
+      // No PID means the owner may have crashed between spawn and attach. The child carries
+      // the token in its argv, so the slot is free only when the owner is gone and no process
+      // holds the token (2026-10-28: two such rows blocked every history ingest for 16 days).
+      if (!Number.isSafeInteger(value.pid) || (value.pid ?? 0) <= 1) {
+        if (Number.isSafeInteger(value.parent_pid) && value.parent_pid > 1 && value.parent_pid !== process.pid
+          && this.inspect(value.parent_pid) === "absent" && this.inspectToken(value.token) === "absent") {
+          this.db.query("DELETE FROM mem_meta WHERE key = ? AND value = ?").run(row.key, row.value);
+        }
+        continue;
+      }
       // A live/reused PID or failed inspection cannot prove disappearance.
-      if (!Number.isSafeInteger(value.pid) || (value.pid ?? 0) <= 1) continue;
       if (this.inspect(value.pid!) === "absent") {
         this.db.query("DELETE FROM mem_meta WHERE key = ? AND value = ?").run(row.key, row.value);
       }
@@ -75,6 +84,14 @@ export class ReferenceProcessLedger implements ReferenceProcessReservations {
     const rows = this.rows();
     return { reserved: rows.length, unconfirmed: rows.length };
   }
+}
+
+function inspectTokenProcess(token: string): "absent" | "present" | "unknown" {
+  try {
+    const ps = Bun.spawnSync(["ps", "-axww", "-o", "args="], { stdout: "pipe", stderr: "ignore" });
+    if (ps.exitCode !== 0) return "unknown";
+    return ps.stdout.toString().includes(`=${token}`) ? "present" : "absent";
+  } catch { return "unknown"; }
 }
 
 function inspectPid(pid: number): "absent" | "present" | "unknown" {
