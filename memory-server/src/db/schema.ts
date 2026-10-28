@@ -1813,9 +1813,11 @@ export function migrateSchema(
       const indexSql = `CREATE UNIQUE INDEX idx_mem_obs_content_dedupe_hash
         ON mem_observations(content_dedupe_hash)
         WHERE content_dedupe_hash IS NOT NULL AND archived_at IS NULL`;
-      const existing = db.query<{ sql: string }, []>(
+      const lookup = db.prepare<{ sql: string }, []>(
         "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_mem_obs_content_dedupe_hash'",
-      ).get();
+      );
+      const existing = lookup.get();
+      lookup.finalize();
       if (!existing || normalizeSqlBody(existing.sql) !== normalizeSqlBody(indexSql)) {
         db.exec(`DROP INDEX IF EXISTS idx_mem_obs_content_dedupe_hash`);
         db.exec(indexSql);
