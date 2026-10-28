@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, mkdtempSync, readFileSync, existsSync, readdirSync } from "node:fs";
@@ -75,6 +76,31 @@ describe("maintenance runner", () => {
     expect(summary).toContain("weekly-monitor");
     expect(summary).toContain("異常なし");
     expect(existsSync(String(report.latest_json))).toBe(true);
+  });
+
+  test("hard purge never selects pipeline summary observations", () => {
+    const box = sandbox();
+    bootstrapDatabase(box.env, box.dbPath);
+    const db = new Database(box.dbPath);
+    const now = "2026-10-27T00:00:00.000Z";
+    db.query("INSERT INTO mem_sessions(session_id, platform, project, started_at, created_at, updated_at) VALUES ('s1','claude','p',?,?,?)").run(now, now, now);
+    for (const id of ["obs-summary", "obs-plain"]) {
+      db.query(`INSERT INTO mem_observations(id, platform, project, session_id, content, content_redacted, tags_json, privacy_tags_json, created_at, updated_at, archived_at)
+                VALUES (?, 'claude', 'p', 's1', 'x', 'x', '[]', '[]', ?, ?, ?)`).run(id, now, now, now);
+      db.query(`INSERT INTO mem_archive_stubs(archive_id, observation_id, project, session_id, user_id, archive_stub, archive_state, reason, content_sha256, manifest_sha256, created_at)
+                VALUES (?, ?, 'p', 's1', 'u', '{}', 'archived', 'test', 'h', 'h', ?)`).run(`a-${id}`, id, now);
+    }
+    db.query(`INSERT INTO mem_summary_jobs(session_id, project, model, status, summary_observation_id, created_at, updated_at)
+              VALUES ('s1', 'p', 'claude-haiku-5-5', 'completed', 'obs-summary', ?, ?)`).run(now, now);
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    db.close();
+    const backupPath = join(box.root, "backup.db");
+    copyFileSync(box.dbPath, backupPath);
+    const result = run([OFFLINE, "--db-path", box.dbPath, "--backup-path", backupPath, "--backup-sha256", sha256(backupPath)], box.env);
+    // The plain row then reaches the backup-coverage gate (no payload in this fixture); the summary row never does.
+    expect(result.stderr).toContain("excluded 1 pipeline summary rows");
+    expect(result.stderr).toContain("obs-plain");
+    expect(result.stderr).not.toContain("obs-summary");
   });
 
   test("purge and vacuum jobs are report-only without --execute", () => {
