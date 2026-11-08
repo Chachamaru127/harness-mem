@@ -17,7 +17,7 @@ on:
 
 jobs:
   codingmemory-smoke:
-    runs-on: ubuntu-latest
+    runs-on: instabox-medium
     timeout-minutes: 20
     steps:
       - name: Checkout
