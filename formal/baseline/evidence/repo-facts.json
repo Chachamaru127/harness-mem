@@ -1,0 +1,48 @@
+{
+  "purpose": "route-project-setup の初期診断で観測した、repo の外にある事実の写し。秘密は含めない。",
+  "observed_at": "2026-11-08T10:33:36Z",
+  "repo": "Chachamaru127/harness-mem",
+  "visibility": "PUBLIC",
+  "default_branch": "main",
+  "working_tree_head": "21253878e8cd271e050a3e459581037e710fbcc3",
+  "branch_protection_main": {
+    "command": "gh api repos/Chachamaru127/harness-mem/branches/main/protection",
+    "http_status": 404,
+    "message": "Branch not protected",
+    "required_status_checks": "なし"
+  },
+  "open_issues": 0,
+  "open_pull_requests": [
+    {
+      "number": 182,
+      "author": "dependabot",
+      "title": "chore(deps): bump the npm_and_yarn group across 1 directory with 2 updates"
+    }
+  ],
+  "existing_formal_models": "なし（find . -name '*.qnt' は node_modules 以外で 0 件）",
+  "workflow_entry_points": {
+    "test-suite.yml": "pull_request と main への push で repository-behavior-gate を実行する。path filter なし。",
+    "release.yml": "v*.*.* の tag push で package-install-smoke / go-build / publish-npm を実行する。",
+    "other": [
+      "benchmark.yml",
+      "codingmemory-bench-smoke.yml",
+      "locomo-benchmark.yml",
+      "mcp-validation.yml",
+      "npm-auth-check.yml",
+      "performance-100k.yml",
+      "pgvector-integration.yml",
+      "python-sdk-langchain.yml",
+      "quality-benchmark.yml",
+      "s109-counterfactual-weekly.yml"
+    ]
+  },
+  "checker": {
+    "routecli_toolchain_root": "/Users/tachibanashuuta/.local/share/routecli/serve",
+    "quint": "0.33.1",
+    "apalache": "0.62.4",
+    "java": "Temurin 21.0.13+9",
+    "tlc": "2026.11.08.103218",
+    "note": "JAVA_HOME と JOB_LEASE_JAVA を既存の JDK 21 へ向けて実行した。検査中の自動取得はしていない。"
+  },
+  "interpretation": "main の保護が無いため、PR の CI 結果は取り込みを止めない。test-suite.yml は PR と main push で走るが、結果は助言であって必須条件ではない。"
+}

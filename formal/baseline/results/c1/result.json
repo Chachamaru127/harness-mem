@@ -1,0 +1,78 @@
+{
+  "status": "violation",
+  "tlc_exit": 12,
+  "property": "NoUnverifiedMerge",
+  "main": "WorkGate",
+  "model_sha256": "5525e17d80da23ecc067b34b1dc36f254de365b6aefbb66b2bb1d9e46643ce64",
+  "checked_sources": {
+    "AGENTS": "e01b17f0309ceda84ef25f770c14d10ef29748d8cbbd9f0d619a610efe6ed20a",
+    "SPEC": "5380d297e77355b69c9746446d69813f705b22b371c34a91a54a10b6b1cd5911",
+    "TESTSUITE": "ddc98be33869cc45c13543c19e6893f5c62853578347018efffa6bc534f70de7",
+    "RELEASE": "5aab5bfb81f51dc0cef7bbd2507216b3ab3267353d315c04ac83293e67c333f3",
+    "TESTING": "f83ee5c15569f73b050b98640825f4f89d468406a2e0f0359e1aec8bb04d5149",
+    "FACTS": "53d77ec62c65588bf4efd65f2fd610694c7fe78cc59303ea39590a7d3c5d3815"
+  },
+  "command": [
+    "env",
+    "JAVA_HOME=/Users/tachibanashuuta/.t3-ja/worktrees/routecli/t3w-pr-36-20261104-a454/formal/job-lease/tools/jdk-21.0.13+9-jre/Contents/Home",
+    "JOB_LEASE_JAVA=/Users/tachibanashuuta/.t3-ja/worktrees/routecli/t3w-pr-36-20261104-a454/formal/job-lease/tools/jdk-21.0.13+9-jre/Contents/Home/bin/java",
+    "python3",
+    "/Users/tachibanashuuta/.agents/skills/route-project-setup/scripts/run_check.py",
+    "--project",
+    ".",
+    "--input",
+    "formal/baseline/report.json",
+    "--check",
+    "C1",
+    "--routecli",
+    "/Users/tachibanashuuta/.local/share/routecli/serve",
+    "--main",
+    "WorkGate"
+  ],
+  "observed_at": "2026-11-08T10:34:44.990307+00:00",
+  "verification_scope": "finite_model_only",
+  "kind": "invariant",
+  "invocation": [
+    "/usr/local/bin/python3",
+    "/Users/tachibanashuuta/.agents/skills/route-project-setup/scripts/run_check.py",
+    "--project",
+    ".",
+    "--input",
+    "formal/baseline/report.json",
+    "--check",
+    "C1",
+    "--routecli",
+    "/Users/tachibanashuuta/.local/share/routecli/serve",
+    "--main",
+    "WorkGate"
+  ],
+  "toolchain_versions": {
+    "quint": "0.33.1",
+    "apalache": "0.62.4",
+    "archive_url": "https://github.com/apalache-mc/apalache/releases/download/v0.62.4/apalache.tgz",
+    "archive_sha256": "8ac8488422c30d552735bae11b92a2d014d8e02e8608702acc08f9a2d8a9abb2",
+    "jar_sha256": "e5223915507b65cc5f1638bd037ede60f8a4fc1644aff46355779f9b05df9262"
+  },
+  "toolchain_sha256": "10536180a9bb79b953dcdaee4ccb9a2e16dddf21a9ec71d72e13ce8dc9fd4f27",
+  "actual_checker_command": [
+    "/Users/tachibanashuuta/.t3-ja/worktrees/routecli/t3w-pr-36-20261104-a454/formal/job-lease/tools/jdk-21.0.13+9-jre/Contents/Home/bin/java",
+    "-Xmx1g",
+    "-Xss16m",
+    "-cp",
+    "/Users/tachibanashuuta/.local/share/routecli/serve/formal/quint/.cache/apalache-dist-0.62.4/apalache/lib/apalache.jar",
+    "tlc2.TLC",
+    "-workers",
+    "1",
+    "-fp",
+    "0",
+    "-metadir",
+    "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/baseline/results/c1/C1-compile/states",
+    "-config",
+    "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/baseline/results/c1/C1-compile/check.cfg",
+    "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/baseline/results/c1/C1-compile/WorkGate.tla"
+  ],
+  "state_counts": [
+    "17 states generated, 9 distinct states found, 4 states left on queue"
+  ],
+  "stdout_sha256": "4078a6da9bb1ba1dd76c007a5d6356ccb926a5ef10f8f54e0e7f4ef8fe2566e4"
+}

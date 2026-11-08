@@ -1,0 +1,376 @@
+{
+  "schema_version": 1,
+  "title": "harness-mem の取り込み経路（候補）: main の保護を入れた場合",
+  "scope": "基準模型 formal/baseline/WorkGate.qnt の BranchProtected だけを true にした候補。github の main に必須の status check（test-suite）を入れた場合に、「main に取り込む commit は同じ commit の CI が緑」が成り立つかを同じ性質で検査する。基準の診断は docs/reports/2026-11-08-harness-mem-setup-diagnosis.html。",
+  "sources": [
+    {
+      "id": "AGENTS",
+      "label": "repo の開発契約",
+      "path": "AGENTS.md",
+      "sha256": "e01b17f0309ceda84ef25f770c14d10ef29748d8cbbd9f0d619a610efe6ed20a",
+      "section": "最優先ルール 1-4 / 変更時の注意"
+    },
+    {
+      "id": "SPEC",
+      "label": "製品仕様の正本",
+      "path": "Spec.md",
+      "sha256": "5380d297e77355b69c9746446d69813f705b22b371c34a91a54a10b6b1cd5911",
+      "section": "Memory Lifecycle And Autonomous Forgetting / Product Position"
+    },
+    {
+      "id": "TESTSUITE",
+      "label": "PR と main push の CI",
+      "path": ".github/workflows/test-suite.yml",
+      "sha256": "ddc98be33869cc45c13543c19e6893f5c62853578347018efffa6bc534f70de7",
+      "section": "on: pull_request / push main, repository-behavior-gate"
+    },
+    {
+      "id": "RELEASE",
+      "label": "tag push の公開経路",
+      "path": ".github/workflows/release.yml",
+      "sha256": "5aab5bfb81f51dc0cef7bbd2507216b3ab3267353d315c04ac83293e67c333f3",
+      "section": "on: push tags v*.*.*, publish-npm"
+    },
+    {
+      "id": "TESTING",
+      "label": "試験の実行入口",
+      "path": "docs/TESTING.md",
+      "sha256": "f83ee5c15569f73b050b98640825f4f89d468406a2e0f0359e1aec8bb04d5149",
+      "section": "フレームワーク使い分け / テストディレクトリ構造"
+    },
+    {
+      "id": "FACTS",
+      "label": "repo 外の観測事実の写し",
+      "path": "formal/baseline/evidence/repo-facts.json",
+      "sha256": "53d77ec62c65588bf4efd65f2fd610694c7fe78cc59303ea39590a7d3c5d3815",
+      "section": "branch_protection_main / open_issues / workflow_entry_points"
+    }
+  ],
+  "model": {
+    "path": "formal/baseline/WorkGate.protected.qnt",
+    "sha256": "0d7630ef946acc6bc2ee668f03a346300a23bcdd3ad7b0402f816e5e1b4937c5",
+    "main": "WorkGate"
+  },
+  "requirements": [
+    {
+      "id": "R1",
+      "label": "新規作業は Plans.md に追記してから着手する（cc:WIP）",
+      "source_ids": [
+        "AGENTS"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "人が運用する記録の約束で、機械の状態遷移では検査しない。模型の Plan 操作にだけ対応する。"
+    },
+    {
+      "id": "R2",
+      "label": "完了時に Plans.md を cc:完了 へ戻す",
+      "source_ids": [
+        "AGENTS"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "記録の更新漏れは機械では検出しない。今回の診断でも未確認。"
+    },
+    {
+      "id": "R3",
+      "label": "触った箇所に対応する bun test を実行する",
+      "source_ids": [
+        "AGENTS",
+        "TESTING"
+      ],
+      "check_ids": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "label": "ユーザー向け挙動を変えたら README / CHANGELOG を同期する",
+      "source_ids": [
+        "AGENTS"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "文書の同期は版ごとの手作業で、検査は release 前の目視に依存する。"
+    },
+    {
+      "id": "R5",
+      "label": "PR と main push で repository-behavior-gate を走らせる",
+      "source_ids": [
+        "TESTSUITE"
+      ],
+      "check_ids": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R6",
+      "label": "main に取り込む commit は、その同じ commit の CI が緑である",
+      "source_ids": [
+        "TESTSUITE",
+        "FACTS"
+      ],
+      "check_ids": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R7",
+      "label": "公開は tag push から release.yml を通り、テストを通してから publish する",
+      "source_ids": [
+        "RELEASE"
+      ],
+      "check_ids": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R8",
+      "label": "setup / release では package.json / VERSION / CHANGELOG を同期する",
+      "source_ids": [
+        "AGENTS"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "同期の正しさは公開前の手順で確かめており、模型では versionOk の真偽だけを持つ。"
+    },
+    {
+      "id": "R9",
+      "label": "履歴 ingest を触るときは latest interaction / session thread / search の 3 点を回帰確認する",
+      "source_ids": [
+        "AGENTS"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "製品の入出力の回帰で、開発運用の模型の外にある。"
+    },
+    {
+      "id": "R10",
+      "label": "検索品質を触るときは semantic / recency / privacy / strict project を確認する",
+      "source_ids": [
+        "AGENTS"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "同上。検索品質の性質は別の模型と実測の対象。"
+    },
+    {
+      "id": "R11",
+      "label": "legal_hold / private / secret / sensitive の行は自動 archive・purge の候補にしない",
+      "source_ids": [
+        "SPEC"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "記憶の保持と削除の安全条件。今回の模型は開発運用だけを扱うため未模型。"
+    },
+    {
+      "id": "R12",
+      "label": "archive execute と同じ要求で hard purge / compact を走らせない",
+      "source_ids": [
+        "SPEC"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "同上。順序の性質なので次段の模型候補になる。"
+    },
+    {
+      "id": "R13",
+      "label": "既定の経路はローカルで、記憶をクラウドへ送らない",
+      "source_ids": [
+        "SPEC"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "構成と既定値の性質で、repo の設定と実起動の観測で確かめる対象。"
+    },
+    {
+      "id": "R14",
+      "label": "独立した受入確認を経てから完了にする",
+      "source_ids": [
+        "AGENTS"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "担当の分離と判定の運用で、模型の対象外。"
+    }
+  ],
+  "regions": [
+    {
+      "id": "flow",
+      "label": "仕事の流れ",
+      "x": 20,
+      "y": 20,
+      "width": 1140,
+      "height": 460
+    },
+    {
+      "id": "intake",
+      "label": "受付と記録",
+      "parent": "flow",
+      "x": 40,
+      "y": 70,
+      "width": 300,
+      "height": 380
+    },
+    {
+      "id": "gate",
+      "label": "PR と CI",
+      "parent": "flow",
+      "x": 370,
+      "y": 70,
+      "width": 380,
+      "height": 380
+    },
+    {
+      "id": "ship",
+      "label": "取り込みと公開",
+      "parent": "flow",
+      "x": 780,
+      "y": 70,
+      "width": 350,
+      "height": 380
+    }
+  ],
+  "nodes": [
+    {
+      "id": "requested",
+      "label": "依頼だけ受けた",
+      "region": "intake",
+      "x": 90,
+      "y": 250,
+      "initial": true
+    },
+    {
+      "id": "planned",
+      "label": "Plans.md に cc:WIP で記録",
+      "region": "intake",
+      "x": 250,
+      "y": 250
+    },
+    {
+      "id": "pr",
+      "label": "PR を開いた（CI 未完了）",
+      "region": "gate",
+      "x": 450,
+      "y": 250
+    },
+    {
+      "id": "green",
+      "label": "CI が緑",
+      "region": "gate",
+      "x": 650,
+      "y": 140
+    },
+    {
+      "id": "red",
+      "label": "CI が赤",
+      "region": "gate",
+      "x": 650,
+      "y": 360
+    },
+    {
+      "id": "main",
+      "label": "main に取り込んだ",
+      "region": "ship",
+      "x": 860,
+      "y": 250
+    },
+    {
+      "id": "released",
+      "label": "公開した",
+      "region": "ship",
+      "x": 1050,
+      "y": 250
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-plan",
+      "to": "planned",
+      "label": "Plans.md に追記して cc:WIP",
+      "action": "Plan",
+      "from": "requested"
+    },
+    {
+      "id": "e-open",
+      "to": "pr",
+      "label": "PR を開く",
+      "action": "OpenPR",
+      "from": "planned"
+    },
+    {
+      "id": "e-pass",
+      "to": "green",
+      "label": "CI が通る",
+      "action": "CIPass",
+      "from": "pr"
+    },
+    {
+      "id": "e-fail",
+      "to": "red",
+      "label": "CI が落ちる",
+      "action": "CIFail",
+      "from": "pr"
+    },
+    {
+      "id": "e-merge-green",
+      "to": "main",
+      "label": "取り込む",
+      "action": "Merge",
+      "from": "green"
+    },
+    {
+      "id": "e-merge-pending",
+      "to": "main",
+      "label": "CI 実行中でも取り込める（保護なし）",
+      "action": "Merge",
+      "bend": -140,
+      "from": "pr"
+    },
+    {
+      "id": "e-merge-red",
+      "to": "main",
+      "label": "CI が赤でも取り込める（保護なし）",
+      "action": "Merge",
+      "bend": 120,
+      "from": "red"
+    },
+    {
+      "id": "e-release",
+      "to": "released",
+      "label": "版を同期して tag を押す",
+      "action": "Release",
+      "from": "main"
+    }
+  ],
+  "checks": [
+    {
+      "id": "C3",
+      "label": "保護を入れた場合に main へ CI 未通過の commit が入らない",
+      "symbol": "NoUnverifiedMerge",
+      "engine": "TLC",
+      "kind": "invariant",
+      "command": [
+        "env",
+        "JAVA_HOME=/Users/tachibanashuuta/.t3-ja/worktrees/routecli/t3w-pr-36-20261104-a454/formal/job-lease/tools/jdk-21.0.13+9-jre/Contents/Home",
+        "JOB_LEASE_JAVA=/Users/tachibanashuuta/.t3-ja/worktrees/routecli/t3w-pr-36-20261104-a454/formal/job-lease/tools/jdk-21.0.13+9-jre/Contents/Home/bin/java",
+        "python3",
+        "/Users/tachibanashuuta/.agents/skills/route-project-setup/scripts/run_check.py",
+        "--project",
+        ".",
+        "--input",
+        "formal/baseline/report-candidate.json",
+        "--check",
+        "C3",
+        "--routecli",
+        "/Users/tachibanashuuta/.local/share/routecli/serve",
+        "--main",
+        "WorkGate"
+      ],
+      "checked_sources": {
+        "AGENTS": "e01b17f0309ceda84ef25f770c14d10ef29748d8cbbd9f0d619a610efe6ed20a",
+        "SPEC": "5380d297e77355b69c9746446d69813f705b22b371c34a91a54a10b6b1cd5911",
+        "TESTSUITE": "ddc98be33869cc45c13543c19e6893f5c62853578347018efffa6bc534f70de7",
+        "RELEASE": "5aab5bfb81f51dc0cef7bbd2507216b3ab3267353d315c04ac83293e67c333f3",
+        "TESTING": "f83ee5c15569f73b050b98640825f4f89d468406a2e0f0359e1aec8bb04d5149",
+        "FACTS": "53d77ec62c65588bf4efd65f2fd610694c7fe78cc59303ea39590a7d3c5d3815"
+      },
+      "result_path": "formal/baseline/results/c3/result.json",
+      "stdout_path": "formal/baseline/results/c3/stdout.log",
+      "trace_edges": [],
+      "trace_verified": false,
+      "trace_note": "違反が出なければ経路は無い。出た場合は基準と同じ手順で対応を記す。"
+    }
+  ]
+}

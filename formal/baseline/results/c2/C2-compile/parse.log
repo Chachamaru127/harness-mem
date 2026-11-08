@@ -1,0 +1,13 @@
+# Usage statistics is OFF. We care about your privacy.
+# If you want to help our project, consider enabling statistics with config --enable-stats=true.
+
+Output directory: /Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/baseline/results/c2/C2-compile/parse-logs/input.qnt.json/2026-11-08T19-34-58_5301043265586157424
+# APALACHE version: 0.62.4 | build: 7954daf                       I@19:34:58.251
+Parse /Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/baseline/results/c2/C2-compile/input.qnt.json I@19:34:58.256
+PASS #0: SanyParser                                               I@19:34:58.430
+Parsed successfully
+Root module: WorkGate with 23 declarations.   I@19:34:59.057
+It took me 0 days  0 hours  0 min  0 sec                          I@19:34:59.058
+Total time: 0.802 sec                                             I@19:34:59.058
+EXITCODE: OK
+Picked up JAVA_TOOL_OPTIONS: -Xmx1g -Xss16m

@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>harness-mem 取り込みの門番がない — 接続診断</title>
+<style>
+  :root {
+    --ink: #1b1b1f;
+    --muted: #5c5c66;
+    --line: #d8d8e0;
+    --paper: #ffffff;
+    --soft: #f5f5f8;
+    --ok: #1f6f43;
+    --ok-soft: #e8f3ec;
+    --ng: #a3282b;
+    --ng-soft: #fbeaea;
+    --todo: #8a5200;
+    --todo-soft: #fdf0dc;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    padding: 32px 20px 64px;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
+    font-size: 16px;
+    line-height: 1.85;
+  }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 26px; line-height: 1.45; margin: 0 0 8px; letter-spacing: .01em; }
+  h2 { font-size: 20px; margin: 48px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  h3 { font-size: 16px; margin: 24px 0 6px; }
+  p { margin: 0 0 14px; }
+  ul, ol { margin: 0 0 14px; padding-left: 22px; }
+  li { margin: 0 0 8px; }
+  small { color: var(--muted); font-size: 13px; line-height: 1.7; }
+  .lede { color: var(--muted); font-size: 14px; margin: 0 0 28px; }
+  .answer {
+    border: 2px solid var(--ink);
+    border-radius: 10px;
+    padding: 20px 22px;
+    margin: 0 0 28px;
+  }
+  .answer p:last-child { margin-bottom: 0; }
+  .answer strong { font-size: 19px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 18px; font-size: 15px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--soft); font-weight: 600; white-space: nowrap; }
+  .flow { margin: 20px 0 8px; overflow-x: auto; }
+  .flow-row { display: flex; align-items: stretch; gap: 0; min-width: 620px; }
+  .step {
+    flex: 1 1 0; border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px 10px; background: var(--soft); text-align: center; font-size: 14px; line-height: 1.5;
+  }
+  .step b { display: block; font-size: 14px; }
+  .step span { color: var(--muted); font-size: 12px; }
+  .arrow { align-self: center; padding: 0 6px; color: var(--muted); font-size: 18px; }
+  .bypass {
+    margin-top: 14px; border: 2px dashed var(--ng); border-radius: 8px;
+    background: var(--ng-soft); padding: 12px 14px; font-size: 14px; color: var(--ng);
+  }
+  .bypass b { display: block; }
+  .badge {
+    display: inline-block; border-radius: 999px; padding: 1px 10px;
+    font-size: 12px; font-weight: 700; border: 1px solid currentColor; white-space: nowrap;
+  }
+  .badge.ng { color: var(--ng); background: var(--ng-soft); }
+  .badge.ok { color: var(--ok); background: var(--ok-soft); }
+  .badge.todo { color: var(--todo); background: var(--todo-soft); }
+  .note { background: var(--soft); border-left: 4px solid var(--line); padding: 14px 16px; margin: 16px 0; font-size: 15px; }
+  .note p:last-child { margin-bottom: 0; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; background: var(--soft); padding: 1px 5px; border-radius: 4px; }
+  a { color: #14509e; }
+  footer { margin-top: 56px; border-top: 1px solid var(--line); padding-top: 16px; color: var(--muted); font-size: 13px; }
+  @media (max-width: 560px) {
+    body { padding: 20px 14px 48px; font-size: 15px; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 18px; margin-top: 36px; }
+  }
+  @media print {
+    body { padding: 0; font-size: 11pt; }
+    h2 { break-after: avoid; }
+    table, .answer, .flow { break-inside: avoid; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<h1>テストが通っていない変更でも、本体に入れられる状態だった</h1>
+<p class="lede">harness-mem を RouteCLI の運用につなぐ前の診断。2026-11-08 時点、commit <code>21253878</code>。まだ何も変更していない。</p>
+
+<div class="answer">
+  <p><strong>いまの harness-mem は、自動テストの結果を待たずに変更を main（本体）へ取り込めます。</strong>門番がいないためです。</p>
+  <p>門番を置けば止められることを、機械の全探索で確かめました（違反 0）。GitHub の設定を変えるかどうかは、あなたの判断です。</p>
+</div>
+
+<h2>何が起きるのか</h2>
+<p>ふだんの流れはこうです。変更を書く、PR（変更の提案）を出す、自動テストが走る、問題なければ本体に取り込む。</p>
+
+<div class="flow">
+  <div class="flow-row">
+    <div class="step"><b>変更を書く</b><span>手元の作業</span></div>
+    <div class="arrow">→</div>
+    <div class="step"><b>PR を出す</b><span>提案の場</span></div>
+    <div class="arrow">→</div>
+    <div class="step"><b>自動テスト</b><span>test-suite</span></div>
+    <div class="arrow">→</div>
+    <div class="step"><b>main へ取り込む</b><span>本体</span></div>
+    <div class="arrow">→</div>
+    <div class="step"><b>公開</b><span>tag で npm へ</span></div>
+  </div>
+  <div class="bypass"><b>いまはここが通れる</b>自動テストの結果が「実行中」でも「失敗」でも、main へ取り込める。止める設定が入っていない。</div>
+</div>
+
+<p>実際に模型が出した筋書きは 3 手でした。<strong>計画 → PR → 取り込み</strong>。テストはまだ走っている途中です。</p>
+<p>困るのは、壊れた変更が本体に入ってしまうことです。あとで気づくと、どの変更が原因かを探す手間が増えます。この repo の workflow のコメントには、以前「リリース直前にテスト失敗が初めて分かった」という記録が残っています。</p>
+
+<h2>なぜそうなっているのか</h2>
+<p>GitHub には「このチェックが通らないと取り込みできない」という設定があります。いまの main にはその設定がありません。確認コマンドは <code>404 Branch not protected</code> を返しました。</p>
+<p>テスト自体は PR ごとに走っています。走っているのに、止める力がない状態です。警報機は鳴るけれど、ドアに鍵が付いていないのに近いです。実際には、<code>test-suite.yml</code> は PR と main への push で実行されますが、取り込みの条件にはなっていません。</p>
+
+<h2>どう確かめたのか</h2>
+<ol>
+  <li>仕様書（<code>Spec.md</code>）と開発の約束（<code>AGENTS.md</code>）、2 つの workflow から、「PR を出してから公開するまで」の流れを小さな状態模型にしました。</li>
+  <li>機械が取り得る順番を全部試します（全探索）。人が思いつかない順番も出ます。</li>
+  <li>3 つの問いを検査しました。</li>
+</ol>
+
+<table>
+  <thead><tr><th>検査</th><th>問い</th><th>結果</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>C1</td>
+      <td>main に入る変更は、その同じ変更のテストが緑か</td>
+      <td><span class="badge ng">反例あり</span><br><small>TLC 終了 12、17 状態を生成し 9 状態を到達</small></td>
+    </tr>
+    <tr>
+      <td>C2</td>
+      <td>公開まで到達できるか（正常な道が塞がっていないか）</td>
+      <td><span class="badge ok">到達できる</span><br><small>TLC 終了 12 を到達経路として確認、65 生成 / 25 到達</small></td>
+    </tr>
+    <tr>
+      <td>C3</td>
+      <td>門番を置いたら C1 は止まるか</td>
+      <td><span class="badge ok">違反なし</span><br><small>TLC 終了 0、51 生成 / 17 到達</small></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <p><strong>この検査が言える範囲。</strong>言えるのは「作った模型の中では、この順番で取り込める」ことです。実際の GitHub で取り込みを試したわけではありません。保護設定が無いことは実測（404）です。模型と実物の対応は、仕様書と workflow の記述に基づきます。</p>
+</div>
+
+<h2>ついでに分かったこと</h2>
+<table>
+  <thead><tr><th>項目</th><th>いま</th><th>影響</th></tr></thead>
+  <tbody>
+    <tr><td>受付の記録</td><td>GitHub Issue は 0 件。受付は会話と T3 のスレッドだけ</td><td>Issue で仕事を回す運用に移すなら、Plans.md との二重管理をどう畳むか先に決める必要がある</td></tr>
+    <tr><td>担当の記録</td><td><code>route-job</code> の <code>--leader</code> に opencode 系が無い（grok / codex / claude-code のみ）</td><td>この環境からは正しい担当名で記録できない</td></tr>
+    <tr><td>CI の実行場所</td><td><code>ubuntu-latest</code> / <code>macos-latest</code></td><td>契約の「CI は Instabox 既定」へは未移行</td></tr>
+  </tbody>
+</table>
+
+<h2>あなたが決めること</h2>
+<p>この案件を RouteCLI の通常運用へつなぐ最初の一手を選びます。</p>
+
+<table>
+  <thead><tr><th>案</th><th>やること</th><th>手間</th><th>失敗したとき</th><th>戻し方</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>A（推奨）</b></td>
+      <td>main に必須のテスト条件を入れ、この作業を Issue 1 件として通す</td>
+      <td>設定 1 つ、Issue 1 件、PR 1 件</td>
+      <td>設定を誤ると main へ入れられなくなる（PR は作れる）</td>
+      <td>保護を外す。Issue を閉じる</td>
+    </tr>
+    <tr>
+      <td>B</td>
+      <td>診断だけ残して止める</td>
+      <td>なし</td>
+      <td>穴は開いたまま。次に触る人が同じ調査をやり直す</td>
+      <td>そのまま</td>
+    </tr>
+    <tr>
+      <td>C</td>
+      <td>CI の実行場所を Instabox へ移すのを先にやる</td>
+      <td>中〜大（workflow の変更と接続）</td>
+      <td>移行の途中で CI が止まると PR が進まない</td>
+      <td>workflow を戻す</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><small>A を選ぶと、GitHub の main に保護が付きます。テストが緑でないと取り込めなくなります。あわせて Issue を 1 件作り、今回の診断と次の作業をそこへ結び付けます。どちらも外部への書き込みで、まだ実行していません。</small></p>
+
+<h2>まだ確かめていないこと</h2>
+<ul>
+  <li><strong>この HTML の見た目。</strong>デスクトップのブラウザが接続されておらず、狭い画面と拡大の表示を確認できていません。</li>
+  <li><strong>担当の二重取得。</strong>T3 の子担当と route-job が、同じ案件で同時に所有権を取らないかは未確認です。</li>
+</ul>
+
+<h2>詳しい記録</h2>
+<ul>
+  <li><a href="2026-11-08-harness-mem-setup-diagnosis.html">基準の診断レポート（ステートチャート付き）</a> — 模型、出典の hash、C1 と C2 の結果</li>
+  <li><a href="2026-11-08-harness-mem-setup-diagnosis-candidate.html">門番を置いた候補レポート</a> — C3 の結果</li>
+  <li>模型: <code>formal/baseline/WorkGate.qnt</code>、検査結果: <code>formal/baseline/results/</code>、観測した事実: <code>formal/baseline/evidence/repo-facts.json</code></li>
+  <li>作業の記録: <code>Plans.md</code> の先頭（<code>cc:WIP</code>）</li>
+</ul>
+
+<footer>
+  <p>作成 2026-11-08。対象は Chachamaru127/harness-mem の commit 21253878。数値は同日の実行結果。この文書は説明用で、模型の合格は実 GitHub の動作を保証しません。</p>
+</footer>
+
+</main>
+</body>
+</html>
