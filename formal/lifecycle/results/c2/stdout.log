@@ -1,0 +1,88 @@
+TLC2 Version 2026.11.08.113104
+Warning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the "-XX:+UseParallelGC" property.
+(Use the -nowarning option to disable this warning.)
+Running breadth-first search Model-Checking with fp 0 and seed -1617204111955723611 with 1 worker on 18 cores with 1024MB heap and 64MB offheap memory [pid: 50196] (Mac OS X 26.3.2 aarch64, Eclipse Adoptium 21.0.13 64bit, MSBDiskFPSet, DiskStateQueue).
+Parsing file /Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/lifecycle/results/c2/C2-compile/PurgePlan.tla
+Parsing file /private/var/folders/3f/917p7ynn7976192t0qv1gjhm0000gp/T/tlc-7615000103255609001/Integers.tla (jar:file:/Users/tachibanashuuta/.local/share/routecli/serve/formal/quint/.cache/apalache-dist-0.62.4/apalache/lib/apalache.jar!/tla2sany/StandardModules/Integers.tla)
+Parsing file /private/var/folders/3f/917p7ynn7976192t0qv1gjhm0000gp/T/tlc-7615000103255609001/Sequences.tla (jar:file:/Users/tachibanashuuta/.local/share/routecli/serve/formal/quint/.cache/apalache-dist-0.62.4/apalache/lib/apalache.jar!/tla2sany/StandardModules/Sequences.tla)
+Parsing file /private/var/folders/3f/917p7ynn7976192t0qv1gjhm0000gp/T/tlc-7615000103255609001/FiniteSets.tla (jar:file:/Users/tachibanashuuta/.local/share/routecli/serve/formal/quint/.cache/apalache-dist-0.62.4/apalache/lib/apalache.jar!/tla2sany/StandardModules/FiniteSets.tla)
+Parsing file /private/var/folders/3f/917p7ynn7976192t0qv1gjhm0000gp/T/tlc-7615000103255609001/TLC.tla (jar:file:/Users/tachibanashuuta/.local/share/routecli/serve/formal/quint/.cache/apalache-dist-0.62.4/apalache/lib/apalache.jar!/tla2sany/StandardModules/TLC.tla)
+Parsing file /private/var/folders/3f/917p7ynn7976192t0qv1gjhm0000gp/T/tlc-7615000103255609001/Apalache.tla (jar:file:/Users/tachibanashuuta/.local/share/routecli/serve/formal/quint/.cache/apalache-dist-0.62.4/apalache/lib/apalache.jar!/tla2sany/StandardModules/Apalache.tla)
+Parsing file /private/var/folders/3f/917p7ynn7976192t0qv1gjhm0000gp/T/tlc-7615000103255609001/Variants.tla (jar:file:/Users/tachibanashuuta/.local/share/routecli/serve/formal/quint/.cache/apalache-dist-0.62.4/apalache/lib/apalache.jar!/tla2sany/StandardModules/Variants.tla)
+Parsing file /private/var/folders/3f/917p7ynn7976192t0qv1gjhm0000gp/T/tlc-7615000103255609001/_TLCTrace.tla (jar:file:/Users/tachibanashuuta/.local/share/routecli/serve/formal/quint/.cache/apalache-dist-0.62.4/apalache/lib/apalache.jar!/tla2sany/StandardModules/_TLCTrace.tla)
+Parsing file /private/var/folders/3f/917p7ynn7976192t0qv1gjhm0000gp/T/tlc-7615000103255609001/Naturals.tla (jar:file:/Users/tachibanashuuta/.local/share/routecli/serve/formal/quint/.cache/apalache-dist-0.62.4/apalache/lib/apalache.jar!/tla2sany/StandardModules/Naturals.tla)
+Parsing file /private/var/folders/3f/917p7ynn7976192t0qv1gjhm0000gp/T/tlc-7615000103255609001/TLCExt.tla (jar:file:/Users/tachibanashuuta/.local/share/routecli/serve/formal/quint/.cache/apalache-dist-0.62.4/apalache/lib/apalache.jar!/tla2sany/StandardModules/TLCExt.tla)
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module Apalache
+Semantic processing of module Variants
+Semantic processing of module TLCExt
+Semantic processing of module _TLCTrace
+Semantic processing of module PurgePlan
+Linting of module Apalache
+Linting of module Variants
+Linting of module TLCExt
+Linting of module _TLCTrace
+Linting of module PurgePlan
+Starting... (2026-11-08 20:31:04)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-08 20:31:04.
+Error: Invariant q_inv is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ purged = (0 :> FALSE @@ 1 :> FALSE)
+/\ now = 0
+/\ backedUp = FALSE
+/\ expiry = 0
+/\ hasPlan = FALSE
+/\ planned = (0 :> FALSE @@ 1 :> FALSE)
+/\ held = (0 :> FALSE @@ 1 :> FALSE)
+/\ archived = (0 :> FALSE @@ 1 :> FALSE)
+
+State 2: <Archive(0) line 67, col 3 to line 78, col 24 of module PurgePlan>
+/\ purged = (0 :> FALSE @@ 1 :> FALSE)
+/\ now = 0
+/\ backedUp = FALSE
+/\ expiry = 0
+/\ hasPlan = FALSE
+/\ planned = (0 :> FALSE @@ 1 :> FALSE)
+/\ held = (0 :> FALSE @@ 1 :> FALSE)
+/\ archived = (0 :> TRUE @@ 1 :> FALSE)
+
+State 3: <Backup line 99, col 3 to line 107, col 24 of module PurgePlan>
+/\ purged = (0 :> FALSE @@ 1 :> FALSE)
+/\ now = 0
+/\ backedUp = TRUE
+/\ expiry = 0
+/\ hasPlan = FALSE
+/\ planned = (0 :> FALSE @@ 1 :> FALSE)
+/\ held = (0 :> FALSE @@ 1 :> FALSE)
+/\ archived = (0 :> TRUE @@ 1 :> FALSE)
+
+State 4: <Plan line 113, col 3 to line 121, col 18 of module PurgePlan>
+/\ purged = (0 :> FALSE @@ 1 :> FALSE)
+/\ now = 0
+/\ backedUp = TRUE
+/\ expiry = 1
+/\ hasPlan = TRUE
+/\ planned = (0 :> TRUE @@ 1 :> FALSE)
+/\ held = (0 :> FALSE @@ 1 :> FALSE)
+/\ archived = (0 :> TRUE @@ 1 :> FALSE)
+
+State 5: <Execute line 185, col 3 to line 197, col 24 of module PurgePlan>
+/\ purged = (0 :> TRUE @@ 1 :> FALSE)
+/\ now = 0
+/\ backedUp = TRUE
+/\ expiry = 1
+/\ hasPlan = TRUE
+/\ planned = (0 :> TRUE @@ 1 :> FALSE)
+/\ held = (0 :> FALSE @@ 1 :> FALSE)
+/\ archived = (0 :> TRUE @@ 1 :> FALSE)
+
+168 states generated, 78 distinct states found, 43 states left on queue.
+The depth of the complete state graph search is 5.
+Finished in 00s at (2026-11-08 20:31:04)
+Trace exploration spec path: /Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/lifecycle/results/c2/C2-compile/PurgePlan_TTrace_1794137464.tla

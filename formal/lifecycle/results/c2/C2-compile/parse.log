@@ -1,0 +1,13 @@
+# Usage statistics is OFF. We care about your privacy.
+# If you want to help our project, consider enabling statistics with config --enable-stats=true.
+
+Output directory: /Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/lifecycle/results/c2/C2-compile/parse-logs/input.qnt.json/2026-11-08T20-31-03_4684370643901125595
+# APALACHE version: 0.62.4 | build: 7954daf                       I@20:31:03.564
+Parse /Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/lifecycle/results/c2/C2-compile/input.qnt.json I@20:31:03.567
+PASS #0: SanyParser                                               I@20:31:03.695
+Parsed successfully
+Root module: PurgePlan with 25 declarations.  I@20:31:04.173
+It took me 0 days  0 hours  0 min  0 sec                          I@20:31:04.173
+Total time: 0.606 sec                                             I@20:31:04.174
+EXITCODE: OK
+Picked up JAVA_TOOL_OPTIONS: -Xmx1g -Xss16m
