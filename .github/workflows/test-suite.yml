@@ -25,7 +25,9 @@ concurrency:
 
 jobs:
   repository-behavior-gate:
-    runs-on: ubuntu-latest
+    # RouteCLI の CI/CD 既定（instabox-medium）へ移した。probe（instabox-probe.yml）で
+    # 箱、checkout、jq、sudo を確認済み。macOS/Windows が要る release.yml は対象外。
+    runs-on: instabox-medium
     timeout-minutes: 45
     permissions:
       contents: read

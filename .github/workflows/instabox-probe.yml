@@ -1,0 +1,41 @@
+name: Instabox probe
+
+# RouteCLI の CI/CD 既定（instabox-medium）へ移す前の接続確認。
+# このファイル自身を変えた PR と、手動実行のときだけ走る。
+# 必須チェックではないため、失敗しても取り込みは止めない。
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/instabox-probe.yml"
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: instabox-medium
+    timeout-minutes: 10
+    steps:
+      - name: Report the box
+        shell: bash
+        run: |
+          set -euo pipefail
+          uname -a
+          echo "cpus=$(nproc)"
+          free -m | head -2
+          echo "runner=$RUNNER_NAME os=$RUNNER_OS arch=$RUNNER_ARCH"
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Check the checkout and the toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          git log --oneline -1
+          ls -1 | head -5
+          command -v node || echo "no node"
+          node --version 2>/dev/null || true
+          echo "uid=$(id -u) user=$(id -un)"
+          command -v jq || echo "no jq"
+          command -v rg || echo "no rg"
+          command -v bun || echo "no bun"
+          sudo -n true 2>/dev/null && echo "passwordless sudo ok" || echo "no passwordless sudo"
