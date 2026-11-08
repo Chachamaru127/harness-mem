@@ -1,0 +1,1 @@
+ parse --out-dir=/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/baseline/results/c1/C1-compile/parse-logs --output=/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/baseline/results/c1/C1-compile/WorkGate.tla /Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/baseline/results/c1/C1-compile/input.qnt.json
