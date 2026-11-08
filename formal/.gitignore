@@ -1,3 +1,3 @@
 # TLC の実行中に作られる一時物は残さない
-results/*/*-compile/states/
-results/*/*-compile/*.bin
+**/results/*/*-compile/states/
+**/*.bin

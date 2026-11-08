@@ -1,0 +1,8 @@
+2026-11-08T20:31:01,761 [main] INFO  a.f.a.t.Tool$ - # APALACHE version: 0.62.4 | build: 7954daf
+2026-11-08T20:31:01,764 [main] INFO  a.f.a.t.t.o.ParseCmd - Parse /Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/lifecycle/results/c1/C1-compile/input.qnt.json
+2026-11-08T20:31:01,871 [main] INFO  a.f.a.i.p.PassChainExecutor - PASS #0: SanyParser
+2026-11-08T20:31:02,158 [main] DEBUG a.f.a.i.p.PassChainExecutor - PASS #0: SanyParser [OK]
+2026-11-08T20:31:02,159 [main] INFO  a.f.a.t.Tool$ - Parsed successfully
+Root module: PurgePlan with 25 declarations.
+2026-11-08T20:31:02,159 [main] INFO  a.f.a.t.Tool$ - It took me 0 days  0 hours  0 min  0 sec
+2026-11-08T20:31:02,159 [main] INFO  a.f.a.t.Tool$ - Total time: 0.395 sec

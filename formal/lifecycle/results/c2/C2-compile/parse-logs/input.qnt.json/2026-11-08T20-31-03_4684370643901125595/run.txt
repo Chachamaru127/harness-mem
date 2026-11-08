@@ -1,0 +1,1 @@
+ parse --out-dir=/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/lifecycle/results/c2/C2-compile/parse-logs --output=/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/lifecycle/results/c2/C2-compile/PurgePlan.tla /Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/lifecycle/results/c2/C2-compile/input.qnt.json

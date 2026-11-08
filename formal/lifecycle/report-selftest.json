@@ -1,0 +1,235 @@
+{
+  "schema_version": 1,
+  "title": "負の対照: 計画を作り直さないと法律上の保持を消せる",
+  "scope": "基準模型 formal/lifecycle/PurgePlan.qnt の RecomputeAtExecute だけを false にした負の対照。検査が欠陥を検出できることの確認であり、実装の現状ではない。基準の診断は docs/reports/2026-11-08-harness-mem-lifecycle-diag.html。",
+  "sources": [
+    {
+      "id": "SPEC",
+      "label": "記憶の保持と削除の仕様",
+      "path": "Spec.md",
+      "sha256": "5380d297e77355b69c9746446d69813f705b22b371c34a91a54a10b6b1cd5911",
+      "section": "Memory Lifecycle And Autonomous Forgetting"
+    },
+    {
+      "id": "CORE",
+      "label": "hard purge の実装",
+      "path": "memory-server/src/core/harness-mem-core.ts",
+      "sha256": "15b08659e493360703b5f595092ec91e788655f6a7f12d01a28de8686b503ff4",
+      "section": "selectHardPurgeCandidateRows / buildHardPurgeManifest / assertHardPurgeExecuteGates / executeHardPurge"
+    },
+    {
+      "id": "POLICY",
+      "label": "自動 archive の候補選択",
+      "path": "memory-server/src/consolidation/forget-policy.ts",
+      "sha256": "b8a04d4f30fd5d54eb883c5d425c4620651b290aba4a41a857a5c601cb3cf322",
+      "section": "collectForgetCandidates / runForgetPolicy"
+    }
+  ],
+  "model": {
+    "path": "formal/lifecycle/PurgePlan.norecompute.qnt",
+    "sha256": "38b78e2c73bb7cba5bea5ed11ad16634306ce54095fd06181498d8f00699262d",
+    "main": "PurgePlan"
+  },
+  "requirements": [
+    {
+      "id": "R1",
+      "label": "legal_hold / private / secret / sensitive は自動 archive・purge の候補にしない",
+      "source_ids": [
+        "SPEC",
+        "POLICY"
+      ],
+      "check_ids": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R2",
+      "label": "hard purge は archive 済みの行だけを対象にする",
+      "source_ids": [
+        "SPEC",
+        "CORE"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "選択関数が未 archive の行を拒否する。模型では archive 済みだけが削除の候補になる前提にした。"
+    },
+    {
+      "id": "R3",
+      "label": "hard purge は restore できる backup を要求する",
+      "source_ids": [
+        "SPEC",
+        "CORE"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "模型では backup を取るまで計画を作れない形にした。backup の中身と archive の対応は模型の外。"
+    },
+    {
+      "id": "R4",
+      "label": "実行は計画の hash と期限に一致する必要がある",
+      "source_ids": [
+        "CORE"
+      ],
+      "check_ids": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R5",
+      "label": "archive の実行と同じ要求で hard purge や compact を走らせない",
+      "source_ids": [
+        "SPEC"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "API の分離で担保する性質で、今回の模型は削除の 2 段階だけを扱う。"
+    },
+    {
+      "id": "R6",
+      "label": "期限切れの計画は実行しない",
+      "source_ids": [
+        "CORE"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "Execute の前提 now < expiry に埋め込んだ。反例の探索対象にはしていない。"
+    },
+    {
+      "id": "R7",
+      "label": "自動実行は監査記録を残す",
+      "source_ids": [
+        "SPEC"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "記録の有無は実行経路の観測で確かめる性質で、模型の外。"
+    },
+    {
+      "id": "R8",
+      "label": "durable 型（decision / pattern / preference / lesson）は既定 TTL を付けない",
+      "source_ids": [
+        "SPEC",
+        "POLICY"
+      ],
+      "check_ids": [],
+      "unmodeled_reason": "候補選択の判定で、今回の削除 2 段階の模型とは別の性質。"
+    }
+  ],
+  "regions": [
+    {
+      "id": "flow",
+      "label": "記憶 1 行の削除までの流れ",
+      "x": 20,
+      "y": 20,
+      "width": 1000,
+      "height": 430
+    },
+    {
+      "id": "keep",
+      "label": "保存と archive（可逆）",
+      "parent": "flow",
+      "x": 40,
+      "y": 70,
+      "width": 430,
+      "height": 350
+    },
+    {
+      "id": "remove",
+      "label": "削除の計画と実行（不可逆）",
+      "parent": "flow",
+      "x": 500,
+      "y": 70,
+      "width": 500,
+      "height": 350
+    }
+  ],
+  "nodes": [
+    {
+      "id": "active",
+      "label": "保存済み",
+      "region": "keep",
+      "x": 120,
+      "y": 250,
+      "initial": true
+    },
+    {
+      "id": "archived",
+      "label": "archive 済み（復元できる）",
+      "region": "keep",
+      "x": 360,
+      "y": 250
+    },
+    {
+      "id": "planned",
+      "label": "削除の計画（期限つき）",
+      "region": "remove",
+      "x": 640,
+      "y": 250
+    },
+    {
+      "id": "purged",
+      "label": "削除済み（戻せない）",
+      "region": "remove",
+      "x": 900,
+      "y": 250
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-archive",
+      "from": "active",
+      "to": "archived",
+      "label": "archive する（legal_hold は除く）",
+      "action": "Archive"
+    },
+    {
+      "id": "e-plan",
+      "from": "archived",
+      "to": "planned",
+      "label": "計画を作る（backup が要る）",
+      "action": "Plan"
+    },
+    {
+      "id": "e-execute",
+      "from": "planned",
+      "to": "purged",
+      "label": "実行する（計画が一致・期限内・法律上の保持なし）",
+      "action": "Execute"
+    }
+  ],
+  "checks": [
+    {
+      "id": "C3",
+      "label": "再計算を外すと legal_hold の行を消す反例が出る",
+      "symbol": "NoHoldLoss",
+      "engine": "TLC",
+      "kind": "invariant",
+      "command": [
+        "env",
+        "JAVA_HOME=/Users/tachibanashuuta/.t3-ja/worktrees/routecli/t3w-pr-36-20261104-a454/formal/job-lease/tools/jdk-21.0.13+9-jre/Contents/Home",
+        "JOB_LEASE_JAVA=/Users/tachibanashuuta/.t3-ja/worktrees/routecli/t3w-pr-36-20261104-a454/formal/job-lease/tools/jdk-21.0.13+9-jre/Contents/Home/bin/java",
+        "python3",
+        "/Users/tachibanashuuta/.agents/skills/route-project-setup/scripts/run_check.py",
+        "--project",
+        ".",
+        "--input",
+        "formal/lifecycle/report-selftest.json",
+        "--check",
+        "C3",
+        "--routecli",
+        "/Users/tachibanashuuta/.local/share/routecli/serve",
+        "--main",
+        "PurgePlan"
+      ],
+      "checked_sources": {
+        "SPEC": "5380d297e77355b69c9746446d69813f705b22b371c34a91a54a10b6b1cd5911",
+        "CORE": "15b08659e493360703b5f595092ec91e788655f6a7f12d01a28de8686b503ff4",
+        "POLICY": "b8a04d4f30fd5d54eb883c5d425c4620651b290aba4a41a857a5c601cb3cf322"
+      },
+      "result_path": "formal/lifecycle/results/c3/result.json",
+      "stdout_path": "formal/lifecycle/results/c3/stdout.log",
+      "trace_edges": [
+        "e-archive",
+        "e-plan",
+        "e-execute"
+      ],
+      "trace_verified": true,
+      "trace_note": "TLC の State 2 が Archive(0)、State 3 が Backup、State 4 が Plan、State 5 が SetHold(0)、State 6 が Execute。held(0)=TRUE のまま purged(0)=TRUE になる。Archive→Plan→Execute の 3 辺に対応させ、SetHold は図に無いため注記で補う。"
+    }
+  ]
+}

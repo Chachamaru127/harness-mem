@@ -1,0 +1,75 @@
+{
+  "status": "violation",
+  "tlc_exit": 12,
+  "property": "NoHoldLoss",
+  "main": "PurgePlan",
+  "model_sha256": "38b78e2c73bb7cba5bea5ed11ad16634306ce54095fd06181498d8f00699262d",
+  "checked_sources": {
+    "SPEC": "5380d297e77355b69c9746446d69813f705b22b371c34a91a54a10b6b1cd5911",
+    "CORE": "15b08659e493360703b5f595092ec91e788655f6a7f12d01a28de8686b503ff4",
+    "POLICY": "b8a04d4f30fd5d54eb883c5d425c4620651b290aba4a41a857a5c601cb3cf322"
+  },
+  "command": [
+    "env",
+    "JAVA_HOME=/Users/tachibanashuuta/.t3-ja/worktrees/routecli/t3w-pr-36-20261104-a454/formal/job-lease/tools/jdk-21.0.13+9-jre/Contents/Home",
+    "JOB_LEASE_JAVA=/Users/tachibanashuuta/.t3-ja/worktrees/routecli/t3w-pr-36-20261104-a454/formal/job-lease/tools/jdk-21.0.13+9-jre/Contents/Home/bin/java",
+    "python3",
+    "/Users/tachibanashuuta/.agents/skills/route-project-setup/scripts/run_check.py",
+    "--project",
+    ".",
+    "--input",
+    "formal/lifecycle/report-selftest.json",
+    "--check",
+    "C3",
+    "--routecli",
+    "/Users/tachibanashuuta/.local/share/routecli/serve",
+    "--main",
+    "PurgePlan"
+  ],
+  "observed_at": "2026-11-08T11:31:24.307671+00:00",
+  "verification_scope": "finite_model_only",
+  "kind": "invariant",
+  "invocation": [
+    "/usr/local/bin/python3",
+    "/Users/tachibanashuuta/.agents/skills/route-project-setup/scripts/run_check.py",
+    "--project",
+    ".",
+    "--input",
+    "formal/lifecycle/report-selftest.json",
+    "--check",
+    "C3",
+    "--routecli",
+    "/Users/tachibanashuuta/.local/share/routecli/serve",
+    "--main",
+    "PurgePlan"
+  ],
+  "toolchain_versions": {
+    "quint": "0.33.1",
+    "apalache": "0.62.4",
+    "archive_url": "https://github.com/apalache-mc/apalache/releases/download/v0.62.4/apalache.tgz",
+    "archive_sha256": "8ac8488422c30d552735bae11b92a2d014d8e02e8608702acc08f9a2d8a9abb2",
+    "jar_sha256": "e5223915507b65cc5f1638bd037ede60f8a4fc1644aff46355779f9b05df9262"
+  },
+  "toolchain_sha256": "10536180a9bb79b953dcdaee4ccb9a2e16dddf21a9ec71d72e13ce8dc9fd4f27",
+  "actual_checker_command": [
+    "/Users/tachibanashuuta/.t3-ja/worktrees/routecli/t3w-pr-36-20261104-a454/formal/job-lease/tools/jdk-21.0.13+9-jre/Contents/Home/bin/java",
+    "-Xmx1g",
+    "-Xss16m",
+    "-cp",
+    "/Users/tachibanashuuta/.local/share/routecli/serve/formal/quint/.cache/apalache-dist-0.62.4/apalache/lib/apalache.jar",
+    "tlc2.TLC",
+    "-workers",
+    "1",
+    "-fp",
+    "0",
+    "-metadir",
+    "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/lifecycle/results/c3/C3-compile/states",
+    "-config",
+    "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/lifecycle/results/c3/C3-compile/check.cfg",
+    "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/formal/lifecycle/results/c3/C3-compile/PurgePlan.tla"
+  ],
+  "state_counts": [
+    "373 states generated, 152 distinct states found, 75 states left on queue"
+  ],
+  "stdout_sha256": "08e828c9ca868766fc7523653fefc1ed2652f6292ca247d178d71917ede8c732"
+}
