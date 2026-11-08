@@ -34,3 +34,8 @@ jobs:
           ls -1 | head -5
           command -v node || echo "no node"
           node --version 2>/dev/null || true
+          echo "uid=$(id -u) user=$(id -un)"
+          command -v jq || echo "no jq"
+          command -v rg || echo "no rg"
+          command -v bun || echo "no bun"
+          sudo -n true 2>/dev/null && echo "passwordless sudo ok" || echo "no passwordless sudo"
