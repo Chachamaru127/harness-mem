@@ -1,3 +1,12 @@
+## 2026-11-09 接続の残りを片付ける（記録・benchmark・依存更新）
+
+- 状態: cc:完了。本人「全て推奨で」（2026-11-09）。Local。
+- 記録（#210）: Plans.md から抜けていた 2026-09-18 の 3 件を復元し、2026-11-08 の接続記録を足した。索引に製品ガイド 3 枚と診断のやさしい版を並べ、索引が指す HTML を同じ PR で入れた。`bin/harness-mcp-darwin-arm64` の差分、`docs/images/*.svg`、`20261021T154740-fdb8d930/` は対象外として残した。
+- 定期 benchmark（#211）: 3 本とも CI に multilingual-e5 が無く、`local-hash-v3` へ退避して全サンプルが 0 点だった（run 42539658040 の `Layer 1 (Absolute Floor): FAILED`）。test-suite と同じ cache と `model pull` を足し、`instabox-medium` へ移した。手動実行 42548708610 が success（`Ensure embedding model` success、`Run benchmark CI` success）。
+- 依存更新（#182）: Dependabot の npm_and_yarn。rebase 後も `Dependabot lock drift contract > root Bun lock stays aligned with npm lock` が落ちたため、`bun install --lockfile-only` で bun.lock を再生成し、`@huggingface/transformers` 4.3.2 と `sharp` 0.35.5 を package-lock と揃えた。全チェック緑（gate 4分7秒）で merge。
+- 残り: `release.yml` は macOS / Windows の matrix があるため未移行（方針: Linux と分けない）。`npm-auth-check` は手動のみで対象外。HTML 5 枚の実表示はブラウザ未接続のため未確認。
+- 未確認: Instabox は有料版（本人）。`instabox usage` の `maxMachines: 1` は作成できる sandbox の数で、CI の箱とは別。CI では同時 5 job まで並行実行できた。
+
 ## 2026-11-08 RouteCLI 接続の初期診断（route-project-setup）
 
 - 状態: cc:完了（手順 1-6 を実行。2026-11-08）。本人の `$route-project-setup` 呼び出しと「1-6をすべて実行する」による。Local。
