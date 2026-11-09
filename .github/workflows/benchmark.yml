@@ -7,7 +7,7 @@ on:
 
 jobs:
   benchmark:
-    runs-on: ubuntu-latest
+    runs-on: instabox-medium
     timeout-minutes: 30
 
     steps:
@@ -25,6 +25,18 @@ jobs:
       - name: Install memory-server dependencies
         working-directory: memory-server
         run: bun install --frozen-lockfile
+
+      - name: Restore multilingual-e5 cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.harness-mem/models/multilingual-e5
+          key: benchmark-embedding-${{ runner.os }}-multilingual-e5-v1
+
+      - name: Ensure embedding model
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/harness-mem model pull multilingual-e5 --yes
 
       - name: Run benchmark CI
         working-directory: memory-server
