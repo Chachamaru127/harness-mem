@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+## [0.32.2] - 2026-11-11
+
+- PR で走る CI を Instabox（`instabox-medium`）へ移しました。定期 benchmark も同じです。npm への公開は GitHub の実行環境に残します。npm の trusted publishing が自己ホスト型の runner に対応していないためです。macOS / Windows の導入試験もそれぞれの環境に残します。
+- 定期 benchmark に埋め込みモデルの取得を足しました。無いあいだは全サンプルが簡易ベクトルへ退避し、0 点で床試験に落ちていました。
+- `@huggingface/transformers` を 4.3.2、`sharp` を 0.35.5 へ上げ、`bun.lock` を `package-lock.json` と揃えました。
+- 取り込みの門番と記憶の削除についての形式モデルとレポートを追加し、`Plans.md` から抜けていた 2026-09-18 の記録を戻しました。
+
 ## [0.32.1] - 2026-10-29
 
 - Windows で daemon が起動できない不具合を直しました。起動中の LaunchAgent の daemon を古い `harness-memd start` が止めないための仮の待ち受けを、macOS だけで動かします。Windows ではポートの解放が間に合わず、本来のサーバーが `EADDRINUSE` で終了していました。

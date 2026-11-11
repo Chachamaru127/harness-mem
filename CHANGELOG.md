@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.32.2] - 2026-11-11
+
+- Move the CI that runs on pull requests to `instabox-medium`, including the required `repository-behavior-gate`. The scheduled benchmarks move too. `publish-npm` stays on a GitHub-hosted runner because npm trusted publishing does not support self-hosted runners, and the macOS/Windows smoke jobs stay on their own runners.
+- Give the scheduled benchmarks the `multilingual-e5` model. Without it every sample fell back to `local-hash-v3`, so the Layer 1 floor failed with every score at 0.
+- Bump `@huggingface/transformers` to 4.3.2 and `sharp` to 0.35.5, and regenerate `bun.lock` so it stays aligned with `package-lock.json`.
+- Add the merge-gate and hard-purge formal models with their reports, and restore the 2026-09-18 entries that had dropped out of `Plans.md`.
+
 ## [0.32.1] - 2026-10-29
 
 - Fix daemon startup on Windows. The startup placeholder listener that keeps an old `harness-memd start` from killing a starting LaunchAgent daemon now runs only on macOS; on Windows the port was not released in time and the real server exited with `EADDRINUSE`.
