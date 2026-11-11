@@ -376,7 +376,7 @@ jobs:
         run: npm publish --access public
 
   go-build:
-    runs-on: ubuntu-latest
+    runs-on: instabox-medium
     strategy:
       matrix:
         include:
@@ -456,7 +456,7 @@ jobs:
           test -s "../harness-mcp-native-${{ matrix.label }}${ext}"
 
   github-release:
-    runs-on: ubuntu-latest
+    runs-on: instabox-medium
     # 2026-06-23 設計変更: github-release は binary 配布の責務のみ。
     # publish-npm (test 群) と go-native-smoke (Windows test setup) は
     # 別責務として独立に走らせ、test fail で release page 生成を塞がない。
