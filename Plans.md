@@ -1,3 +1,15 @@
+## 2026-11-09 Instabox 起点のリリースと Mac 反映（#213）
+
+- 状態: cc:完了（2026-11-12）。本人「全て推奨で進めてください」により、v0.32.2 を 1 本通した。
+- 変更（#214、squash 7855e35）: `go-build` と `github-release` を `instabox-medium` へ移した。`publish-npm` は GitHub 提供 runner のまま（npm の trusted publishing が自己ホスト型 runner 未対応。出典 https://docs.npmjs.com/trusted-publishers/ 、2026-11-11 確認）。macOS / Windows の導入試験は各 OS に残した。版は package.json / package-lock.json / .claude-plugin の 2 ファイル / CHANGELOG 2 種を 0.32.2 に揃えた。
+- リリース実行（tag `v0.32.2`、run 42975285235）: `go-build` 4 種（darwin arm64/amd64、linux amd64、windows amd64）はすべて Instabox 上で success。`github-release` も Instabox で success。`package-install-smoke` と `go-native-smoke` は macOS / Windows で success。
+- 1 回目の `publish-npm` は失敗した。原因は npm 公開ではなく、その手前の試験 1 件（`background maintenance persistent workers > hard max age queues durably but waits for the in-flight search to finish`、1742ms）。同じ commit の PR では通っており、時刻に依存する揺らぎと判断した。`gh run rerun --failed` の再実行で success。**同じ揺らぎは再発し得る**ので、リリース時に 1 度落ちたら再実行を先に試す。
+- 公開物の読み戻し: npm は `0.32.2`（dist-tags latest）。GitHub Release `v0.32.2` に 4 資産（darwin amd64/arm64、linux amd64、windows amd64.exe）。
+- Mac への反映: daemon は `memory-server/src/index.ts` を作業ツリーから直接実行している（PID 64274、`~/.harness-mem/run-daemon.sh`）。main を 7855e35 に更新し、root と memory-server で `bun install --frozen-lockfile`、`launchctl kickstart -k` で再起動した。root の依存は `@huggingface/transformers` 4.3.2 / `sharp` 0.35.5 に更新。memory-server 側の lock は 4.2.0 のままで、daemon が読み込むのはこちら（差は残件）。
+- 実機確認: `/health` 200（0.98 秒）。`harness_mem_record_checkpoint` で `obs_00mwd01xkm2d21fe6e39454d49` を保存し、`harness_mem_search` が marker `instabox-release-verify-20261112` を 1 件で返し、`harness_mem_resume_pack` が応答した。
+- 反映前の状態: 旧 daemon は 8 日 15 時間稼働のまま `/health` が 15 秒無応答だった。DB は 17GB、ディスクは 92% 使用。再起動直後も warm-up 中は 10〜60 秒無応答で、数分後に 200 へ戻った。
+- 残り: `publish-npm` は GitHub 提供 runner に残る（設計上）。memory-server の lock と root の依存版の差。揺らぐ試験 1 件の安定化。
+
 ## 2026-11-09 接続の残りを片付ける（記録・benchmark・依存更新）
 
 - 状態: cc:完了。本人「全て推奨で」（2026-11-09）。Local。
