@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>v0.32.2 リリース — Instabox 起点と Mac 反映の確認</title>
+<style>
+  :root{
+    --ink:#1b1b1f; --muted:#5c5c66; --line:#d8d8e0; --paper:#fff; --soft:#f5f5f8;
+    --ok:#1f6f43; --okbg:#e8f3ec; --ng:#a3282b; --ngbg:#fbeaea;
+    --todo:#8a5200; --todobg:#fdf0dc; --info:#14509e; --infobg:#e8eef8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 20px 64px;background:var(--paper);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;
+    font-size:16px;line-height:1.85}
+  main{max-width:900px;margin:0 auto}
+  h1{font-size:25px;line-height:1.45;margin:0 0 8px}
+  h2{font-size:19px;margin:44px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  p{margin:0 0 14px}
+  ul,ol{margin:0 0 14px;padding-left:22px}
+  li{margin:0 0 8px}
+  small{color:var(--muted);font-size:13px;line-height:1.7}
+  .lede{color:var(--muted);font-size:14px;margin:0 0 26px}
+  .answer{border:2px solid var(--ink);border-radius:10px;padding:20px 22px;margin:0 0 26px}
+  .answer p:last-child{margin-bottom:0}
+  .answer strong{font-size:19px}
+  table{width:100%;border-collapse:collapse;margin:8px 0 18px;font-size:15px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--soft);font-weight:600;white-space:nowrap}
+  .badge{display:inline-block;border-radius:999px;padding:1px 10px;font-size:12px;font-weight:700;
+    border:1px solid currentColor;white-space:nowrap;margin-right:6px}
+  .badge.ok{color:var(--ok);background:var(--okbg)}
+  .badge.ng{color:var(--ng);background:var(--ngbg)}
+  .badge.todo{color:var(--todo);background:var(--todobg)}
+  .badge.info{color:var(--info);background:var(--infobg)}
+  .note{background:var(--soft);border-left:4px solid var(--line);padding:14px 16px;margin:16px 0;font-size:15px}
+  .note p:last-child{margin-bottom:0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;background:var(--soft);padding:1px 5px;border-radius:4px}
+  a{color:var(--info)}
+  footer{margin-top:52px;border-top:1px solid var(--line);padding-top:16px;color:var(--muted);font-size:13px}
+  @media(max-width:560px){body{padding:20px 14px 48px;font-size:15px}h1{font-size:21px}h2{font-size:17px}}
+  @media print{body{padding:0;font-size:11pt}h2{break-after:avoid}table,.answer{break-inside:avoid}a{color:inherit;text-decoration:none}}
+</style>
+</head>
+<body>
+<main>
+
+<h1>v0.32.2 が Instabox 起点で通り、同じ版を Mac で確認できた</h1>
+<p class="lede">2026-11-12 完了。Issue #213「Instabox起点のリリースとMac反映を接続する」。</p>
+
+<div class="answer">
+  <p><strong>リリース 1 本を最後まで通しました。</strong>ビルドと GitHub Release は Instabox、npm への公開だけは GitHub 提供の実行環境です。</p>
+  <p>その同じ版をこの Mac の daemon へ反映し、保存・検索・再開まで通りました。あなたの操作は要りません。</p>
+</div>
+
+<h2>何がどこで動いたか</h2>
+<table>
+  <thead><tr><th>工程</th><th>実行場所</th><th>結果</th></tr></thead>
+  <tbody>
+    <tr><td>必須テスト</td><td>Instabox</td><td><span class="badge ok">成功</span>PR の取り込み条件として実行済み</td></tr>
+    <tr><td>Go ビルド 4 種</td><td>Instabox</td><td><span class="badge ok">成功</span>darwin arm64 / amd64、linux amd64、windows amd64</td></tr>
+    <tr><td>GitHub Release</td><td>Instabox</td><td><span class="badge ok">成功</span>4 資産を添付</td></tr>
+    <tr><td>macOS / Windows の導入試験</td><td>各 OS の環境</td><td><span class="badge ok">成功</span>移せないため残した</td></tr>
+    <tr><td>npm への公開</td><td>GitHub 提供の環境</td><td><span class="badge ok">成功</span>移せない（下記）</td></tr>
+    <tr><td>Mac への反映と実機確認</td><td>この Mac</td><td><span class="badge ok">成功</span>保存・検索・再開</td></tr>
+  </tbody>
+</table>
+
+<h2>npm 公開だけ移せない理由</h2>
+<p>npm の trusted publishing は「GitHub が用意した実行環境」に限定されていて、自分の環境で動かす runner は対象外です。npm の公式文書に明記があります（2026-11-11 確認）。</p>
+<p>移すには npm のトークンを新しく作って秘密として登録する必要があり、公開経路の守りが弱くなります。そのため公開だけ GitHub 側に残しました。</p>
+
+<h2>公開物</h2>
+<ul>
+  <li>npm: <code>@chachamaru127/harness-mem</code> の <code>0.32.2</code> が最新。</li>
+  <li>GitHub Release <code>v0.32.2</code>: <code>harness-mcp-darwin-amd64</code>、<code>-darwin-arm64</code>、<code>-linux-amd64</code>、<code>-windows-amd64.exe</code>。</li>
+</ul>
+
+<h2>途中で 1 回止まった</h2>
+<p>1 回目の公開処理は、公開の手前の試験 1 件で落ちました。同じ変更の PR では通っていた試験で、時刻に依存して揺らぐ種類です（1742ms）。</p>
+<p>失敗した処理だけを再実行して成功しました。<strong>同じ揺らぎは再発し得ます</strong>ので、リリース時にここで落ちたら、まず再実行を試すのが早道です。</p>
+
+<h2>Mac の状態</h2>
+<ul>
+  <li>反映前の daemon は 8 日 15 時間動いたまま <code>/health</code> が無応答でした。今回の再起動で復旧しています。</li>
+  <li>反映後: <code>/health</code> は 200 を 0.98 秒で返す。</li>
+  <li>確認: 印を付けた記録を 1 件保存し、検索でその印が返り、再開用のまとめが応答した。</li>
+  <li>DB は 17GB、ディスクは 92% 使用。空きは約 75GB。</li>
+</ul>
+
+<h2>残っていること</h2>
+<ul>
+  <li>揺らぐ試験 1 件の安定化（リリースのたびに再実行が要る可能性）。</li>
+  <li><code>memory-server</code> 側の依存の固定が 4.2.0 のまま。root は 4.3.2 に上がっており、daemon が読むのは 4.2.0 側。</li>
+  <li>npm 公開は設計上 GitHub 提供の環境に残る。</li>
+</ul>
+
+<h2>確かめていないこと</h2>
+<ul>
+  <li>揺らぐ試験が、次回のリリースでも同じ条件で落ちるか。</li>
+  <li>再起動直後の warm-up に 10〜60 秒かかる状態が、DB の増加でどう変わるか。</li>
+</ul>
+
+<footer>
+  <p>根拠: Issue #213、PR #214、release run 42975285235、tag <code>v0.32.2</code>、<a href="https://docs.npmjs.com/trusted-publishers/">npm Docs「Trusted publishing」</a>。数値は 2026-11-12 の実測。</p>
+</footer>
+
+</main>
+</body>
+</html>
